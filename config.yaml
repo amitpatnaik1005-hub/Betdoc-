@@ -1,0 +1,156 @@
+# =============================================================================
+#  BetDoc — Master Configuration
+#  -----------------------------------------------------------------------------
+#  This file holds SHAPE and TUNING. Secrets live in `.env` and are pulled in
+#  with ${VAR} or ${VAR:-default} interpolation, resolved by core/config.py.
+#  Loaded once at boot into a frozen, fully-typed BetDocConfig object.
+# =============================================================================
+
+runtime:
+  env: ${BETDOC_ENV:-development}
+  log_level: ${BETDOC_LOG_LEVEL:-INFO}
+  timezone: UTC                       # every timestamp in the system is tz-aware UTC
+  dry_run: true                       # true => price and signal, but never stake
+
+# -----------------------------------------------------------------------------
+#  Persistence
+# -----------------------------------------------------------------------------
+database:
+  postgres:
+    dsn: postgresql://${POSTGRES_USER:-betdoc}:${POSTGRES_PASSWORD:-}@${POSTGRES_HOST:-localhost}:${POSTGRES_PORT:-5432}/${POSTGRES_DB:-betdoc}
+    min_pool_size: 2
+    max_pool_size: 10
+    command_timeout_s: 5.0
+    statement_cache_size: 256
+  redis:
+    host: ${REDIS_HOST:-localhost}
+    port: ${REDIS_PORT:-6379}
+    db: ${REDIS_DB:-0}
+    password: ${REDIS_PASSWORD:-}
+    socket_timeout_s: 0.25            # hot path: fail fast, never block the loop
+    key_prefix: betdoc
+    snapshot_ttl_s: 900               # live market state expiry after final whistle
+
+# -----------------------------------------------------------------------------
+#  Pillar 1 — Ingestion
+#  `mode` is enforced in code. Only documented, credentialed endpoints are used;
+#  see ingestion/README.md for the compliance boundary.
+# -----------------------------------------------------------------------------
+ingestion:
+  poll_jitter_pct: 0.15               # de-synchronise pollers to look human-paced
+  max_reconnect_backoff_s: 30.0
+  stale_quote_after_ms: 2500          # older than this => quote is not tradeable
+  clock_skew_tolerance_ms: 400
+
+  bookmakers:
+    - id: betfair
+      adapter: betfair_exchange
+      mode: official_api              # official_api | aggregator | manual_entry
+      role: reference                 # reference = truth source for fair price
+      enabled: false                  # flip on once BETFAIR_APP_KEY is populated
+      transport: stream               # stream | poll
+      rate_limit_per_s: 5
+      commission: 0.02                # exchange commission, enters EV net of fees
+
+    - id: pinnacle
+      adapter: pinnacle
+      mode: official_api
+      role: reference                 # lowest-margin book => sharpest consensus anchor
+      enabled: false
+      transport: poll
+      poll_interval_ms: 1500
+      rate_limit_per_s: 1
+
+    - id: oddsapi_consensus
+      adapter: the_odds_api
+      mode: aggregator                # multi-book consensus via licensed aggregator
+      role: consensus
+      enabled: false
+      transport: poll
+      poll_interval_ms: 20000         # free tier: 500 requests/month, spend carefully
+      rate_limit_per_s: 1
+
+# -----------------------------------------------------------------------------
+#  Pillar 2 — Quantitative Engine
+# -----------------------------------------------------------------------------
+quant_engine:
+  devig:
+    method: shin                      # shin | power | multiplicative | additive
+    reference_books: [pinnacle, betfair]
+    min_books_for_consensus: 2
+
+  poisson:
+    max_goals: 12                     # matrix truncation; 12 captures >99.99% mass
+    dixon_coles_rho: -0.035           # low-score dependence correction
+    home_advantage: 0.26              # additive on log(lambda_home)
+    xg_blend_weight: 0.65             # weight on xG-derived lambda vs market-implied
+    min_lambda: 0.05
+    max_lambda: 6.0
+
+  copula:
+    family: gaussian                  # gaussian | student_t
+    student_t_df: 6
+    default_leg_correlation: 0.18     # fallback rho for same-game parlay legs
+    max_parlay_legs: 6
+
+  kelly:
+    fraction: 0.25                    # fractional Kelly — full Kelly is ruin-adjacent
+    max_single_stake_pct: 0.02        # of bankroll, per selection
+    max_simultaneous_stake_pct: 0.10  # of bankroll, across all open positions
+    min_edge_to_stake: 0.015          # 1.5% edge floor after devig and fees
+    solver_max_iter: 200
+    solver_tolerance: 1.0e-9
+
+  bayesian:
+    prior_strength: 12.0              # pseudo-matches of prior before data dominates
+    in_play_decay_half_life_min: 18.0
+
+# -----------------------------------------------------------------------------
+#  Pillar 3 — Logic & Emotion Core
+# -----------------------------------------------------------------------------
+logic_core:
+  public_bias:
+    ticket_money_divergence_threshold: 0.15   # |ticket% - money%| that flags sharp side
+    public_side_ticket_threshold: 0.65
+    fade_edge_bonus: 0.004                    # prob added to the unpopular side
+  sharp_money:
+    reverse_line_move_min_ticks: 1            # line moves against majority tickets
+    steam_window_s: 90                        # cross-book simultaneous move window
+    steam_min_books: 3
+    min_signal_strength: 0.35
+  recency_bias:
+    overreaction_window_s: 240                # post-goal / post-red-card panic window
+    max_prob_overshoot: 0.08                  # market moves this far past model fair
+
+# -----------------------------------------------------------------------------
+#  Pillar 4 — Risk Management
+# -----------------------------------------------------------------------------
+risk_management:
+  bankroll_currency: INR
+  starting_bankroll: 100000.0
+  palpable_error:
+    max_odds_ratio_vs_consensus: 2.5  # quote this far off consensus => assume typo
+    min_consensus_books: 2
+    action: reject                    # reject | flag_only
+  execution:
+    in_play_latency_budget_ms: 800    # abort if round-trip exceeds this
+    max_slippage_pct: 0.03            # accept price movement up to this, else abort
+    max_open_positions: 25
+    max_correlated_exposure_pct: 0.06 # of bankroll per correlated cluster
+    daily_loss_limit_pct: 0.08        # of bankroll; breach => halt for the day
+  clv:
+    capture_at_s_before_start: 60     # snapshot closing line this long before kickoff
+    closing_reference_book: pinnacle
+    min_samples_for_verdict: 200      # below this, CLV is noise, not signal
+
+# -----------------------------------------------------------------------------
+#  Internal dashboard API
+# -----------------------------------------------------------------------------
+api:
+  host: 127.0.0.1                     # loopback only. Do NOT bind 0.0.0.0 unauthenticated.
+  port: 8000
+  cors_origins: ["http://127.0.0.1:5173"]
+  auth:
+    enabled: false                    # MUST be true for any non-loopback host
+    bearer_token: ${BETDOC_API_TOKEN:-}
+  metrics_enabled: true

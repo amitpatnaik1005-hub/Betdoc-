@@ -1,0 +1,92 @@
+[build-system]
+requires = ["setuptools>=80"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "betdoc"
+version = "0.1.0"
+description = "Real-time sports betting quantitative pricing, signal and risk platform"
+requires-python = ">=3.11"
+readme = "README.md"
+
+[tool.setuptools]
+packages = ["core", "ingestion", "quant_engine", "logic_core", "risk_management", "database", "api"]
+
+# =============================================================================
+#  Typing — strict by policy. An untyped function in the quant engine is a bug.
+# =============================================================================
+[tool.mypy]
+python_version = "3.12"
+strict = true
+warn_unreachable = true
+warn_no_return = true
+disallow_any_generics = true
+disallow_untyped_defs = true
+disallow_incomplete_defs = true
+no_implicit_optional = true
+show_error_codes = true
+pretty = true
+plugins = ["pydantic.mypy"]
+
+[[tool.mypy.overrides]]
+module = ["scipy.*", "statsmodels.*", "playwright.*", "apscheduler.*"]
+ignore_missing_imports = true
+
+# =============================================================================
+#  Lint / format
+# =============================================================================
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+src = ["."]
+
+[tool.ruff.lint]
+select = [
+    "E", "W",      # pycodestyle
+    "F",           # pyflakes
+    "I",           # isort
+    "B",           # bugbear
+    "C4",          # comprehensions
+    "UP",          # pyupgrade
+    "ASYNC",       # async correctness — blocking calls in the hot path
+    "S",           # bandit security rules
+    "RUF",
+    "ANN",         # missing annotations
+    "PL",          # pylint subset
+    "NPY",         # numpy legacy API
+]
+ignore = [
+    "ANN401",      # Any is occasionally correct at boundaries
+    "PLR0913",     # quant functions legitimately take many parameters
+    "PLR2004",     # magic values are readable in math code
+    "S101",        # assert is allowed (used as invariant guards)
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["S", "ANN", "PLR"]
+
+[tool.ruff.format]
+quote-style = "double"
+
+# =============================================================================
+#  Tests
+# =============================================================================
+[tool.pytest.ini_options]
+minversion = "9.0"
+pythonpath = ["."]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+addopts = "-q --strict-markers --strict-config"
+markers = [
+    "integration: requires a live Redis/PostgreSQL instance",
+    "network: performs outbound network calls",
+    "slow: numerical convergence tests",
+]
+filterwarnings = ["error::DeprecationWarning"]
+
+[tool.coverage.run]
+branch = true
+source = ["core", "quant_engine", "logic_core", "risk_management", "ingestion"]
+
+[tool.coverage.report]
+exclude_lines = ["pragma: no cover", "if TYPE_CHECKING:", "raise NotImplementedError"]
