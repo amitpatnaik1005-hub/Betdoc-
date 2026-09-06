@@ -27,9 +27,10 @@ no_implicit_optional = true
 show_error_codes = true
 pretty = true
 plugins = ["pydantic.mypy"]
+files = ["src", "tests"]
 
 [[tool.mypy.overrides]]
-module = ["scipy.*", "statsmodels.*", "playwright.*", "apscheduler.*"]
+module = ["cvxpy.*", "scipy.*", "statsmodels.*", "playwright.*", "apscheduler.*"]
 ignore_missing_imports = true
 
 # =============================================================================
@@ -73,10 +74,10 @@ quote-style = "double"
 # =============================================================================
 [tool.pytest.ini_options]
 minversion = "9.0"
-pythonpath = ["."]
+pythonpath = ["src"]
 testpaths = ["tests"]
 asyncio_mode = "auto"
-addopts = "-q --strict-markers --strict-config"
+addopts = "-q --strict-markers --strict-config --cov=src/domain --cov-report=term-missing --cov-fail-under=80"
 markers = [
     "integration: requires a live Redis/PostgreSQL instance",
     "network: performs outbound network calls",
