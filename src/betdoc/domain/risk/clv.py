@@ -55,11 +55,14 @@ def test_clv_significance(clv_pct_values: list[float]) -> ClvSignificanceResult:
 
     if n < 2:
         return ClvSignificanceResult(
-            n_bets=n, mean_clv_pct=float(values.mean()) if n else 0.0,
-            std_clv_pct=0.0, t_statistic=0.0, p_value=1.0,
+            n_bets=n,
+            mean_clv_pct=float(values.mean()) if n else 0.0,
+            std_clv_pct=0.0,
+            t_statistic=0.0,
+            p_value=1.0,
             is_significant_at_95=False,
             interpretation="Not enough bets to test significance (need at least 2, "
-                            "want 100+ for a meaningful read).",
+            "want 100+ for a meaningful read).",
         )
 
     t_stat, p_value = stats.ttest_1samp(values, popmean=0.0)
@@ -72,7 +75,9 @@ def test_clv_significance(clv_pct_values: list[float]) -> ClvSignificanceResult:
             f"({p_value:.3f}). Wait for at least 100 bets."
         )
     elif is_sig and mean_clv > 0:
-        interpretation = f"Statistically significant positive CLV (p={p_value:.4f}) — evidence of genuine edge."
+        interpretation = (
+            f"Statistically significant positive CLV (p={p_value:.4f}) — evidence of genuine edge."
+        )
     elif is_sig and mean_clv < 0:
         interpretation = f"Statistically significant negative CLV (p={p_value:.4f}) — the model or process is losing to the market."
     else:

@@ -21,7 +21,7 @@ from dataclasses import dataclass
 
 @dataclass(frozen=True)
 class KellyResult:
-    edge: float                 # p * decimal_odds - 1  (expected value per unit staked)
+    edge: float  # p * decimal_odds - 1  (expected value per unit staked)
     full_kelly_fraction: float  # f* — fraction of bankroll, UNCAPPED
     recommended_fraction: float  # after applying kelly_fraction and bankroll cap
     stake: float

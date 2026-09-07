@@ -31,9 +31,7 @@ __all__ = [
     "session_scope",
 ]
 
-DEFAULT_DATABASE_URL: Final[str] = (
-    "postgresql+asyncpg://quant:quant@localhost:5432/betting_quant"
-)
+DEFAULT_DATABASE_URL: Final[str] = "postgresql+asyncpg://quant:quant@localhost:5432/betting_quant"
 
 _engine: AsyncEngine | None = None
 _sessionmaker: async_sessionmaker[AsyncSession] | None = None
@@ -51,11 +49,7 @@ def _env_int(name: str, default: int) -> int:
 
 
 def _database_url() -> str:
-    return (
-        os.getenv("BETDOC_DATABASE_URL")
-        or os.getenv("DATABASE_URL")
-        or DEFAULT_DATABASE_URL
-    )
+    return os.getenv("BETDOC_DATABASE_URL") or os.getenv("DATABASE_URL") or DEFAULT_DATABASE_URL
 
 
 def build_engine(url: str | None = None, *, echo: bool | None = None) -> AsyncEngine:

@@ -48,9 +48,7 @@ from betdoc.application.resilience import (
 
 __all__ = ["main", "run"]
 
-_log: Final[structlog.stdlib.BoundLogger] = structlog.get_logger(
-    component="services.ingestor"
-)
+_log: Final[structlog.stdlib.BoundLogger] = structlog.get_logger(component="services.ingestor")
 
 _WINDOWS_WAKEUP_INTERVAL: Final[float] = 0.25
 
@@ -70,6 +68,7 @@ def _breaker_for(bookmaker: str, settings: IngestorSettings) -> CircuitBreaker:
     )
     _venue_breakers[bookmaker] = created
     return created
+
 
 async def _fetch_odds_from_venue(
     bookmaker: str, sport: str, markets: tuple[str, ...]
@@ -95,9 +94,7 @@ async def _fetch_odds_from_venue(
     ]
 
 
-def _guarded_fetch(
-    bookmaker: str, settings: IngestorSettings
-) -> object:
+def _guarded_fetch(bookmaker: str, settings: IngestorSettings) -> object:
     return with_circuit_breaker(
         breaker=_breaker_for(bookmaker, settings),
         attempts=settings.max_retry_attempts,
@@ -105,11 +102,13 @@ def _guarded_fetch(
         max_wait_seconds=settings.retry_max_wait_seconds,
     )(_fetch_odds_from_venue)
 
+
 async def _interruptible_sleep(shutdown: asyncio.Event, seconds: float) -> None:
     if seconds <= 0.0:
         return
     with contextlib.suppress(TimeoutError, asyncio.TimeoutError):
         await asyncio.wait_for(shutdown.wait(), timeout=seconds)
+
 
 async def _poll_venue(
     bookmaker: str,
@@ -146,7 +145,7 @@ async def _poll_venue(
             )
         except asyncio.CancelledError:
             raise
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             log.error(
                 "ingestor.cycle_failed",
                 error=type(exc).__name__,
@@ -193,7 +192,7 @@ def _envelope_from_row(
 ) -> EventEnvelope[RawOddsPayload] | None:
     try:
         payload = RawOddsPayload.model_validate(row)
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         log.warning(
             "ingestor.row_rejected",
             error=type(exc).__name__,
@@ -261,7 +260,7 @@ async def _publish_loop(
             await bus.publish_many(Streams.RAW_ODDS, batch)
         except asyncio.CancelledError:
             raise
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             _log.error(
                 "ingestor.publish_failed",
                 error=type(exc).__name__,
@@ -354,9 +353,7 @@ async def _run(settings: Settings, shutdown: asyncio.Event) -> None:
             ]
             helpers: list[asyncio.Task[None]] = []
             if sys.platform == "win32":
-                helpers.append(
-                    asyncio.create_task(_windows_wakeup(shutdown), name="win-wakeup")
-                )
+                helpers.append(asyncio.create_task(_windows_wakeup(shutdown), name="win-wakeup"))
 
             try:
                 await asyncio.gather(*pollers)
@@ -366,10 +363,8 @@ async def _run(settings: Settings, shutdown: asyncio.Event) -> None:
                     task.cancel()
                 await queue.put(_DRAIN_SENTINEL)
                 try:
-                    await asyncio.wait_for(
-                        publisher, timeout=ingestor.shutdown_drain_seconds
-                    )
-                except (TimeoutError, asyncio.TimeoutError):
+                    await asyncio.wait_for(publisher, timeout=ingestor.shutdown_drain_seconds)
+                except TimeoutError:
                     _log.error(
                         "ingestor.drain_timeout",
                         budget_seconds=ingestor.shutdown_drain_seconds,

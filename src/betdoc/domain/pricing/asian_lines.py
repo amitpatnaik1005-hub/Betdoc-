@@ -39,15 +39,15 @@ Under 3.00           3 goals     PUSH
 from __future__ import annotations
 
 import math
-from decimal import Decimal, ROUND_DOWN, localcontext
+from decimal import ROUND_DOWN, Decimal, localcontext
 from enum import StrEnum
 from typing import Final
 
 __all__ = [
+    "MAX_ABS_LINE",
     "AsianLineError",
     "InvalidLineError",
     "InvalidScoreError",
-    "MAX_ABS_LINE",
     "PayoutResult",
     "evaluate_handicap",
     "evaluate_totals",

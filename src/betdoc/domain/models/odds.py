@@ -60,9 +60,9 @@ __all__ = [
     "SourceTransport",
     "TotalsMarket",
     "TotalsSelection",
+    "decode_tick",
     "encode_tick",
     "encode_ticks",
-    "decode_tick",
     "utc_now",
 ]
 
@@ -292,8 +292,7 @@ class HandicapMarket(MarketBase):
             raise ValueError(msg)
         if abs(home.line + away.line) > _EPS:
             msg = (
-                f"handicap lines must mirror: got {home.line} / {away.line} "
-                f"in market {self.key!r}"
+                f"handicap lines must mirror: got {home.line} / {away.line} in market {self.key!r}"
             )
             raise ValueError(msg)
         expected = home.line if home.outcome is OutcomeSide.HOME else away.line

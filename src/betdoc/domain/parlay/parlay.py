@@ -28,8 +28,8 @@ import numpy as np
 
 @dataclass(frozen=True)
 class ParlayEvResult:
-    naive_independent_prob: float   # what you'd get from simple multiplication
-    simulated_true_prob: float      # Monte Carlo estimate under correlation
+    naive_independent_prob: float  # what you'd get from simple multiplication
+    simulated_true_prob: float  # Monte Carlo estimate under correlation
     naive_ev: float
     true_ev: float
     correlation_mispricing_pct: float  # how far off the naive number is
@@ -62,7 +62,9 @@ def simulate_correlated_parlay(
     rng = np.random.default_rng(rng_seed)
     n_legs = len(leg_probs)
 
-    normals = rng.multivariate_normal(mean=np.zeros(n_legs), cov=correlation_matrix, size=n_simulations)
+    normals = rng.multivariate_normal(
+        mean=np.zeros(n_legs), cov=correlation_matrix, size=n_simulations
+    )
     from scipy.stats import norm
 
     uniforms = norm.cdf(normals)

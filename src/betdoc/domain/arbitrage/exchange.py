@@ -30,17 +30,17 @@ obligations, but every comparison against a boundary uses an explicit epsilon.
 from __future__ import annotations
 
 import math
-from decimal import Decimal, ROUND_DOWN, ROUND_UP, localcontext
+from decimal import ROUND_DOWN, ROUND_UP, Decimal, localcontext
 from enum import StrEnum
 from typing import Final
 
 __all__ = [
+    "MAX_DECIMAL_ODDS",
+    "MIN_DECIMAL_ODDS",
     "BetSide",
     "CommissionError",
     "ExchangeMathError",
     "InvalidOddsError",
-    "MAX_DECIMAL_ODDS",
-    "MIN_DECIMAL_ODDS",
     "backer_stake_for_liability",
     "effective_back_odds",
     "effective_lay_odds",
@@ -256,9 +256,7 @@ def lay_liability(lay_odds: float, backer_stake: float) -> float:
     return float(lay_liability_exact(lay_odds, backer_stake))
 
 
-def lay_liability_exact(
-    lay_odds: float, backer_stake: Decimal | float | int | str
-) -> Decimal:
+def lay_liability_exact(lay_odds: float, backer_stake: Decimal | float | int | str) -> Decimal:
     """Ledger-grade :func:`lay_liability`, rounded UP to the cent.
 
     Returns:

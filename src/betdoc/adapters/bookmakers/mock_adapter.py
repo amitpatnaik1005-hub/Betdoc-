@@ -11,7 +11,6 @@ from uuid import uuid4
 
 from betdoc.application.ports.bookmaker_client import BaseBookmakerAdapter, RawPayload
 from betdoc.domain.models.odds import (
-    MarketType,
     MoneylineMarket,
     MoneylineSelection,
     OddsTick,
@@ -19,6 +18,7 @@ from betdoc.domain.models.odds import (
     SourceTransport,
     utc_now,
 )
+
 
 class MockAdapter(BaseBookmakerAdapter):
     """
@@ -50,20 +50,20 @@ class MockAdapter(BaseBookmakerAdapter):
         sports: Sequence[str] | None = None,
         markets: Sequence[str] | None = None,
     ) -> AsyncIterator[OddsTick]:
-        
+
         await self.connect()
-        
+
         while self._is_connected:
             now = utc_now()
-            
+
             # Generate fluctuating fake odds
             home_prob = random.uniform(0.4, 0.6)
             draw_prob = random.uniform(0.2, 0.3)
             away_prob = 1.0 - (home_prob + draw_prob)
-            
+
             # Add a random bookmaker margin (overround) between 2% and 6%
             margin = random.uniform(1.02, 1.06)
-            
+
             home_odds = round((1.0 / home_prob) / margin, 2)
             draw_odds = round((1.0 / draw_prob) / margin, 2)
             away_odds = round((1.0 / away_prob) / margin, 2)
@@ -81,7 +81,7 @@ class MockAdapter(BaseBookmakerAdapter):
                     MoneylineSelection(name="Arsenal", outcome=OutcomeSide.HOME, price=home_odds),
                     MoneylineSelection(name="Draw", outcome=OutcomeSide.DRAW, price=draw_odds),
                     MoneylineSelection(name="Chelsea", outcome=OutcomeSide.AWAY, price=away_odds),
-                )
+                ),
             )
 
             # Build the Master Tick Payload
@@ -97,7 +97,7 @@ class MockAdapter(BaseBookmakerAdapter):
                 markets=(market,),
                 bookmaker_timestamp=now,
                 received_at=now,
-                received_monotonic_ns=time.monotonic_ns()
+                received_monotonic_ns=time.monotonic_ns(),
             )
 
             yield tick

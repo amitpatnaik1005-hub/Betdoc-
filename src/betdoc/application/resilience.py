@@ -47,9 +47,7 @@ __all__ = [
     "with_circuit_breaker",
 ]
 
-_log: Final[structlog.stdlib.BoundLogger] = structlog.get_logger(
-    component="application.resilience"
-)
+_log: Final[structlog.stdlib.BoundLogger] = structlog.get_logger(component="application.resilience")
 
 P = ParamSpec("P")
 R = TypeVar("R")
@@ -66,26 +64,27 @@ def _build_retryable_exceptions() -> tuple[type[BaseException], ...]:
     ]
     try:
         from aiohttp import ClientError as AiohttpClientError
+
         retryable.append(AiohttpClientError)
     except ImportError:  # pragma: no cover
         pass
     try:
         import httpx
+
         retryable.extend((httpx.TransportError, httpx.HTTPStatusError))
     except ImportError:  # pragma: no cover
         pass
     try:
         from redis.exceptions import ConnectionError as RedisConnectionError
         from redis.exceptions import TimeoutError as RedisTimeoutError
+
         retryable.extend((RedisConnectionError, RedisTimeoutError))
     except ImportError:  # pragma: no cover
         pass
     return tuple(retryable)
 
 
-RETRYABLE_EXCEPTIONS: Final[tuple[type[BaseException], ...]] = (
-    _build_retryable_exceptions()
-)
+RETRYABLE_EXCEPTIONS: Final[tuple[type[BaseException], ...]] = _build_retryable_exceptions()
 
 NON_RETRYABLE_EXCEPTIONS: Final[tuple[type[BaseException], ...]] = (
     ValueError,
@@ -95,19 +94,21 @@ NON_RETRYABLE_EXCEPTIONS: Final[tuple[type[BaseException], ...]] = (
     NotImplementedError,
 )
 
+
 class CircuitState(StrEnum):
     CLOSED = "closed"
     OPEN = "open"
     HALF_OPEN = "half_open"
 
+
 class CircuitBreakerOpenError(RuntimeError):
     def __init__(self, name: str, seconds_until_retry: float) -> None:
         super().__init__(
-            f"circuit {name!r} is open; next probe permitted in "
-            f"{seconds_until_retry:.1f}s"
+            f"circuit {name!r} is open; next probe permitted in {seconds_until_retry:.1f}s"
         )
         self.name = name
         self.seconds_until_retry = seconds_until_retry
+
 
 class CircuitBreaker:
     __slots__ = (
@@ -234,6 +235,7 @@ def _log_before_sleep(name: str) -> Callable[[RetryCallState], None]:
             error=type(error).__name__ if error else None,
             detail=str(error)[:200] if error else None,
         )
+
     return _hook
 
 
@@ -299,7 +301,7 @@ def with_circuit_breaker(
             msg = f"retry loop for {circuit_name!r} exited without a result"
             raise RuntimeError(msg)  # pragma: no cover
 
-        setattr(wrapper, "circuit_breaker", active)
+        wrapper.circuit_breaker = active
         return wrapper
 
     return decorator

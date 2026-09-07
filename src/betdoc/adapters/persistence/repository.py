@@ -18,9 +18,7 @@ __all__ = ["BetRepository", "IllegalBetTransitionError", "OddsRepository"]
 class IllegalBetTransitionError(ValueError):
     """An attempt to re-settle an already terminal bet."""
 
-    def __init__(
-        self, bet_id: uuid.UUID, current: BetStatus, attempted: BetStatus
-    ) -> None:
+    def __init__(self, bet_id: uuid.UUID, current: BetStatus, attempted: BetStatus) -> None:
         super().__init__(
             f"bet {bet_id} is already terminal in {current.value!r}; "
             f"refusing to overwrite with {attempted.value!r}"
@@ -181,9 +179,7 @@ class OddsRepository:
         await self._session.flush()
         return tick
 
-    async def save_ticks_ignoring_duplicates(
-        self, ticks: Sequence[dict[str, object]]
-    ) -> int:
+    async def save_ticks_ignoring_duplicates(self, ticks: Sequence[dict[str, object]]) -> int:
         """Bulk insert, skipping natural-key duplicates.
 
         Concurrent pollers frequently observe the same tick. On PostgreSQL this
@@ -251,6 +247,7 @@ class OddsRepository:
     ) -> OddsTick | None:
         """Highest current price across bookmakers. The line-shopping primitive."""
         from sqlalchemy import func
+
         latest_per_book = (
             select(
                 OddsTick.bookmaker,

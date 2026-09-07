@@ -91,9 +91,7 @@ __all__ = [
     "shin_devig",
 ]
 
-_log: Final[structlog.stdlib.BoundLogger] = structlog.get_logger(
-    component="domain.math.ev_filter"
-)
+_log: Final[structlog.stdlib.BoundLogger] = structlog.get_logger(component="domain.math.ev_filter")
 
 MIN_DECIMAL_ODDS: Final[float] = 1.01
 MAX_DECIMAL_ODDS: Final[float] = 10_000.0
@@ -608,9 +606,7 @@ def _ev_per_unit(probability: float, decimal_odds: float) -> Decimal:
         return (p * o - Decimal(1)).quantize(Decimal("0.00000001"))
 
 
-def evaluate_ev(
-    request: EvFilterRequest, config: EvFilterConfig | None = None
-) -> EvFilterDecision:
+def evaluate_ev(request: EvFilterRequest, config: EvFilterConfig | None = None) -> EvFilterDecision:
     """Gate a proposed stake through devig, EV and robust Kelly sizing.
 
     Args:
@@ -641,9 +637,7 @@ def evaluate_ev(
             outcome_count=len(market.outcomes),
         )
         msg = "market is not a complete book and cannot be devigged"
-        raise IncompleteMarketError(
-            msg, booksum=market.booksum, outcome_count=len(market.outcomes)
-        )
+        raise IncompleteMarketError(msg, booksum=market.booksum, outcome_count=len(market.outcomes))
 
     # ---- Hurdle 2: dual devig with cross-check ------------------------- #
     shin = shin_devig(market, high_margin_threshold=cfg.high_margin_threshold)
@@ -702,9 +696,7 @@ def evaluate_ev(
     n_eff = _effective_sample_size(market, cfg)
     posterior_alpha = max(fair_probability * n_eff, 1e-6)
     posterior_beta = max((1.0 - fair_probability) * n_eff, 1e-6)
-    robust_probability = float(
-        beta_dist.ppf(cfg.robust_quantile, posterior_alpha, posterior_beta)
-    )
+    robust_probability = float(beta_dist.ppf(cfg.robust_quantile, posterior_alpha, posterior_beta))
     robust_probability = min(max(robust_probability, _PROB_TOLERANCE), 1.0 - _PROB_TOLERANCE)
     robust_ev_per_unit = _ev_per_unit(robust_probability, request.offered_odds)
 
@@ -712,9 +704,7 @@ def evaluate_ev(
     robust_kelly = kelly_fraction(robust_probability, request.offered_odds)
 
     is_high_variance = len(market.outcomes) >= cfg.high_variance_outcome_threshold
-    cap_fraction = (
-        cfg.high_variance_cap_fraction if is_high_variance else cfg.standard_cap_fraction
-    )
+    cap_fraction = cfg.high_variance_cap_fraction if is_high_variance else cfg.standard_cap_fraction
     fractional = robust_kelly * cfg.fractional_kelly
 
     if fractional <= cap_fraction:
@@ -758,8 +748,7 @@ def evaluate_ev(
             final_fraction=0.0,
             binding_constraint="robust_ev_gate",
             rejection_reason=(
-                "edge does not survive the "
-                f"{cfg.robust_quantile:.0%} posterior lower bound"
+                f"edge does not survive the {cfg.robust_quantile:.0%} posterior lower bound"
             ),
             **common,
         )

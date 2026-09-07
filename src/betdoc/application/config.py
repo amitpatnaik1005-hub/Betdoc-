@@ -16,12 +16,11 @@ from __future__ import annotations
 import logging
 import sys
 from functools import lru_cache
-from typing import Annotated, Final, Literal
+from typing import Final, Literal, Self
 
 import structlog
 from pydantic import Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
-from typing_extensions import Self
 
 __all__ = [
     "IngestorSettings",
@@ -116,12 +115,8 @@ class IngestorSettings(BaseSettings):
     sports: tuple[str, ...] = Field(default=("soccer_epl",), min_length=1)
     markets: tuple[str, ...] = Field(default=("h2h", "totals"), min_length=1)
 
-    publish_batch_size: int = Field(
-        default=50, ge=_MIN_BATCH_SIZE, le=_MAX_BATCH_SIZE
-    )
-    consume_batch_size: int = Field(
-        default=10, ge=_MIN_BATCH_SIZE, le=_MAX_BATCH_SIZE
-    )
+    publish_batch_size: int = Field(default=50, ge=_MIN_BATCH_SIZE, le=_MAX_BATCH_SIZE)
+    consume_batch_size: int = Field(default=10, ge=_MIN_BATCH_SIZE, le=_MAX_BATCH_SIZE)
     publish_queue_size: int = Field(
         default=10_000,
         ge=100,
@@ -149,9 +144,7 @@ class IngestorSettings(BaseSettings):
 
     @field_validator("bookmakers", "sports", "markets", mode="after")
     @classmethod
-    def _reject_blank_and_duplicate_entries(
-        cls, value: tuple[str, ...]
-    ) -> tuple[str, ...]:
+    def _reject_blank_and_duplicate_entries(cls, value: tuple[str, ...]) -> tuple[str, ...]:
         cleaned = tuple(item.strip() for item in value if item.strip())
         if not cleaned:
             msg = "list must contain at least one non-blank entry"

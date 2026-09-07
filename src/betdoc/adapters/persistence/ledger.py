@@ -108,9 +108,7 @@ async def ensure_account(
     creator therefore loses on the constraint rather than producing a duplicate
     chart-of-accounts row.
     """
-    existing = await session.scalar(
-        select(LedgerAccount).where(LedgerAccount.name == name)
-    )
+    existing = await session.scalar(select(LedgerAccount).where(LedgerAccount.name == name))
     if existing is not None:
         if existing.account_type is not account_type:
             msg = (
@@ -173,9 +171,7 @@ async def record_transaction(
     account_ids = {leg.account_id for leg in legs}
     known = set(
         (
-            await session.scalars(
-                select(LedgerAccount.id).where(LedgerAccount.id.in_(account_ids))
-            )
+            await session.scalars(select(LedgerAccount.id).where(LedgerAccount.id.in_(account_ids)))
         ).all()
     )
     if missing := account_ids - known:
@@ -259,9 +255,7 @@ async def assert_ledger_balanced(session: AsyncSession) -> None:
     Raises:
         UnbalancedTransactionError: The ledger as a whole does not balance.
     """
-    total = await session.scalar(
-        select(func.coalesce(func.sum(LedgerEntry.amount_paise), 0))
-    )
+    total = await session.scalar(select(func.coalesce(func.sum(LedgerEntry.amount_paise), 0)))
     if int(total or 0) != 0:
         count = await session.scalar(select(func.count()).select_from(LedgerEntry))
         raise UnbalancedTransactionError(int(total or 0), int(count or 0))

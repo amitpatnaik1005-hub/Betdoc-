@@ -34,7 +34,7 @@ from types import TracebackType
 from typing import Any, Final, Generic, Self
 
 import structlog
-from pydantic import BaseModel, ValidationError
+from pydantic import ValidationError
 from redis.asyncio import Redis
 from redis.asyncio.connection import ConnectionPool
 from redis.exceptions import ResponseError
@@ -43,9 +43,7 @@ from betdoc.application.events import EventEnvelope, PayloadT, Streams
 
 __all__ = ["ConsumedMessage", "EventBus", "PayloadDecodeError"]
 
-_log: Final[structlog.stdlib.BoundLogger] = structlog.get_logger(
-    component="application.event_bus"
-)
+_log: Final[structlog.stdlib.BoundLogger] = structlog.get_logger(component="application.event_bus")
 
 _PAYLOAD_FIELD: Final[str] = "payload"
 _BUSYGROUP: Final[str] = "BUSYGROUP"
@@ -57,9 +55,7 @@ class PayloadDecodeError(ValueError):
     """A stream entry could not be decoded into the expected envelope type."""
 
     def __init__(self, stream_name: str, message_id: str, detail: str) -> None:
-        super().__init__(
-            f"undecodable message {message_id} on {stream_name}: {detail}"
-        )
+        super().__init__(f"undecodable message {message_id} on {stream_name}: {detail}")
         self.stream_name = stream_name
         self.message_id = message_id
         self.detail = detail
@@ -205,9 +201,7 @@ class EventBus:
                     approximate=True,
                 )
             results = await pipe.execute()
-        _log.debug(
-            "event_bus.published_batch", stream=stream_name, count=len(results)
-        )
+        _log.debug("event_bus.published_batch", stream=stream_name, count=len(results))
         return tuple(_as_str(item) for item in results)
 
     async def ensure_group(self, stream_name: str, group_name: str) -> None:
@@ -218,15 +212,11 @@ class EventBus:
             await self._client.xgroup_create(
                 name=stream_name, groupname=group_name, id="0", mkstream=True
             )
-            _log.info(
-                "event_bus.group_created", stream=stream_name, group=group_name
-            )
+            _log.info("event_bus.group_created", stream=stream_name, group=group_name)
         except ResponseError as exc:
             if _BUSYGROUP not in str(exc):
                 raise
-            _log.debug(
-                "event_bus.group_exists", stream=stream_name, group=group_name
-            )
+            _log.debug("event_bus.group_exists", stream=stream_name, group=group_name)
         self._ensured_groups.add(cache_key)
 
     async def consume(
@@ -246,21 +236,15 @@ class EventBus:
 
         await self.ensure_group(stream_name, group_name)
         envelope_model = EventEnvelope[payload_model]  # type: ignore[valid-type]
-        log = _log.bind(
-            stream=stream_name, group=group_name, consumer=consumer_name
-        )
+        log = _log.bind(stream=stream_name, group=group_name, consumer=consumer_name)
 
         while True:
             batch: list[tuple[str, dict[str, str]]] = []
 
             if reclaim_pending:
-                await self._quarantine_poison_messages(
-                    stream_name, group_name, batch_size
-                )
+                await self._quarantine_poison_messages(stream_name, group_name, batch_size)
                 batch.extend(
-                    await self._reclaim(
-                        stream_name, group_name, consumer_name, batch_size
-                    )
+                    await self._reclaim(stream_name, group_name, consumer_name, batch_size)
                 )
 
             if not batch:
@@ -278,9 +262,7 @@ class EventBus:
                 continue
 
             for message_id, fields in batch:
-                envelope = self._decode(
-                    stream_name, message_id, fields, envelope_model, log
-                )
+                envelope = self._decode(stream_name, message_id, fields, envelope_model, log)
                 if envelope is None:
                     await self._send_to_dlq(
                         stream_name,
@@ -317,9 +299,7 @@ class EventBus:
         )
         message.mark_acknowledged()
 
-    async def acknowledge_id(
-        self, stream_name: str, group_name: str, message_id: str
-    ) -> None:
+    async def acknowledge_id(self, stream_name: str, group_name: str, message_id: str) -> None:
         await self._client.xack(stream_name, group_name, message_id)
 
     @staticmethod

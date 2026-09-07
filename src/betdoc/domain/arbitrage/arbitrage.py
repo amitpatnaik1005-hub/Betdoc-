@@ -18,12 +18,12 @@ import numpy as np
 
 @dataclass(frozen=True)
 class ArbOpportunity:
-    outcomes: list[str]              # e.g. ["Team A", "Team B"] or ["Home","Draw","Away"]
-    books: list[str]                 # book offering the best price per outcome, same order
-    decimal_odds: list[float]        # best available odds per outcome, same order
-    guaranteed_profit_pct: float     # raw textbook profit, before execution-risk adjustment
-    stakes_pct: list[float]          # fraction of total arb bankroll to place per outcome
-    risk_adjusted_score: float       # 0-1, see risk_adjusted_score()
+    outcomes: list[str]  # e.g. ["Team A", "Team B"] or ["Home","Draw","Away"]
+    books: list[str]  # book offering the best price per outcome, same order
+    decimal_odds: list[float]  # best available odds per outcome, same order
+    guaranteed_profit_pct: float  # raw textbook profit, before execution-risk adjustment
+    stakes_pct: list[float]  # fraction of total arb bankroll to place per outcome
+    risk_adjusted_score: float  # 0-1, see risk_adjusted_score()
 
 
 def detect_arbitrage(decimal_odds: np.ndarray) -> tuple[bool, float]:
@@ -77,8 +77,7 @@ def risk_adjusted_score(
     latency_factor = 1.0 - (tick_age_ms / max_acceptable_latency_ms)
 
     staleness_penalties = [
-        book_historical_staleness_ms.get(book, 0.0) / max_acceptable_latency_ms
-        for book in books
+        book_historical_staleness_ms.get(book, 0.0) / max_acceptable_latency_ms for book in books
     ]
     staleness_factor = max(0.0, 1.0 - max(staleness_penalties, default=0.0))
 
