@@ -67,13 +67,13 @@ from scipy.optimize import brentq
 from scipy.stats import beta as beta_dist
 from scipy.stats import poisson
 
-from domain.math.errors import (
+from betdoc.domain.math.errors import (
     DevigDisagreementError,
     IncompleteMarketError,
     NegativeExpectedValueError,
     NumericalSolutionError,
 )
-from domain.math.money import from_paise, to_paise
+from betdoc.domain.math.money import from_paise, to_paise
 
 __all__ = [
     "DevigMethod",

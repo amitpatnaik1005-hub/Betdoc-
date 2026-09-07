@@ -10,7 +10,7 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError, StatementError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from adapters.persistence.models import (
+from betdoc.adapters.persistence.models import (
     AccountType,
     BetRecord,
     BetStatus,

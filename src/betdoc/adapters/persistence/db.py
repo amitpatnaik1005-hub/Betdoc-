@@ -16,7 +16,7 @@ from sqlalchemy.ext.asyncio import (
 )
 from sqlalchemy.pool import StaticPool
 
-from adapters.persistence.models import Base
+from betdoc.adapters.persistence.models import Base
 
 __all__ = [
     "DEFAULT_DATABASE_URL",

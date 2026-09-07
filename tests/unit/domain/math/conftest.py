@@ -19,9 +19,9 @@ from hypothesis import HealthCheck, assume, settings
 from hypothesis import strategies as st
 from numpy.typing import NDArray
 
-from domain.math.ev_filter import MarketOutcome, MarketQuote
-from domain.math.parlay_correlation import LegState, Parlay, ParlayLeg
-from domain.math.portfolio_kelly import BetCandidate
+from betdoc.domain.math.ev_filter import MarketOutcome, MarketQuote
+from betdoc.domain.math.parlay_correlation import LegState, Parlay, ParlayLeg
+from betdoc.domain.math.portfolio_kelly import BetCandidate
 
 # --------------------------------------------------------------------------- #
 # Hypothesis profiles

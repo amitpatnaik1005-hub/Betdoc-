@@ -10,7 +10,7 @@ from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from adapters.persistence.models import BetRecord, BetStatus, OddsTick, utc_now
+from betdoc.adapters.persistence.models import BetRecord, BetStatus, OddsTick, utc_now
 
 __all__ = ["BetRepository", "IllegalBetTransitionError", "OddsRepository"]
 

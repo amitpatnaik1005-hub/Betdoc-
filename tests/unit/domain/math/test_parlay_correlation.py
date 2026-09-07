@@ -11,11 +11,11 @@ from hypothesis import HealthCheck, assume, given, settings
 from hypothesis import strategies as st
 from numpy.typing import NDArray
 
-from domain.math.errors import (
+from betdoc.domain.math.errors import (
     ExposureConcentrationError,
     InvalidCorrelationMatrixError,
 )
-from domain.math.parlay_correlation import (
+from betdoc.domain.math.parlay_correlation import (
     MAX_VOID_ENUMERATION_LEGS,
     CopulaMethod,
     ExposureMatrix,

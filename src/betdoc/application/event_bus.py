@@ -39,7 +39,7 @@ from redis.asyncio import Redis
 from redis.asyncio.connection import ConnectionPool
 from redis.exceptions import ResponseError
 
-from application.events import EventEnvelope, PayloadT, Streams
+from betdoc.application.events import EventEnvelope, PayloadT, Streams
 
 __all__ = ["ConsumedMessage", "EventBus", "PayloadDecodeError"]
 
@@ -65,9 +65,11 @@ class PayloadDecodeError(ValueError):
         self.detail = detail
 
 
-def _as_str(value: str | bytes) -> str:
+def _as_str(value: Any) -> str:
     """Tolerate pools configured with or without ``decode_responses``."""
-    return value.decode("utf-8") if isinstance(value, bytes) else value
+    if isinstance(value, bytes):
+        return value.decode("utf-8")
+    return str(value)
 
 
 class ConsumedMessage(Generic[PayloadT]):
@@ -170,7 +172,7 @@ class EventBus:
         }
         message_id = await self._client.xadd(
             name=stream_name,
-            fields=fields,
+            fields=fields,  # type: ignore[arg-type]
             maxlen=self._stream_max_length,
             approximate=True,
         )
@@ -346,9 +348,9 @@ class EventBus:
         if not response:
             return []
         return [
-            (_as_str(message_id), self._decode_fields(fields))
-            for _stream, entries in response
-            for message_id, fields in entries
+            (_as_str(message_id), self._decode_fields(fields))  # type: ignore[arg-type]
+            for _stream, entries in response  # type: ignore[str-unpack,misc]
+            for message_id, fields in entries  # type: ignore[union-attr,misc]
         ]
 
     async def _reclaim(
@@ -420,7 +422,7 @@ class EventBus:
                 message_ids=[message_id],
             )
             fields = (
-                self._decode_fields(claimed[0][1]) if claimed and claimed[0][1] else {}
+                self._decode_fields(claimed[0][1]) if claimed and claimed[0][1] else {}  # type: ignore[arg-type]
             )
             await self._send_to_dlq(
                 stream_name,
@@ -454,7 +456,7 @@ class EventBus:
 
         await self._client.xadd(
             name=dlq_name,
-            fields=dlq_fields,
+            fields=dlq_fields,  # type: ignore[arg-type]
             maxlen=self._dlq_max_length,
             approximate=True,
         )
@@ -508,7 +510,7 @@ class EventBus:
             return 0
         if isinstance(summary, dict):
             return int(summary.get("pending", 0))
-        return int(summary[0]) if summary else 0
+        return int(summary[0]) if summary else 0  # type: ignore[unreachable]
 
     async def stream_length(self, stream_name: str) -> int:
         return int(await self._client.xlen(stream_name))

@@ -9,11 +9,11 @@ import pytest
 from hypothesis import assume, example, given, settings
 from hypothesis import strategies as st
 
-from domain.math.errors import (
+from betdoc.domain.math.errors import (
     DevigDisagreementError,
     NegativeExpectedValueError,
 )
-from domain.math.ev_filter import (
+from betdoc.domain.math.ev_filter import (
     EvFilterConfig,
     EvFilterRequest,
     EvVerdict,
@@ -25,7 +25,7 @@ from domain.math.ev_filter import (
     power_devig,
     shin_devig,
 )
-from domain.math.money import from_paise, to_paise
+from betdoc.domain.math.money import from_paise, to_paise
 from tests.unit.domain.math.conftest import (
     complete_books,
     decimal_odds,

@@ -58,11 +58,11 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 from scipy.linalg import cholesky
 from scipy.stats import multivariate_normal, norm
 
-from domain.math.errors import (
+from betdoc.domain.math.errors import (
     ExposureConcentrationError,
     InvalidCorrelationMatrixError,
 )
-from domain.math.money import from_paise
+from betdoc.domain.math.money import from_paise
 
 __all__ = [
     "CopulaEstimate",
