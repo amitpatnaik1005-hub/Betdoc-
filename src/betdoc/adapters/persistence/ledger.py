@@ -15,7 +15,7 @@ from datetime import datetime
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from adapters.persistence.models import (
+from betdoc.adapters.persistence.models import (
     AccountType,
     LedgerAccount,
     LedgerEntry,

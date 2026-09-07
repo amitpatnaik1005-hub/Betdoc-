@@ -252,7 +252,7 @@ def with_circuit_breaker(
         raise ValueError(msg)
 
     def decorator(func: Callable[P, Awaitable[R]]) -> Callable[P, Awaitable[R]]:
-        circuit_name = name or getattr(func, "__qualname__", "unnamed")
+        circuit_name: str = name or getattr(func, "__qualname__", None) or "unnamed"
         active = breaker or CircuitBreaker(
             circuit_name,
             failure_threshold=failure_threshold,

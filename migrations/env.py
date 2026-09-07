@@ -6,8 +6,8 @@ from sqlalchemy import pool
 from sqlalchemy.ext.asyncio import async_engine_from_config
 
 import os
-from adapters.persistence.models import Base
-from adapters.persistence.db import DEFAULT_DATABASE_URL
+from betdoc.adapters.persistence.models import Base
+from betdoc.adapters.persistence.db import DEFAULT_DATABASE_URL
 
 config = context.config
 if config.config_file_name is not None:

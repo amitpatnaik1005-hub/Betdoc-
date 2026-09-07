@@ -10,9 +10,9 @@ import pytest_asyncio
 from sqlalchemy import event, text
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 
-from adapters.persistence.db import build_engine, build_sessionmaker, create_all
-from adapters.persistence.ledger import ensure_account
-from adapters.persistence.models import AccountType, LedgerAccount
+from betdoc.adapters.persistence.db import build_engine, build_sessionmaker, create_all
+from betdoc.adapters.persistence.ledger import ensure_account
+from betdoc.adapters.persistence.models import AccountType, LedgerAccount
 
 SQLITE_MEMORY_URL = "sqlite+aiosqlite:///:memory:"
 

@@ -8,7 +8,7 @@ import pytest
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from adapters.persistence.ledger import (
+from betdoc.adapters.persistence.ledger import (
     DuplicateTransactionError,
     LedgerError,
     TransactionLeg,
@@ -21,7 +21,7 @@ from adapters.persistence.ledger import (
     get_transaction_legs,
     record_transaction,
 )
-from adapters.persistence.models import AccountType, LedgerAccount, LedgerEntry
+from betdoc.adapters.persistence.models import AccountType, LedgerAccount, LedgerEntry
 
 pytestmark = pytest.mark.asyncio
 

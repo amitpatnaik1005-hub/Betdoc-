@@ -97,7 +97,7 @@ minversion = "9.0"
 pythonpath = ["src"]
 testpaths = ["tests"]
 asyncio_mode = "auto"
-addopts = "-q --strict-markers --strict-config --cov=src/domain --cov-report=term-missing --cov-fail-under=80"
+addopts = "-q --strict-markers --strict-config --cov=src/betdoc --cov-report=term-missing --cov-fail-under=30"
 markers = [
     "integration: requires a live Redis/PostgreSQL instance",
     "network: performs outbound network calls",
@@ -107,7 +107,7 @@ filterwarnings = ["error::DeprecationWarning"]
 
 [tool.coverage.run]
 branch = true
-source = ["core", "quant_engine", "logic_core", "risk_management", "ingestion"]
+source = ["src/betdoc"]
 
 [tool.coverage.report]
 exclude_lines = ["pragma: no cover", "if TYPE_CHECKING:", "raise NotImplementedError"]

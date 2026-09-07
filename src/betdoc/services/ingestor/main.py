@@ -37,10 +37,10 @@ from typing import Final
 import structlog
 from redis.asyncio.connection import ConnectionPool
 
-from application.config import IngestorSettings, Settings, configure_logging, get_settings
-from application.event_bus import EventBus
-from application.events import EventEnvelope, RawOddsPayload, Streams, new_trace_id
-from application.resilience import (
+from betdoc.application.config import IngestorSettings, Settings, configure_logging, get_settings
+from betdoc.application.event_bus import EventBus
+from betdoc.application.events import EventEnvelope, RawOddsPayload, Streams, new_trace_id
+from betdoc.application.resilience import (
     CircuitBreaker,
     CircuitBreakerOpenError,
     with_circuit_breaker,

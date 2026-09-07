@@ -11,9 +11,9 @@ import pytest
 from hypothesis import assume, given, settings
 from hypothesis import strategies as st
 
-from domain.math.ev_filter import kelly_fraction
-from domain.math.money import to_paise
-from domain.math.portfolio_kelly import (
+from betdoc.domain.math.ev_filter import kelly_fraction
+from betdoc.domain.math.money import to_paise
+from betdoc.domain.math.portfolio_kelly import (
     BetCandidate,
     PortfolioConfig,
     PortfolioVerdict,

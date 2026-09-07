@@ -57,9 +57,9 @@ import structlog
 from numpy.typing import NDArray
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from domain.math.errors import SolverFailureError
-from domain.math.ev_filter import kelly_fraction
-from domain.math.money import from_paise, to_paise
+from betdoc.domain.math.errors import SolverFailureError
+from betdoc.domain.math.ev_filter import kelly_fraction
+from betdoc.domain.math.money import from_paise, to_paise
 
 __all__ = [
     "BetAllocation",
