@@ -5,20 +5,21 @@ from alembic import context
 from sqlalchemy import pool
 from sqlalchemy.ext.asyncio import async_engine_from_config
 
-from app.config import settings
-from app.core.db import Base
-from app.models import bets, odds  # noqa: F401 -- ensures models are registered on Base.metadata
+import os
+from adapters.persistence.models import Base
+from adapters.persistence.db import DEFAULT_DATABASE_URL
 
 config = context.config
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
-config.set_main_option("sqlalchemy.url", settings.database_url)
+database_url = os.getenv("BETDOC_DATABASE_URL") or os.getenv("DATABASE_URL") or DEFAULT_DATABASE_URL
+config.set_main_option("sqlalchemy.url", database_url)
 target_metadata = Base.metadata
 
 
 def run_migrations_offline() -> None:
-    context.configure(url=settings.database_url, target_metadata=target_metadata, literal_binds=True)
+    context.configure(url=database_url, target_metadata=target_metadata, literal_binds=True)
     with context.begin_transaction():
         context.run_migrations()
 
