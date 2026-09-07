@@ -18,75 +18,39 @@ translate their transport-specific failures into these types.
 
 """
 
-
-
 from __future__ import annotations
 
-
-
 import abc
-
 from collections.abc import Sequence
-
 from datetime import datetime
-
 from types import TracebackType
-
 from typing import Any, Self
 
-
-
 from betdoc.domain.intelligence.account_models import (
-
     AccountState,
-
     BetRecord,
-
     LinkedBookmaker,
-
 )
-
 from betdoc.domain.intelligence.news_models import (
-
     LiveNewsAlert,
-
     ProbabilityModifier,
-
 )
-
-
 
 __all__ = [
-
     "AccountStateAdapter",
-
     "AccountUnavailableError",
-
     "IntelligenceError",
-
     "NewsImpactEvaluator",
-
     "NewsRateLimitError",
-
     "ReconciliationBreachError",
-
     "StaleAccountStateError",
-
     "TransientIntelligenceError",
-
     "UnparseableEntityError",
-
 ]
 
 
-
-
-
 class IntelligenceError(Exception):
-
     """Base class for every fault raised by an intelligence adapter."""
-
-
 
     def __init__(self, message: str, **context: Any) -> None:
 
@@ -94,14 +58,11 @@ class IntelligenceError(Exception):
 
         self.context: dict[str, Any] = context
 
-
-
     def __str__(self) -> str:
 
         base = super().__str__()
 
         if not self.context:
-
             return base
 
         detail = ", ".join(f"{key}={value!r}" for key, value in sorted(self.context.items()))
@@ -109,11 +70,7 @@ class IntelligenceError(Exception):
         return f"{base} [{detail}]"
 
 
-
-
-
 class TransientIntelligenceError(IntelligenceError):
-
     """Retryable: timeout, connection reset, upstream 5xx.
 
 
@@ -125,11 +82,7 @@ class TransientIntelligenceError(IntelligenceError):
     """
 
 
-
-
-
 class NewsRateLimitError(TransientIntelligenceError):
-
     """The news or NLP provider throttled us.
 
 
@@ -142,34 +95,20 @@ class NewsRateLimitError(TransientIntelligenceError):
 
     """
 
-
-
     def __init__(
-
         self,
-
         message: str,
-
         *,
-
         provider: str,
-
         retry_after_seconds: float | None = None,
-
         requests_remaining: int | None = None,
-
     ) -> None:
 
         super().__init__(
-
             message,
-
             provider=provider,
-
             retry_after_seconds=retry_after_seconds,
-
             requests_remaining=requests_remaining,
-
         )
 
         self.provider = provider
@@ -179,11 +118,7 @@ class NewsRateLimitError(TransientIntelligenceError):
         self.requests_remaining = requests_remaining
 
 
-
-
-
 class UnparseableEntityError(IntelligenceError):
-
     """The alert could not be resolved to a fixture or team we know.
 
 
@@ -200,38 +135,22 @@ class UnparseableEntityError(IntelligenceError):
 
     """
 
-
-
     def __init__(
-
         self,
-
         message: str,
-
         *,
-
         alert_id: str,
-
         raw_text_excerpt: str = "",
-
         best_candidate: str | None = None,
-
         best_confidence: float | None = None,
-
     ) -> None:
 
         super().__init__(
-
             message,
-
             alert_id=alert_id,
-
             raw_text_excerpt=raw_text_excerpt[:160],
-
             best_candidate=best_candidate,
-
             best_confidence=best_confidence,
-
         )
 
         self.alert_id = alert_id
@@ -243,11 +162,7 @@ class UnparseableEntityError(IntelligenceError):
         self.best_confidence = best_confidence
 
 
-
-
-
 class AccountUnavailableError(IntelligenceError):
-
     """The bookmaker account cannot be read: auth failure, block, or maintenance.
 
 
@@ -260,12 +175,8 @@ class AccountUnavailableError(IntelligenceError):
 
     """
 
-
-
     def __init__(
-
         self, message: str, *, bookmaker: LinkedBookmaker, is_recoverable: bool = False
-
     ) -> None:
 
         super().__init__(message, bookmaker=bookmaker.value, is_recoverable=is_recoverable)
@@ -275,11 +186,7 @@ class AccountUnavailableError(IntelligenceError):
         self.is_recoverable = is_recoverable
 
 
-
-
-
 class StaleAccountStateError(IntelligenceError):
-
     """The snapshot is too old to size a bet against.
 
 
@@ -292,34 +199,20 @@ class StaleAccountStateError(IntelligenceError):
 
     """
 
-
-
     def __init__(
-
         self,
-
         message: str,
-
         *,
-
         bookmaker: LinkedBookmaker,
-
         age_seconds: float,
-
         max_age_seconds: float,
-
     ) -> None:
 
         super().__init__(
-
             message,
-
             bookmaker=bookmaker.value,
-
             age_seconds=age_seconds,
-
             max_age_seconds=max_age_seconds,
-
         )
 
         self.bookmaker = bookmaker
@@ -329,11 +222,7 @@ class StaleAccountStateError(IntelligenceError):
         self.max_age_seconds = max_age_seconds
 
 
-
-
-
 class ReconciliationBreachError(IntelligenceError):
-
     """Reported balances cannot be reconciled with known cash flows.
 
 
@@ -344,38 +233,22 @@ class ReconciliationBreachError(IntelligenceError):
 
     """
 
-
-
     def __init__(
-
         self,
-
         message: str,
-
         *,
-
         bookmaker: LinkedBookmaker,
-
         discrepancy_paise: int,
-
     ) -> None:
 
-        super().__init__(
-
-            message, bookmaker=bookmaker.value, discrepancy_paise=discrepancy_paise
-
-        )
+        super().__init__(message, bookmaker=bookmaker.value, discrepancy_paise=discrepancy_paise)
 
         self.bookmaker = bookmaker
 
         self.discrepancy_paise = discrepancy_paise
 
 
-
-
-
 class AccountStateAdapter(abc.ABC):
-
     """Read-only interface to one real-world bookmaker account.
 
 
@@ -404,33 +277,19 @@ class AccountStateAdapter(abc.ABC):
 
     """
 
-
-
     bookmaker: LinkedBookmaker
-
-
 
     def __init__(self, bookmaker: LinkedBookmaker) -> None:
 
         self.bookmaker = bookmaker
 
-
-
     @abc.abstractmethod
-
     async def connect(self) -> None:
-
         """Establish the session. Must be idempotent."""
 
-
-
     @abc.abstractmethod
-
     async def close(self) -> None:
-
         """Release resources. Must be safe to call twice and after failure."""
-
-
 
     async def __aenter__(self) -> Self:
 
@@ -438,28 +297,17 @@ class AccountStateAdapter(abc.ABC):
 
         return self
 
-
-
     async def __aexit__(
-
         self,
-
         exc_type: type[BaseException] | None,
-
         exc: BaseException | None,
-
         tb: TracebackType | None,
-
     ) -> None:
 
         await self.close()
 
-
-
     @abc.abstractmethod
-
     async def fetch_account_state(self) -> AccountState:
-
         """Current balances and exposure.
 
 
@@ -482,12 +330,8 @@ class AccountStateAdapter(abc.ABC):
 
         """
 
-
-
     @abc.abstractmethod
-
     async def fetch_active_bets(self) -> tuple[BetRecord, ...]:
-
         """Every unsettled bet on the account.
 
 
@@ -500,16 +344,10 @@ class AccountStateAdapter(abc.ABC):
 
         """
 
-
-
     @abc.abstractmethod
-
     async def fetch_settled_bets(
-
         self, *, since: datetime, limit: int = 500
-
     ) -> tuple[BetRecord, ...]:
-
         """Settled bets from ``since`` onwards, for profile construction.
 
 
@@ -522,18 +360,11 @@ class AccountStateAdapter(abc.ABC):
 
         """
 
-
-
     @abc.abstractmethod
-
     async def is_available(self) -> bool:
-
         """Cheap liveness probe. Must not raise; report ``False`` instead."""
 
-
-
     async def fetch_max_accepted_stake_paise(self) -> int | None:
-
         """Current stake ceiling, when the venue exposes one.
 
 
@@ -549,11 +380,7 @@ class AccountStateAdapter(abc.ABC):
         return None
 
 
-
-
-
 class NewsImpactEvaluator(abc.ABC):
-
     """Turns a resolved news alert into a quantified probability modifier.
 
 
@@ -608,22 +435,14 @@ class NewsImpactEvaluator(abc.ABC):
 
     """
 
-
-
     provider_name: str
-
-
 
     def __init__(self, provider_name: str) -> None:
 
         self.provider_name = provider_name
 
-
-
     @abc.abstractmethod
-
     async def evaluate(self, alert: LiveNewsAlert) -> ProbabilityModifier:
-
         """Quantify one alert's effect on the affected market probabilities.
 
 
@@ -662,14 +481,9 @@ class NewsImpactEvaluator(abc.ABC):
 
         """
 
-
-
     async def evaluate_batch(
-
         self, alerts: Sequence[LiveNewsAlert]
-
     ) -> tuple[tuple[ProbabilityModifier, ...], tuple[UnparseableEntityError, ...]]:
-
         """Evaluate many alerts, quarantining individual failures.
 
 
@@ -693,25 +507,17 @@ class NewsImpactEvaluator(abc.ABC):
         failures: list[UnparseableEntityError] = []
 
         for alert in alerts:
-
             try:
-
                 modifiers.append(await self.evaluate(alert))
 
             except UnparseableEntityError as exc:
-
                 failures.append(exc)
 
         return tuple(modifiers), tuple(failures)
 
-
-
     def enforce_penalty_floor(
-
         self, alert: LiveNewsAlert, modifier: ProbabilityModifier
-
     ) -> ProbabilityModifier:
-
         """Raise the penalty to the credibility floor if the model undercut it.
 
 
@@ -729,15 +535,10 @@ class NewsImpactEvaluator(abc.ABC):
         floor = alert.baseline_uncertainty_penalty()
 
         if modifier.uncertainty_penalty >= floor:
-
             return modifier
 
         return modifier.model_copy(update={"uncertainty_penalty": floor})
 
-
-
     @abc.abstractmethod
-
     async def is_available(self) -> bool:
-
         """Cheap liveness probe. Must not raise; report ``False`` instead."""
