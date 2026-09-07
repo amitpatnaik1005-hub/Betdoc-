@@ -32,8 +32,8 @@ import numpy as np
 
 
 def kelly_quadratic_approx(
-    expected_returns: np.ndarray,   # mu_i = p_i * decimal_odds_i - 1, per bet
-    covariance: np.ndarray,          # Sigma, correlated returns between bets
+    expected_returns: np.ndarray,  # mu_i = p_i * decimal_odds_i - 1, per bet
+    covariance: np.ndarray,  # Sigma, correlated returns between bets
     kelly_multiplier: float = 0.25,
     max_total_exposure: float = 0.25,  # cap on sum of stakes as fraction of bankroll
 ) -> np.ndarray:
@@ -60,8 +60,8 @@ def kelly_quadratic_approx(
 
 
 def kelly_scenario_exact(
-    scenario_probs: np.ndarray,      # shape (S,) — probability of each joint scenario
-    scenario_returns: np.ndarray,    # shape (S, N) — per-bet return in each scenario
+    scenario_probs: np.ndarray,  # shape (S,) — probability of each joint scenario
+    scenario_returns: np.ndarray,  # shape (S, N) — per-bet return in each scenario
     kelly_multiplier: float = 0.25,
     max_total_exposure: float = 0.25,
 ) -> np.ndarray:

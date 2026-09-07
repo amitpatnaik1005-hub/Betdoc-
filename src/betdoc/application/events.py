@@ -14,10 +14,9 @@ from __future__ import annotations
 
 import uuid
 from datetime import UTC, datetime
-from typing import Any, Final, Generic, TypeVar
+from typing import Any, Final, Generic, Self, TypeVar
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
-from typing_extensions import Self
 
 __all__ = [
     "EventEnvelope",
@@ -102,9 +101,7 @@ class RawOddsPayload(BaseModel):
 
     @property
     def dedupe_key(self) -> str:
-        return (
-            f"{self.bookmaker}:{self.event_id}:{self.market_key}:{self.outcome_key}"
-        )
+        return f"{self.bookmaker}:{self.event_id}:{self.market_key}:{self.outcome_key}"
 
 
 class EventEnvelope(BaseModel, Generic[PayloadT]):

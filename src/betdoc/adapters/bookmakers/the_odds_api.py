@@ -336,13 +336,11 @@ class TheOddsApiAdapter(BaseBookmakerAdapter):
         before_sleep=before_sleep_log(logger, logging.WARNING),
         reraise=True,
     )
-    async def _fetch_odds(
-        self, sport: str, markets: Sequence[str]
-    ) -> tuple[dict[str, Any], ...]:
+    async def _fetch_odds(self, sport: str, markets: Sequence[str]) -> tuple[dict[str, Any], ...]:
         """GET one sport's odds snapshot. Retries 429/5xx with capped backoff."""
         if self._client is None or self._client.is_closed:
             await self.connect()
-        assert self._client is not None  # noqa: S101 - narrowed by connect()
+        assert self._client is not None
 
         params: dict[str, str] = {
             "apiKey": self._api_key,
@@ -500,7 +498,9 @@ class TheOddsApiAdapter(BaseBookmakerAdapter):
                 received_at=received_at,
             )
         except ValidationError as exc:
-            msg = f"domain validation failed for event {event_id!r}: {exc.errors(include_url=False)}"
+            msg = (
+                f"domain validation failed for event {event_id!r}: {exc.errors(include_url=False)}"
+            )
             raise PayloadSchemaError(msg, bookmaker=self.bookmaker, payload=payload) from exc
 
     def _build_markets(

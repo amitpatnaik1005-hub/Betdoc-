@@ -36,7 +36,7 @@ spans the honest range between the two.
 from __future__ import annotations
 
 import math
-from decimal import Decimal, ROUND_DOWN, localcontext
+from decimal import ROUND_DOWN, Decimal, localcontext
 from enum import StrEnum
 from typing import Final, Self
 
@@ -181,9 +181,7 @@ class ArbExecutionScenario(BaseModel):
     @property
     def is_complete(self) -> bool:
         """Both legs filled in full: the only genuinely hedged state."""
-        return (
-            self.leg_1_outcome is FillOutcome.FULL and self.leg_2_outcome is FillOutcome.FULL
-        )
+        return self.leg_1_outcome is FillOutcome.FULL and self.leg_2_outcome is FillOutcome.FULL
 
     @property
     def is_naked(self) -> bool:
@@ -215,9 +213,7 @@ class ArbExecutionScenario(BaseModel):
                 (planned_leg_2 * r2).quantize(_MONEY, rounding=ROUND_DOWN),
             )
 
-    def profit_if_leg_1_wins(
-        self, planned_leg_1: Decimal, planned_leg_2: Decimal
-    ) -> Decimal:
+    def profit_if_leg_1_wins(self, planned_leg_1: Decimal, planned_leg_2: Decimal) -> Decimal:
         """Net P&L when outcome 1 settles: leg 1 pays, leg 2 is lost."""
         s1, s2 = self.matched_stakes(planned_leg_1, planned_leg_2)
         with localcontext() as ctx:
@@ -225,9 +221,7 @@ class ArbExecutionScenario(BaseModel):
             payout = s1 * Decimal(str(self.leg_1_odds))
             return (payout - s1 - s2).quantize(_MONEY, rounding=ROUND_DOWN)
 
-    def profit_if_leg_2_wins(
-        self, planned_leg_1: Decimal, planned_leg_2: Decimal
-    ) -> Decimal:
+    def profit_if_leg_2_wins(self, planned_leg_1: Decimal, planned_leg_2: Decimal) -> Decimal:
         """Net P&L when outcome 2 settles: leg 2 pays, leg 1 is lost."""
         s1, s2 = self.matched_stakes(planned_leg_1, planned_leg_2)
         with localcontext() as ctx:
@@ -235,9 +229,7 @@ class ArbExecutionScenario(BaseModel):
             payout = s2 * Decimal(str(self.leg_2_odds))
             return (payout - s1 - s2).quantize(_MONEY, rounding=ROUND_DOWN)
 
-    def worst_case_profit(
-        self, planned_leg_1: Decimal, planned_leg_2: Decimal
-    ) -> Decimal:
+    def worst_case_profit(self, planned_leg_1: Decimal, planned_leg_2: Decimal) -> Decimal:
         """Minimum P&L across both settlement outcomes. Positive means locked."""
         return min(
             self.profit_if_leg_1_wins(planned_leg_1, planned_leg_2),
@@ -341,12 +333,8 @@ class LegFillModel(BaseModel):
 
     latency_ms: float = Field(ge=0.0, le=600_000.0)
     in_play_delay_seconds: float = Field(default=0.0, ge=0.0, le=120.0)
-    line_hazard_per_second: float = Field(
-        default=DEFAULT_LINE_HAZARD_PER_SECOND, ge=0.0, le=10.0
-    )
-    goal_hazard_per_second: float = Field(
-        default=DEFAULT_GOAL_HAZARD_PER_SECOND, ge=0.0, le=1.0
-    )
+    line_hazard_per_second: float = Field(default=DEFAULT_LINE_HAZARD_PER_SECOND, ge=0.0, le=10.0)
+    goal_hazard_per_second: float = Field(default=DEFAULT_GOAL_HAZARD_PER_SECOND, ge=0.0, le=1.0)
     partial_share: float = Field(default=0.35, ge=0.0, le=1.0)
     partial_ratio: float = Field(default=0.4, gt=0.0, lt=1.0)
 

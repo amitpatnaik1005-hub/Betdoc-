@@ -433,9 +433,7 @@ def prefilter_candidates(
     survivors: list[BetCandidate] = []
     rejections: list[PrefilterRejection] = []
 
-    def _reject(
-        candidate: BetCandidate, reason: PrefilterReason, detail: str
-    ) -> None:
+    def _reject(candidate: BetCandidate, reason: PrefilterReason, detail: str) -> None:
         rejection = PrefilterRejection(
             bet_id=candidate.bet_id,
             reason=reason,
@@ -488,8 +486,7 @@ def prefilter_candidates(
             (
                 accepted
                 for accepted in survivors
-                if _pairwise_correlation(lookup, candidate, accepted)
-                > cfg.max_pairwise_correlation
+                if _pairwise_correlation(lookup, candidate, accepted) > cfg.max_pairwise_correlation
             ),
             None,
         )
@@ -718,9 +715,7 @@ def quadratic_kelly_approximation(
     second_moment = covariance + np.outer(mean, mean)
 
     try:
-        raw = np.linalg.solve(
-            second_moment + 1e-10 * np.eye(len(candidates)), mean
-        )
+        raw = np.linalg.solve(second_moment + 1e-10 * np.eye(len(candidates)), mean)
     except np.linalg.LinAlgError:  # pragma: no cover - ridge makes this unreachable
         raw = np.linalg.lstsq(second_moment, mean, rcond=None)[0]
 
@@ -752,15 +747,13 @@ def _allocate_paise(
         ctx.prec = _INTERNAL_PRECISION
         bankroll = Decimal(bankroll_paise)
         allocations = [
-            int((bankroll * Decimal(str(max(fraction, 0.0)))).to_integral_value(
-                rounding=ROUND_DOWN
-            ))
+            int(
+                (bankroll * Decimal(str(max(fraction, 0.0)))).to_integral_value(rounding=ROUND_DOWN)
+            )
             for fraction in fractions
         ]
         limit = int(
-            (bankroll * Decimal(str(max_total_fraction))).to_integral_value(
-                rounding=ROUND_DOWN
-            )
+            (bankroll * Decimal(str(max_total_fraction))).to_integral_value(rounding=ROUND_DOWN)
         )
 
     limit = min(limit, bankroll_paise)
@@ -864,9 +857,7 @@ def solve_portfolio_kelly(
 
     x = cp.Variable(n, nonneg=True)
     wealth = 1.0 + scenarios.returns @ x
-    objective = cp.Maximize(
-        cp.sum(cp.multiply(scenarios.probabilities, cp.log(wealth)))
-    )
+    objective = cp.Maximize(cp.sum(cp.multiply(scenarios.probabilities, cp.log(wealth))))
     constraints = [
         cp.sum(x) <= cfg.max_total_exposure_fraction,
         x <= cfg.per_bet_cap_fraction,
@@ -949,8 +940,7 @@ def solve_portfolio_kelly(
         with localcontext() as ctx:
             ctx.prec = _INTERNAL_PRECISION
             ev = (
-                Decimal(str(candidate.fair_probability))
-                * Decimal(str(candidate.decimal_odds))
+                Decimal(str(candidate.fair_probability)) * Decimal(str(candidate.decimal_odds))
                 - Decimal(1)
             ).quantize(_EV_QUANT)
         allocations.append(
@@ -968,9 +958,7 @@ def solve_portfolio_kelly(
         )
 
     total = sum(paise)
-    verdict = (
-        PortfolioVerdict.OPTIMAL_REDUCED if shaved else PortfolioVerdict.OPTIMAL
-    )
+    verdict = PortfolioVerdict.OPTIMAL_REDUCED if shaved else PortfolioVerdict.OPTIMAL
 
     _log.info(
         "portfolio.allocated",

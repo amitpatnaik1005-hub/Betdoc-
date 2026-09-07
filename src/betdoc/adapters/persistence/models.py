@@ -32,7 +32,6 @@ from sqlalchemy import (
     PrimaryKeyConstraint,
     String,
     UniqueConstraint,
-    func,
 )
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 from sqlalchemy.types import TypeDecorator, Uuid
@@ -80,9 +79,7 @@ class UtcDateTime(TypeDecorator[datetime]):
     impl = DateTime(timezone=True)
     cache_ok = True
 
-    def process_bind_param(
-        self, value: datetime | None, dialect: Dialect
-    ) -> datetime | None:
+    def process_bind_param(self, value: datetime | None, dialect: Dialect) -> datetime | None:
         if value is None:
             return None
         if value.tzinfo is None:
@@ -90,9 +87,7 @@ class UtcDateTime(TypeDecorator[datetime]):
             raise ValueError(msg)
         return value.astimezone(UTC)
 
-    def process_result_value(
-        self, value: datetime | None, dialect: Dialect
-    ) -> datetime | None:
+    def process_result_value(self, value: datetime | None, dialect: Dialect) -> datetime | None:
         if value is None:
             return None
         return value.replace(tzinfo=UTC) if value.tzinfo is None else value.astimezone(UTC)
@@ -282,9 +277,7 @@ class LedgerEntry(Base):
     amount_paise: Mapped[int] = mapped_column(BigInteger)
     timestamp: Mapped[datetime] = mapped_column(default=utc_now)
 
-    account: Mapped[LedgerAccount] = relationship(
-        back_populates="entries", lazy="raise"
-    )
+    account: Mapped[LedgerAccount] = relationship(back_populates="entries", lazy="raise")
 
     __table_args__ = (
         CheckConstraint("amount_paise <> 0", name="ck_ledger_entries_amount_nonzero"),

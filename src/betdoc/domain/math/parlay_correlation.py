@@ -65,12 +65,12 @@ from betdoc.domain.math.errors import (
 from betdoc.domain.math.money import from_paise
 
 __all__ = [
+    "MAX_VOID_ENUMERATION_LEGS",
     "CopulaEstimate",
     "CopulaMethod",
     "ExposureMatrix",
     "ExposureRow",
     "LegState",
-    "MAX_VOID_ENUMERATION_LEGS",
     "Parlay",
     "ParlayLeg",
     "ParlayVerdict",
@@ -720,15 +720,10 @@ def expected_value_with_void_risk(
         estimate = (
             exact_gaussian_copula_joint_probability(marginals, block)
             if len(marginals) <= _EXACT_CDF_MAX_DIM
-            else gaussian_copula_joint_probability(
-                marginals, block, n_samples=n_samples, seed=seed
-            )
+            else gaussian_copula_joint_probability(marginals, block, n_samples=n_samples, seed=seed)
         )
         expected_return += (
-            pattern_probability
-            * estimate.joint_probability
-            * survivor_odds
-            * settled_odds
+            pattern_probability * estimate.joint_probability * survivor_odds * settled_odds
         )
 
     with localcontext() as ctx:
@@ -755,9 +750,9 @@ class SettlementSnapshot(BaseModel):
         """EV in rupees on the actual stake, not per unit."""
         with localcontext() as ctx:
             ctx.prec = _INTERNAL_PRECISION
-            return (
-                from_paise(self.parlay.stake_paise) * self.conditional_ev_per_unit
-            ).quantize(Decimal("0.01"))
+            return (from_paise(self.parlay.stake_paise) * self.conditional_ev_per_unit).quantize(
+                Decimal("0.01")
+            )
 
 
 def recalculate_on_settlement(
@@ -819,8 +814,7 @@ def recalculate_on_settlement(
     updated = parlay.model_copy(
         update={
             "legs": tuple(
-                leg.with_state(new_state) if leg.leg_id == leg_id else leg
-                for leg in parlay.legs
+                leg.with_state(new_state) if leg.leg_id == leg_id else leg for leg in parlay.legs
             )
         }
     )
@@ -844,9 +838,7 @@ def recalculate_on_settlement(
         estimate = (
             exact_gaussian_copula_joint_probability(marginals, block)
             if len(marginals) <= _EXACT_CDF_MAX_DIM
-            else gaussian_copula_joint_probability(
-                marginals, block, n_samples=n_samples, seed=seed
-            )
+            else gaussian_copula_joint_probability(marginals, block, n_samples=n_samples, seed=seed)
         )
         joint = estimate.joint_probability
         ev = parlay_ev(updated, joint)
@@ -941,9 +933,7 @@ class ExposureMatrix(BaseModel):
             if parlay.is_dead or parlay.is_fully_void:
                 continue
             live_factors = {
-                leg.risk_factor_key
-                for leg in parlay.legs
-                if leg.state is LegState.PENDING
+                leg.risk_factor_key for leg in parlay.legs if leg.state is LegState.PENDING
             }
             for factor in live_factors:
                 buckets.setdefault(factor, []).append(parlay)
@@ -992,10 +982,7 @@ def check_exposure_limit(
             factor, so the caller can tell the user *why*, not just "no".
     """
     if not 0.0 < max_single_point_drawdown <= 1.0:
-        msg = (
-            "max_single_point_drawdown must be in (0, 1], got "
-            f"{max_single_point_drawdown!r}"
-        )
+        msg = f"max_single_point_drawdown must be in (0, 1], got {max_single_point_drawdown!r}"
         raise ValueError(msg)
 
     projected = ExposureMatrix.build((*existing, candidate), bankroll_paise)
