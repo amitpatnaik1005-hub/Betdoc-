@@ -14,6 +14,10 @@ dependencies = [
     "asyncpg>=0.29",
     "greenlet>=3.0",
     "alembic>=1.13.0",
+    "pydantic-settings>=2.0",
+    "structlog>=24.0",
+    "redis>=5.0",
+    "tenacity>=8.0",
 ]
 
 [project.optional-dependencies]
