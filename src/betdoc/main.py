@@ -90,6 +90,8 @@ from betdoc.domain.intelligence.account_models import (
     utc_now,
 )
 from betdoc.domain.intelligence.advisor_models import MarketOpportunity
+from betdoc.infrastructure.ledger.paper_ledger import PaperLedger
+from betdoc.presentation.api.routers.board import BoardBridge, router as board_router
 from betdoc.presentation.api.app import build_api
 from betdoc.presentation.api.broadcaster import CompositeNotifier, WebsocketBroadcaster
 from betdoc.services.advisor.twin_engine import TwinAdvisorConfig, TwinAdvisorService
@@ -446,7 +448,11 @@ async def _run(settings: Settings, shutdown: asyncio.Event) -> None:
         max_delivery_attempts=settings.redis.max_delivery_attempts,
     )
 
+    paper_ledger = PaperLedger(os.environ.get("BETDOC_PAPER_LEDGER_PATH", "betdoc-paper.sqlite3"))
+    board_bridge = BoardBridge(paper_ledger)
+
     orchestrator = OpportunityOrchestrator(
+        on_opportunity=board_bridge.ingest,
         bus=bus,
         twin=TwinAdvisorService(TwinAdvisorConfig()),
         state=store,
@@ -471,6 +477,7 @@ async def _run(settings: Settings, shutdown: asyncio.Event) -> None:
     )
 
     try:
+        await paper_ledger.connect()
         await bus.ping()
 
         await notifier.start()
@@ -491,6 +498,9 @@ async def _run(settings: Settings, shutdown: asyncio.Event) -> None:
         # in-flight Redis message is abandoned.
 
         api_app = build_api(store=store, broadcaster=broadcaster, profile_id=_PROFILE_ID)
+        api_app.state.board_bridge = board_bridge
+        api_app.include_router(board_router)
+        api_app.description = "Advisor projections and a local-only paper ledger. No sportsbook execution."
         server = uvicorn.Server(
             uvicorn.Config(api_app, host="127.0.0.1", port=8000, log_config=None, lifespan="off")
         )
@@ -538,6 +548,9 @@ async def _run(settings: Settings, shutdown: asyncio.Event) -> None:
 
         with contextlib.suppress(Exception):
             await notifier.close()
+
+        with contextlib.suppress(Exception):
+            await paper_ledger.close()
 
         with contextlib.suppress(Exception):
             await bus.close()
