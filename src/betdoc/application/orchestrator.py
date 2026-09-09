@@ -44,7 +44,7 @@ import asyncio
 import contextlib
 import time
 import uuid
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Final, Protocol, Self, runtime_checkable
@@ -281,6 +281,7 @@ class OpportunityOrchestrator:
         "_inflight",
         "_metrics",
         "_notifier",
+        "_on_opportunity",
         "_queue",
         "_semaphore",
         "_shutdown",
@@ -297,8 +298,10 @@ class OpportunityOrchestrator:
         notifier: RecommendationNotifier,
         config: OrchestratorConfig,
         shutdown: asyncio.Event,
+        on_opportunity: Callable[[MarketOpportunity], None] | None = None,
     ) -> None:
 
+        self._on_opportunity = on_opportunity
         self._bus = bus
 
         self._twin = twin
@@ -418,6 +421,11 @@ class OpportunityOrchestrator:
 
             return
 
+        if self._on_opportunity is not None:
+            try:
+                self._on_opportunity(envelope.data)
+            except Exception:
+                _log.exception("orchestrator.projection_failed")
         self._offer(envelope)
 
     def _offer(self, envelope: EventEnvelope[MarketOpportunity]) -> None:
