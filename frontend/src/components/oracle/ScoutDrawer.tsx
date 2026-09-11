@@ -1,9 +1,10 @@
-import React, { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect } from "react";
 import { useBetStore } from "../../store/useBetStore";
 
 export const ScoutDrawer = () => {
-  const { oracleHistory, addOracleMessage, scoutContextMarketId, isOracleLoading, setOracleLoading } = useBetStore();
+  const { oracleHistory, appendMessage, contextMarketId, setScoutContext } = useBetStore();
   const [input, setInput] = useState("");
+  const [isOracleLoading, setOracleLoading] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const scrollToBottom = () => {
@@ -17,24 +18,22 @@ export const ScoutDrawer = () => {
   const handleSend = async () => {
     if (!input.trim()) return;
 
-    // Add user message to Zustand
-    addOracleMessage({
+    appendMessage({
       id: crypto.randomUUID(),
       role: 'user',
       content: input,
-      context_market_id: scoutContextMarketId
+      context_market_id: contextMarketId ?? undefined
     });
 
     setInput("");
     setOracleLoading(true);
 
-    // Mock API call to backend session_oracle.py
     setTimeout(() => {
-      addOracleMessage({
+      appendMessage({
         id: crypto.randomUUID(),
         role: 'scout',
-        content: scoutContextMarketId 
-          ? `Analysis for market ${scoutContextMarketId}: The edge here is driven by a significant discrepancy in our proprietary volatility engine vs the sportsbook's implied projection. I recommend sizing this at 1.5U.`
+        content: contextMarketId 
+          ? `Analysis for market ${contextMarketId}: The edge here is driven by a significant discrepancy in our proprietary volatility engine vs the sportsbook's implied projection. I recommend sizing this at 1.5U.`
           : `I am the Scout Oracle. Click any game on the board to give me context, or ask me general betting questions.`
       });
       setOracleLoading(false);
@@ -43,7 +42,6 @@ export const ScoutDrawer = () => {
 
   return (
     <div className="flex flex-col h-full bg-white border-l-4 border-onyx shadow-[-8px_0_0_rgba(0,0,0,1)]">
-      {/* Header */}
       <div className="p-6 border-b-4 border-onyx bg-accent">
         <h2 className="font-display font-black text-2xl text-onyx uppercase tracking-tighter">
           Scout Oracle
@@ -51,15 +49,14 @@ export const ScoutDrawer = () => {
         <p className="font-mono text-sm font-bold mt-1 text-onyx/70">
           AI Betting Assistant
         </p>
-        {scoutContextMarketId && (
+        {contextMarketId && (
           <div className="mt-3 px-3 py-1.5 bg-onyx text-white font-mono text-xs font-bold rounded flex justify-between items-center shadow-solid">
-            <span>Context: {scoutContextMarketId}</span>
-            <button className="text-white/50 hover:text-white" onClick={() => useBetStore.getState().setScoutContext(undefined)}>✕</button>
+            <span>Context: {contextMarketId}</span>
+            <button className="text-white/50 hover:text-white" onClick={() => setScoutContext('')}>✕</button>
           </div>
         )}
       </div>
 
-      {/* Chat History */}
       <div className="flex-1 overflow-y-auto p-6 space-y-4 bg-slate-50">
         {oracleHistory.length === 0 && (
           <div className="text-center text-slate-400 font-mono text-sm mt-10">
@@ -91,7 +88,6 @@ export const ScoutDrawer = () => {
         <div ref={messagesEndRef} />
       </div>
 
-      {/* Input Box */}
       <div className="p-4 border-t-4 border-onyx bg-white">
         <div className="flex gap-2">
           <input
