@@ -1,15 +1,21 @@
 from __future__ import annotations
+
 import asyncio
 import math
 from typing import Final
+from datetime import datetime
 
 import structlog
 
 # FIXING IMPORTS FOR OUR ARCHITECTURE
 from betdoc.domain.intelligence.account_models import AccountState, BettorProfile
-from betdoc.domain.intelligence.advisor_models import RejectionReason, MarketOpportunity
+from betdoc.domain.intelligence.advisor_models import MarketOpportunity, RejectionReason
 from betdoc.domain.risk.models import (
-    ConstraintBreakdown, RiskDecision, RiskPolicy, RiskVerdict, StakeRequest
+    ConstraintBreakdown,
+    RiskDecision,
+    RiskPolicy,
+    RiskVerdict,
+    StakeRequest,
 )
 from betdoc.domain.risk.ports import ExposureLedgerPort, VolatilityOraclePort
 from betdoc.domain.shared.clock import Clock, SystemClock
@@ -44,7 +50,7 @@ class RiskGovernanceService:
         quote_age_seconds = (now - opportunity.quoted_at).total_seconds()
         if quote_age_seconds > self._policy.max_quote_age.total_seconds():
             return self._reject(
-                reason=RejectionReason.STALE_QUOTE if hasattr(RejectionReason, 'STALE_QUOTE') else RejectionReason.UNACCEPTABLE_VOLATILITY, # Fallback mapping
+                reason=RejectionReason.STALE_QUOTE if hasattr(RejectionReason, 'STALE_QUOTE') else RejectionReason.EXTREME_NEWS_VOLATILITY, # Fallback mapping
                 detail=f"quote age {quote_age_seconds:.3f}s exceeds permitted {self._policy.max_quote_age.total_seconds():.3f}s",
                 request=request, expected_value_bps=expected_value_bps, constraints=_NO_HEADROOM, now=now, log=log,
             )
@@ -59,7 +65,7 @@ class RiskGovernanceService:
         volatility_detail = self._volatility_breach(instrument_key=request.instrument_key, tolerance=profile.volatility_tolerance, log=log)
         if volatility_detail is not None:
             return self._reject(
-                reason=RejectionReason.UNACCEPTABLE_VOLATILITY,
+                reason=RejectionReason.EXTREME_NEWS_VOLATILITY,
                 detail=volatility_detail, request=request, expected_value_bps=expected_value_bps,
                 constraints=_NO_HEADROOM, now=now, log=log,
             )
@@ -75,10 +81,10 @@ class RiskGovernanceService:
         )
 
         caps: tuple[tuple[int, RejectionReason], ...] = (
-            (constraints.daily_loss_headroom_paise, RejectionReason.DAILY_LOSS_LIMIT),
-            (constraints.sport_exposure_headroom_paise, RejectionReason.EXPOSURE_LIMIT),
-            (constraints.settled_liquidity_paise, RejectionReason.EXPOSURE_LIMIT),
-            (constraints.single_stake_cap_paise, RejectionReason.SINGLE_STAKE_LIMIT),
+            (constraints.daily_loss_headroom_paise, RejectionReason.DAILY_LOSS_LIMIT_REACHED),
+            (constraints.sport_exposure_headroom_paise, RejectionReason.OVEREXPOSURE_ON_SPORT),
+            (constraints.settled_liquidity_paise, RejectionReason.OVEREXPOSURE_ON_SPORT),
+            (constraints.single_stake_cap_paise, RejectionReason.EXCEEDS_SINGLE_STAKE_CAP),
         )
         permitted_paise, binding_reason = min(caps, key=lambda cap: cap[0])
 

@@ -15,21 +15,12 @@ status taxonomy (:class:`ExecutionStatus`), and :class:`ExecutionError`.
 
 from __future__ import annotations
 
-
-
 from betdoc.infrastructure.execution.client import (
-
     ExecutionClient,
-
     ExecutionError,
-
     ExecutionResult,
-
     ExecutionStatus,
-
 )
-
-
 
 __all__ = [
 

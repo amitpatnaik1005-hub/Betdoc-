@@ -41,41 +41,22 @@ the plain Gaussian in the specification.
 
 from __future__ import annotations
 
-
-
 import logging
-
 from typing import Any, Final
 
-
-
 import arviz as az
-
 import numpy as np
-
 import polars as pl
-
 import pymc as pm
 
-
-
 from betdoc.domain.modeling.archetypes.base import BayesianArchetype
-
 from betdoc.domain.modeling.types import (
-
     MATCH_SCHEMA,
-
     ModelUpdateError,
-
     SamplerConfig,
-
     SportArchetype,
-
     validate_frame,
-
 )
-
-
 
 __all__ = ["GaussianSpreadArchetype"]
 

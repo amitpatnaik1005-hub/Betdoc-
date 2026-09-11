@@ -15,23 +15,14 @@ All monetary values crossing this boundary are :class:`~decimal.Decimal` INR.
 
 from __future__ import annotations
 
-
-
 from abc import ABC, abstractmethod
-
+from collections.abc import Mapping
 from dataclasses import dataclass, field
-
-from datetime import datetime, timezone
-
+from datetime import UTC, datetime
 from decimal import Decimal
-
 from enum import Enum
-
 from types import TracebackType
-
-from typing import Any, Final, Mapping
-
-
+from typing import Any, Final
 
 __all__ = ["ExecutionClient", "ExecutionError", "ExecutionResult", "ExecutionStatus"]
 
@@ -221,7 +212,7 @@ class ExecutionResult:
 
     placed_at: datetime = field(
 
-        default_factory=lambda: datetime.now(tz=timezone.utc)
+        default_factory=lambda: datetime.now(tz=UTC)
 
     )
 
@@ -297,7 +288,7 @@ class ExecutionResult:
 
         raw: Mapping[str, Any] | None = None,
 
-    ) -> "ExecutionResult":
+    ) -> ExecutionResult:
 
         """Construct a failed result without raising."""
 
@@ -423,7 +414,7 @@ class ExecutionClient(ABC):
 
 
 
-    async def __aenter__(self) -> "ExecutionClient":
+    async def __aenter__(self) -> ExecutionClient:
 
         try:
 

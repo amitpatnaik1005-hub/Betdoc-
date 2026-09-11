@@ -857,9 +857,9 @@ def solve_portfolio_kelly(
 
     x = cp.Variable(n, nonneg=True)
     wealth = 1.0 + scenarios.returns @ x
-    objective = cp.Maximize(cp.sum(cp.multiply(scenarios.probabilities, cp.log(wealth))))
+    objective = cp.Maximize(cp.sum(cp.multiply(scenarios.probabilities, cp.log(wealth))))  # type: ignore[attr-defined]
     constraints = [
-        cp.sum(x) <= cfg.max_total_exposure_fraction,
+        cp.sum(x) <= cfg.max_total_exposure_fraction,  # type: ignore[attr-defined]
         x <= cfg.per_bet_cap_fraction,
     ]
     problem = cp.Problem(objective, constraints)
@@ -869,12 +869,12 @@ def solve_portfolio_kelly(
     failures: list[str] = []
 
     for solver_name in cfg.solvers:
-        if solver_name not in cp.installed_solvers():
+        if solver_name not in cp.installed_solvers():  # type: ignore[no-untyped-call]
             failures.append(f"{solver_name}: not installed")
             continue
         started = time.perf_counter()
         try:
-            problem.solve(solver=solver_name, verbose=False)
+            problem.solve(solver=solver_name, verbose=False)  # type: ignore[no-untyped-call]
         except (cp.error.SolverError, ValueError, ArithmeticError) as exc:
             failures.append(f"{solver_name}: {exc!r}")
             _log.warning(

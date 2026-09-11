@@ -17,33 +17,18 @@ paper ledger against live bookmaker funds (:class:`EndOfDayAuditor`,
 
 from __future__ import annotations
 
-
-
 from betdoc.domain.reconciliation.eod_auditor import (
-
     AuditReport,
-
     BookmakerAuditEntry,
-
     EndOfDayAuditor,
-
     ReconciliationStatus,
-
 )
-
 from betdoc.domain.reconciliation.settlement import (
-
     CallbackHandler,
-
     SettlementError,
-
     SettlementEvent,
-
     SettlementOutcome,
-
 )
-
-
 
 __all__ = [
 

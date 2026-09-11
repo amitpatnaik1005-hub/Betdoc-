@@ -47,16 +47,16 @@ def kelly_quadratic_approx(
     n = len(expected_returns)
     f = cp.Variable(n, nonneg=True)
 
-    growth_approx = expected_returns @ f - 0.5 * cp.quad_form(f, covariance)
-    constraints = [cp.sum(f) <= max_total_exposure]
+    growth_approx = expected_returns @ f - 0.5 * cp.quad_form(f, covariance)  # type: ignore[attr-defined]
+    constraints = [cp.sum(f) <= max_total_exposure]  # type: ignore[attr-defined]
 
     problem = cp.Problem(cp.Maximize(growth_approx), constraints)
-    problem.solve()
+    problem.solve()  # type: ignore[no-untyped-call]
 
     if f.value is None:
         return np.zeros(n)
 
-    return np.maximum(f.value, 0.0) * kelly_multiplier
+    return np.maximum(f.value, 0.0) * kelly_multiplier  # type: ignore[no-any-return]
 
 
 def kelly_scenario_exact(
@@ -75,14 +75,14 @@ def kelly_scenario_exact(
     n = scenario_returns.shape[1]
     f = cp.Variable(n, nonneg=True)
 
-    portfolio_growth = scenario_returns @ f  # shape (S,), one value per scenario
-    expected_log_growth = scenario_probs @ cp.log(1 + portfolio_growth)
+    portfolio_growth = scenario_returns @ f
+    expected_log_growth = scenario_probs @ cp.log(1 + portfolio_growth)  # type: ignore[attr-defined]
 
-    constraints = [cp.sum(f) <= max_total_exposure]
+    constraints = [cp.sum(f) <= max_total_exposure]  # type: ignore[attr-defined]
     problem = cp.Problem(cp.Maximize(expected_log_growth), constraints)
-    problem.solve()
+    problem.solve()  # type: ignore[no-untyped-call]
 
     if f.value is None:
         return np.zeros(n)
 
-    return np.maximum(f.value, 0.0) * kelly_multiplier
+    return np.maximum(f.value, 0.0) * kelly_multiplier  # type: ignore[no-any-return]

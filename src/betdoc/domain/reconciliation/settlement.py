@@ -17,33 +17,19 @@ bookmakers retry webhooks aggressively.
 
 from __future__ import annotations
 
-
-
 import asyncio
-
 import hashlib
-
 import hmac
-
 import inspect
-
 import json
-
 import logging
-
 from collections import OrderedDict
-
+from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass, field
-
-from datetime import datetime, timezone
-
+from datetime import UTC, datetime
 from decimal import Decimal, InvalidOperation
-
 from enum import Enum
-
-from typing import Any, Awaitable, Callable, Final, Mapping
-
-
+from typing import Any, Final
 
 __all__ = [
 
@@ -257,13 +243,13 @@ class SettlementEvent:
 
     settled_at: datetime = field(
 
-        default_factory=lambda: datetime.now(tz=timezone.utc)
+        default_factory=lambda: datetime.now(tz=UTC)
 
     )
 
     received_at: datetime = field(
 
-        default_factory=lambda: datetime.now(tz=timezone.utc)
+        default_factory=lambda: datetime.now(tz=UTC)
 
     )
 
@@ -371,7 +357,7 @@ class CallbackHandler:
 
         self._callbacks: list[SettlementCallback] = []
 
-        self._seen: "OrderedDict[str, None]" = OrderedDict()
+        self._seen: OrderedDict[str, None] = OrderedDict()
 
         self._lock: asyncio.Lock = asyncio.Lock()
 
@@ -865,7 +851,7 @@ class CallbackHandler:
 
         if not value:
 
-            return datetime.now(tz=timezone.utc)
+            return datetime.now(tz=UTC)
 
         text = value.strip().replace("Z", "+00:00")
 
@@ -875,11 +861,11 @@ class CallbackHandler:
 
         except ValueError:
 
-            return datetime.now(tz=timezone.utc)
+            return datetime.now(tz=UTC)
 
         if parsed.tzinfo is None:
 
-            return parsed.replace(tzinfo=timezone.utc)
+            return parsed.replace(tzinfo=UTC)
 
-        return parsed.astimezone(timezone.utc)
+        return parsed.astimezone(UTC)
 

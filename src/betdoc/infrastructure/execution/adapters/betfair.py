@@ -17,39 +17,22 @@ end-of-day auditor, can degrade rather than crash.
 
 from __future__ import annotations
 
-
-
 import asyncio
-
 import itertools
-
 import logging
-
+from collections.abc import Mapping
 from decimal import Decimal, InvalidOperation
-
-from typing import Any, Final, Mapping
-
-
+from typing import Any, Final
 
 import aiohttp
 
-
-
 from betdoc.infrastructure.config.provider import ConfigError, ConfigProvider
-
 from betdoc.infrastructure.execution.client import (
-
     ExecutionClient,
-
     ExecutionError,
-
     ExecutionResult,
-
     ExecutionStatus,
-
 )
-
-
 
 __all__ = ["BetfairClient"]
 
@@ -193,7 +176,7 @@ class BetfairClient(ExecutionClient):
 
         self._lock: asyncio.Lock = asyncio.Lock()
 
-        self._request_ids: "itertools.count[int]" = itertools.count(1)
+        self._request_ids: itertools.count[int] = itertools.count(1)
 
 
 
@@ -311,7 +294,7 @@ class BetfairClient(ExecutionClient):
 
                     body: Any = await response.json(content_type=None)
 
-            except asyncio.TimeoutError as error:
+            except TimeoutError as error:
 
                 raise ExecutionError(
 
@@ -769,7 +752,7 @@ class BetfairClient(ExecutionClient):
 
                 body: Any = await response.json(content_type=None)
 
-        except asyncio.TimeoutError as error:
+        except TimeoutError as error:
 
             raise ExecutionError(
 

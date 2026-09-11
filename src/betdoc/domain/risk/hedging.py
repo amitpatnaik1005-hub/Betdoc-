@@ -1,8 +1,8 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from decimal import Decimal, ROUND_DOWN, ROUND_UP, localcontext
-from typing import Literal, Optional
+from decimal import ROUND_DOWN, ROUND_UP, Decimal, localcontext
+from typing import Literal
 
 from betdoc.domain.math.errors import DomainMathError
 from betdoc.domain.math.money import MAX_PAISE, from_paise, to_paise
@@ -77,8 +77,8 @@ class HedgeEvaluation:
     total_hedge_stake: Decimal = Decimal("0.00")
     original_win_net_profit: Decimal = Decimal("0.00")
     opposing_win_net_profit: Decimal = Decimal("0.00")
-    draw_net_profit: Optional[Decimal] = None
-    cashout_offer_difference: Optional[Decimal] = None
+    draw_net_profit: Decimal | None = None
+    cashout_offer_difference: Decimal | None = None
     probability_source: Literal[
         "MODEL", "COMPLEMENT_PRICE_PROXY"
     ] = "COMPLEMENT_PRICE_PROXY"
@@ -105,11 +105,11 @@ class DynamicHedgingEngine:
         self,
         position: Position,
         live_opposing_odds: Decimal,
-        live_draw_odds: Optional[Decimal] = None,
+        live_draw_odds: Decimal | None = None,
         min_profit_threshold: Decimal = Decimal("0.00"),
         *,
-        live_win_probability: Optional[Decimal] = None,
-        bookmaker_cashout_offer: Optional[Decimal] = None,
+        live_win_probability: Decimal | None = None,
+        bookmaker_cashout_offer: Decimal | None = None,
         hedge_fraction: Decimal = Decimal("1"),
         opposing_selection: str = "COMPLEMENT",
         draw_selection: str = "DRAW",

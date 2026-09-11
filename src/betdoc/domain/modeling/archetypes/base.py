@@ -17,43 +17,24 @@ a failed refit leaves the previously-good posterior intact and priceable.
 
 from __future__ import annotations
 
-
-
 import asyncio
-
 import logging
-
 import time
-
 from abc import ABC, abstractmethod
-
-from typing import Any, Final, Mapping, Sequence
-
-
+from collections.abc import Mapping, Sequence
+from typing import Any, Final
 
 import arviz as az
-
 import numpy as np
-
 import polars as pl
-
 import pymc as pm
 
-
-
 from betdoc.domain.modeling.types import (
-
     ModelUpdateError,
-
     SamplerConfig,
-
     SportArchetype,
-
     TrainingDiagnostics,
-
 )
-
-
 
 __all__ = ["BayesianArchetype"]
 
@@ -135,9 +116,27 @@ class BayesianArchetype(ABC):
 
     def is_trained(self) -> bool:
 
-        """Whether a usable posterior is currently held."""
+        """Return True if the model has a fitted posterior trace."""
 
         return self._idata is not None
+
+
+
+    def load_posterior(self, idata: az.InferenceData, index: dict[str, int]) -> None:
+
+        """Load a pre-trained posterior and participant index."""
+
+        self._idata = idata
+
+        self._index = dict(index)
+
+
+
+    def export_posterior(self) -> tuple[az.InferenceData | None, dict[str, int]]:
+
+        """Return the current posterior and participant index for serialization."""
+
+        return self._idata, dict(self._index)
 
 
 
@@ -233,7 +232,7 @@ class BayesianArchetype(ABC):
 
                 raise
 
-            except Exception as error:  # noqa: BLE001 - normalised to domain error
+            except Exception as error:
 
                 raise ModelUpdateError(
 
@@ -377,7 +376,7 @@ class BayesianArchetype(ABC):
 
                 min_ess = float(np.nanmin(summary["ess_bulk"].to_numpy()))
 
-        except Exception as error:  # noqa: BLE001 - diagnostics are advisory
+        except Exception as error:
 
             warnings.append(f"convergence summary unavailable: {error}")
 

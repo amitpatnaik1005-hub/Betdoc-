@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass
-from typing import List, Optional
 
 from betdoc.domain.math.errors import (
     DomainMathError,
@@ -87,10 +86,10 @@ class CopulaParlayEvaluator:
 
     def evaluate_parlay(
         self,
-        legs: List[ParlayLeg],
+        legs: list[ParlayLeg],
         correlation_coefficient: float = 0.0,
         *,
-        offered_parlay_odds: Optional[float] = None,
+        offered_parlay_odds: float | None = None,
     ) -> ParlayAnalysis:
         if not legs:
             raise DomainMathError("A parlay requires at least one leg")
@@ -101,8 +100,8 @@ class CopulaParlayEvaluator:
                 "Correlation must be in [-1, 1]", rho=rho
             )
 
-        probabilities: List[float] = []
-        odds: List[float] = []
+        probabilities: list[float] = []
+        odds: list[float] = []
         seen: set[str] = set()
 
         for leg in legs:

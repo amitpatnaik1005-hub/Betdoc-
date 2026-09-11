@@ -44,59 +44,33 @@ does with Decimal. All arithmetic here runs inside :func:`money_context`.
 
 from __future__ import annotations
 
-
-
 import contextlib
-
 from collections.abc import Iterator
-
-from datetime import datetime, timezone
-
-from decimal import Context, Decimal, InvalidOperation, ROUND_HALF_EVEN
-
+from datetime import UTC, datetime
+from decimal import ROUND_HALF_EVEN, Context, Decimal, InvalidOperation
 from enum import Enum
-
 from typing import Any, Final
 
-
-
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
-
-
 
 __all__ = [
 
     "DECIMAL_PRECISION",
-
     "MONEY_QUANTUM",
-
     "MONEY_SCALE",
-
     "AccountingError",
-
     "BetStatus",
-
     "CurrencyCode",
-
     "CurrencyMismatchError",
-
     "ExchangeRate",
-
     "FXRateUnavailableError",
-
     "LedgerEntry",
-
     "Money",
-
     "StaleRateError",
-
-    "money_context",
-
-    "quantize_money",
-
-    "to_micros",
-
     "from_micros",
+    "money_context",
+    "quantize_money",
+    "to_micros",
 
 ]
 
@@ -712,7 +686,7 @@ class Money(BaseModel):
 
     @classmethod
 
-    def zero(cls, currency: CurrencyCode | str) -> "Money":
+    def zero(cls, currency: CurrencyCode | str) -> Money:
 
         """Return a zero amount in ``currency``."""
 
@@ -722,7 +696,7 @@ class Money(BaseModel):
 
     @classmethod
 
-    def from_micros(cls, micros: int, currency: CurrencyCode | str) -> "Money":
+    def from_micros(cls, micros: int, currency: CurrencyCode | str) -> Money:
 
         """Rebuild a Money from integer micro-units."""
 
@@ -774,7 +748,7 @@ class Money(BaseModel):
 
 
 
-    def _require_same_currency(self, other: "Money", operation: str) -> None:
+    def _require_same_currency(self, other: Money, operation: str) -> None:
 
         if self.currency is not other.currency:
 
@@ -786,7 +760,7 @@ class Money(BaseModel):
 
 
 
-    def __add__(self, other: "Money") -> "Money":
+    def __add__(self, other: Money) -> Money:
 
         self._require_same_currency(other, "addition")
 
@@ -796,7 +770,7 @@ class Money(BaseModel):
 
 
 
-    def __sub__(self, other: "Money") -> "Money":
+    def __sub__(self, other: Money) -> Money:
 
         self._require_same_currency(other, "subtraction")
 
@@ -806,7 +780,7 @@ class Money(BaseModel):
 
 
 
-    def __mul__(self, factor: Decimal | int) -> "Money":
+    def __mul__(self, factor: Decimal | int) -> Money:
 
         """Scale by a dimensionless factor.
 
@@ -832,13 +806,13 @@ class Money(BaseModel):
 
 
 
-    def __neg__(self) -> "Money":
+    def __neg__(self) -> Money:
 
         return Money(value=-self.value, currency=self.currency)
 
 
 
-    def __lt__(self, other: "Money") -> bool:
+    def __lt__(self, other: Money) -> bool:
 
         self._require_same_currency(other, "comparison")
 
@@ -846,7 +820,7 @@ class Money(BaseModel):
 
 
 
-    def __le__(self, other: "Money") -> bool:
+    def __le__(self, other: Money) -> bool:
 
         self._require_same_currency(other, "comparison")
 
@@ -928,7 +902,7 @@ class ExchangeRate(BaseModel):
 
             raise ValueError("fetched_at must be timezone-aware")
 
-        return raw.astimezone(timezone.utc)
+        return raw.astimezone(UTC)
 
 
 
@@ -936,7 +910,7 @@ class ExchangeRate(BaseModel):
 
         """Seconds elapsed since this rate was observed."""
 
-        reference = now or datetime.now(tz=timezone.utc)
+        reference = now or datetime.now(tz=UTC)
 
         return max(0.0, (reference - self.fetched_at).total_seconds())
 
@@ -950,7 +924,7 @@ class ExchangeRate(BaseModel):
 
 
 
-    def inverted(self) -> "ExchangeRate":
+    def inverted(self) -> ExchangeRate:
 
         """Return the reciprocal rate.
 
@@ -1036,7 +1010,7 @@ class LedgerEntry(BaseModel):
 
             raise ValueError("ledger timestamps must be timezone-aware")
 
-        return raw.astimezone(timezone.utc)
+        return raw.astimezone(UTC)
 
 
 
@@ -1060,7 +1034,7 @@ class LedgerEntry(BaseModel):
 
     @model_validator(mode="after")
 
-    def _check_settlement_coherence(self) -> "LedgerEntry":
+    def _check_settlement_coherence(self) -> LedgerEntry:
 
         """Reject internally inconsistent settlements.
 

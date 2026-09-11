@@ -17,19 +17,12 @@ violations are hard failures here.
 
 from __future__ import annotations
 
-
-
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
-
 from enum import Enum
-
-from typing import Any, Final, Mapping, Sequence
-
-
+from typing import Any, Final
 
 import polars as pl
-
-
 
 __all__ = [
 
@@ -113,7 +106,7 @@ class SportArchetype(str, Enum):
 
     @classmethod
 
-    def for_sport(cls, sport: str) -> "SportArchetype":
+    def for_sport(cls, sport: str) -> SportArchetype:
 
         """Route a free-text sport name to its archetype.
 

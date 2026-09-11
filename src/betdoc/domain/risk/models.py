@@ -1,4 +1,5 @@
 from __future__ import annotations
+
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from enum import Enum
@@ -6,8 +7,9 @@ from enum import Enum
 from pydantic import BaseModel, ConfigDict, Field
 
 # FIXING IMPORTS FOR OUR ARCHITECTURE
-from betdoc.domain.intelligence.advisor_models import RejectionReason, MarketOpportunity
+from betdoc.domain.intelligence.advisor_models import MarketOpportunity, RejectionReason
 from betdoc.domain.shared.money import BPS_DENOMINATOR
+
 
 class RiskVerdict(str, Enum):
     APPROVED = "approved"

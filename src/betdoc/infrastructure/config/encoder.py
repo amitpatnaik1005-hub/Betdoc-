@@ -17,33 +17,19 @@ clobbering an existing key or following a symlink.
 
 from __future__ import annotations
 
-
-
 import json
-
 import logging
-
 import os
-
 import stat
-
 import tempfile
-
+from collections.abc import Mapping
 from decimal import Decimal
-
 from pathlib import Path
-
-from typing import Any, Final, Mapping
-
-
+from typing import Any, Final
 
 from cryptography.fernet import Fernet, InvalidToken
 
-
-
 from betdoc.infrastructure.config.provider import ConfigError
-
-
 
 __all__ = ["DataEncoder"]
 
@@ -207,7 +193,7 @@ class DataEncoder:
 
             return self._fernet.encrypt(plaintext)
 
-        except Exception as error:  # noqa: BLE001 - normalised to ConfigError
+        except Exception as error:
 
             raise ConfigError(
 

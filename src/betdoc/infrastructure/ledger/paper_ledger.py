@@ -4,7 +4,6 @@ import asyncio
 import json
 import sqlite3
 from datetime import UTC, datetime
-from pathlib import Path
 from typing import Literal
 
 from pydantic import BaseModel

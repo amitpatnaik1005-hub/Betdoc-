@@ -19,25 +19,15 @@ is a hard :class:`ConfigError`.
 
 from __future__ import annotations
 
-
-
 import asyncio
-
 import logging
-
 import time
-
+from collections.abc import Mapping
 from dataclasses import dataclass, field
-
 from pathlib import Path
-
-from typing import TYPE_CHECKING, Any, Final, Mapping, Protocol, runtime_checkable
-
-
+from typing import TYPE_CHECKING, Any, Final, Protocol, runtime_checkable
 
 import aiohttp
-
-
 
 if TYPE_CHECKING:  # pragma: no cover - typing only, avoids an import cycle
 
@@ -213,7 +203,7 @@ class ServiceCredentials:
 
         from_cache: bool = False,
 
-    ) -> "ServiceCredentials":
+    ) -> ServiceCredentials:
 
         """Build credentials from a raw KV-v2 ``data.data`` mapping.
 
@@ -427,7 +417,7 @@ class ConfigProvider:
 
         mount: str = DEFAULT_MOUNT,
 
-        fallback_encoder: "DataEncoder | FallbackEncoder | None" = None,
+        fallback_encoder: DataEncoder | FallbackEncoder | None = None,
 
         cache_dir: str | Path = Path("var/cache/betdoc/config"),
 
@@ -467,7 +457,7 @@ class ConfigProvider:
 
         self._mount: str = mount.strip("/")
 
-        self._fallback_encoder: "DataEncoder | FallbackEncoder | None" = fallback_encoder
+        self._fallback_encoder: DataEncoder | FallbackEncoder | None = fallback_encoder
 
         self._cache_dir: Path = Path(cache_dir)
 
@@ -499,7 +489,7 @@ class ConfigProvider:
 
 
 
-    async def __aenter__(self) -> "ConfigProvider":
+    async def __aenter__(self) -> ConfigProvider:
 
         await self._ensure_session()
 
@@ -689,7 +679,7 @@ class ConfigProvider:
 
         if self._session is None or self._session.closed:
 
-            connector = aiohttp.TCPConnector(ssl=None if self._verify_ssl else False)
+            connector = aiohttp.TCPConnector(ssl=True if self._verify_ssl else False)
 
             self._session = aiohttp.ClientSession(
 
@@ -823,7 +813,7 @@ class ConfigProvider:
 
 
 
-            except asyncio.TimeoutError:
+            except TimeoutError:
 
                 last_detail = "request timed out"
 
@@ -949,7 +939,7 @@ class ConfigProvider:
 
             )
 
-        except Exception as error:  # noqa: BLE001 - caching must never break reads
+        except Exception as error:
 
             _LOG.warning("failed to refresh local config cache for %s: %s", service, error)
 
@@ -997,7 +987,7 @@ class ConfigProvider:
 
             raise
 
-        except Exception as error:  # noqa: BLE001 - normalised below
+        except Exception as error:
 
             raise ConfigError(
 

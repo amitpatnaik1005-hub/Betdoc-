@@ -65,43 +65,24 @@ while adding almost nothing to win-market accuracy.
 
 from __future__ import annotations
 
-
-
 import logging
-
-from typing import Any, Final, Sequence
-
-
+from collections.abc import Sequence
+from typing import Any, Final
 
 import arviz as az
-
 import numpy as np
-
 import polars as pl
-
 import pymc as pm
-
 import pytensor.tensor as pt
 
-
-
 from betdoc.domain.modeling.archetypes.base import BayesianArchetype
-
 from betdoc.domain.modeling.types import (
-
     RACE_SCHEMA,
-
     ModelUpdateError,
-
     SamplerConfig,
-
     SportArchetype,
-
     validate_frame,
-
 )
-
-
 
 __all__ = ["PlackettLuceArchetype"]
 

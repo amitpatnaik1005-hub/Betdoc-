@@ -92,53 +92,28 @@ malformed feed (a LOST row carrying a payout) is caught rather than absorbed.
 
 from __future__ import annotations
 
-
-
 import asyncio
-
 import logging
-
 from collections.abc import Sequence
-
 from decimal import Decimal
-
 from typing import Any, Final
 
-
-
 import polars as pl
-
 from pydantic import BaseModel, ConfigDict
 
-
-
 from betdoc.domain.accounting.currency import CurrencyConverter
-
 from betdoc.domain.accounting.types import (
-
     AccountingError,
-
     BetStatus,
-
     CurrencyCode,
-
     LedgerEntry,
-
     Money,
-
     StaleRateError,
-
     from_micros,
-
     money_context,
-
     quantize_money,
-
     to_micros,
-
 )
-
-
 
 __all__ = ["LEDGER_SCHEMA", "LedgerService", "PnLSummary"]
 
