@@ -1,5 +1,3 @@
-import React from "react";
-
 export const EdgeBar = ({ modelWinChance, impliedProb }: { modelWinChance: number, impliedProb: number }) => {
   const edge = modelWinChance - impliedProb;
   const isPositive = edge > 0;

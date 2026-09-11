@@ -1,4 +1,3 @@
-import React from 'react';
 import { useBetStore } from './store/useBetStore';
 import { OddsGrid } from './components/board/OddsGrid';
 import { ScoutDrawer } from './components/oracle/ScoutDrawer';
@@ -47,7 +46,7 @@ function App() {
           <div className="flex items-center gap-4">
             <div className="flex items-center gap-3 bg-white px-4 py-2 rounded-lg border-2 border-onyx shadow-solid">
               <span className="text-xs text-onyx font-black uppercase tracking-widest">Bankroll</span>
-              <span className="font-mono font-black text-primary text-lg">${bankroll.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
+              <span className="font-mono font-black text-primary text-lg">${(bankroll || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
             </div>
           </div>
         </header>

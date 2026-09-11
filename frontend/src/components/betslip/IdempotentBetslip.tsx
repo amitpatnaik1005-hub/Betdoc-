@@ -1,8 +1,8 @@
-import React, { useState } from "react";
+import { useState } from "react";
 import { useBetStore } from "../../store/useBetStore";
 
 export const IdempotentBetslip = () => {
-  const { bankroll, setBankroll } = useBetStore();
+  const { bankroll, reserve, activeModel, contextMarketId } = useBetStore();
   const [stake, setStake] = useState<string>("100");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [lastStatus, setLastStatus] = useState<"idle" | "success" | "error">("idle");
@@ -10,21 +10,24 @@ export const IdempotentBetslip = () => {
   const handlePlaceBet = async () => {
     const numStake = parseFloat(stake);
     if (isNaN(numStake) || numStake <= 0) return;
+    if (!contextMarketId) return;
 
-    // 1. Generate Idempotency Key Client-Side
     const idempotencyKey = crypto.randomUUID();
     setIsSubmitting(true);
     setLastStatus("idle");
 
-    // 2. Optimistic UI Update
-    const previousBankroll = bankroll;
-    setBankroll(bankroll - numStake);
-
     try {
-      // Mock TanStack Query / Axios Mutation with retry logic
+      // 1. Optimistic UI Update via Zustand Reserve
+      reserve({
+        idempotency_key: idempotencyKey,
+        market_id: contextMarketId,
+        stake: numStake,
+        model_used: activeModel
+      }, numStake * 100);
+
+      // 2. Mock API call
       await new Promise((resolve, reject) => {
         setTimeout(() => {
-          // Simulate 90% success rate
           if (Math.random() > 0.1) resolve(true);
           else reject(new Error("Network Timeout"));
         }, 1000);
@@ -32,14 +35,9 @@ export const IdempotentBetslip = () => {
 
       setLastStatus("success");
     } catch (error) {
-      console.error("Bet placement failed, but idempotency key is preserved:", idempotencyKey);
+      console.error("Bet placement failed:", error);
       setLastStatus("error");
-      
-      // Rollback bankroll
-      setBankroll(previousBankroll);
-      
-      // Real app would queue a reconciliation check here instead of a blind refund
-      // as mandated by the Zero Loophole Prompt
+      // Refund handled by the reconcile action in production
     } finally {
       setIsSubmitting(false);
     }
@@ -55,7 +53,7 @@ export const IdempotentBetslip = () => {
       <div className="flex justify-between items-center bg-white/5 p-4 rounded-lg mb-4 border border-white/10">
         <span className="font-sans text-sm text-slate-300 font-medium">Bankroll</span>
         <span className="font-mono font-bold text-lg text-accent">
-          ${bankroll.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+          ${(bankroll || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}
         </span>
       </div>
 
@@ -75,11 +73,17 @@ export const IdempotentBetslip = () => {
 
       <button
         onClick={handlePlaceBet}
-        disabled={isSubmitting}
+        disabled={isSubmitting || !contextMarketId}
         className="w-full py-4 bg-primary text-white font-display font-black uppercase tracking-widest rounded-lg shadow-[0_4px_14px_0_rgba(230,57,70,0.39)] hover:shadow-[0_6px_20px_rgba(230,57,70,0.23)] hover:-translate-y-px transition-all disabled:opacity-50 disabled:cursor-wait"
       >
         {isSubmitting ? "Placing..." : "Lock Bet"}
       </button>
+
+      {!contextMarketId && (
+        <div className="mt-3 text-center font-mono text-xs text-slate-400 font-bold">
+          Select a market on the board first
+        </div>
+      )}
 
       {lastStatus === "success" && (
         <div className="mt-3 text-center font-mono text-xs text-accent font-bold">
