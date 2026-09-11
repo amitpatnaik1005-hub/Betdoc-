@@ -46,41 +46,23 @@ window, or with an empty cache and a dead provider, the result is always
 
 from __future__ import annotations
 
-
-
 import abc
-
 import asyncio
-
 import json
-
 import logging
-
 import time
-
-from datetime import datetime, timezone
-
+from collections.abc import Mapping
+from datetime import UTC, datetime
 from decimal import Decimal
-
-from typing import Any, Final, Mapping, Protocol, runtime_checkable
-
-
+from typing import Any, Final, Protocol, runtime_checkable
 
 from betdoc.domain.accounting.types import (
-
     CurrencyCode,
-
     ExchangeRate,
-
     FXRateUnavailableError,
-
     StaleRateError,
-
     money_context,
-
 )
-
-
 
 __all__ = [
 
@@ -390,7 +372,7 @@ class HttpRateProvider:
 
                 body: Any = await response.json(content_type=None)
 
-        except asyncio.TimeoutError as error:
+        except TimeoutError as error:
 
             raise FXRateUnavailableError(
 
@@ -440,7 +422,7 @@ class HttpRateProvider:
 
                     value = Decimal(str(raw))
 
-                except Exception:  # noqa: BLE001 - one bad quote must not poison all
+                except Exception:
 
                     _LOG.warning("ignoring unparseable rate for %s: %r", code, raw)
 
@@ -654,7 +636,7 @@ class RedisRateCache(RateCache):
 
             raw = await self._client.get(self.key(base, quote))
 
-        except Exception as error:  # noqa: BLE001 - degrade to a miss
+        except Exception as error:
 
             _LOG.warning("redis rate cache read failed: %s", error)
 
@@ -682,7 +664,7 @@ class RedisRateCache(RateCache):
 
             )
 
-        except Exception as error:  # noqa: BLE001 - corrupt entry is a miss
+        except Exception as error:
 
             _LOG.warning("discarding corrupt cached rate for %s/%s: %s", base, quote, error)
 
@@ -728,7 +710,7 @@ class RedisRateCache(RateCache):
 
             )
 
-        except Exception as error:  # noqa: BLE001 - write failure is non-fatal
+        except Exception as error:
 
             _LOG.warning("redis rate cache write failed: %s", error)
 
@@ -1050,7 +1032,7 @@ class CurrencyConverter:
 
                 rate=Decimal(1),
 
-                fetched_at=datetime.now(tz=timezone.utc),
+                fetched_at=datetime.now(tz=UTC),
 
                 source="identity",
 
@@ -1130,7 +1112,7 @@ class CurrencyConverter:
 
                 rate=Decimal(1),
 
-                fetched_at=datetime.now(tz=timezone.utc),
+                fetched_at=datetime.now(tz=UTC),
 
                 source="identity",
 
@@ -1248,7 +1230,7 @@ class CurrencyConverter:
 
             rates = await self._provider.fetch(base)
 
-            observed = datetime.now(tz=timezone.utc)
+            observed = datetime.now(tz=UTC)
 
             for quote, value in rates.items():
 
@@ -1282,7 +1264,7 @@ class CurrencyConverter:
 
             _LOG.debug("refreshed %d rate(s) for base %s", len(rates), base.value)
 
-        except Exception as error:  # noqa: BLE001 - outage must not propagate here
+        except Exception as error:
 
             self._breaker.record_failure()
 

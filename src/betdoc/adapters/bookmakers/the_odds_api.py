@@ -492,7 +492,7 @@ class TheOddsApiAdapter(BaseBookmakerAdapter):
                 home_team=home_team,
                 away_team=away_team,
                 commence_time=commence_time,
-                is_live=commence_time <= received_at,
+                is_live=(commence_time <= received_at) if commence_time is not None else False,
                 markets=tuple(markets),
                 bookmaker_timestamp=book_ts,
                 received_at=received_at,
@@ -564,19 +564,19 @@ class TheOddsApiAdapter(BaseBookmakerAdapter):
             if market_type is MarketType.TOTALS:
                 totals: list[AnyMarket] = []
                 for line, group in self._group_by_line(parsed).items():
-                    runners = tuple(
+                    total_runners = tuple(
                         TotalsSelection(name=n, outcome=o, price=p, line=line)
                         for n, o, p, _ in group
                         if o in (OutcomeSide.OVER, OutcomeSide.UNDER)
                     )
-                    if len(runners) != 2:
+                    if len(total_runners) != 2:
                         continue
                     totals.append(
                         TotalsMarket(
                             key=f"{key}@{line:g}",
                             line=line,
                             last_update=last_update,
-                            runners=(runners[0], runners[1]),
+                            runners=(total_runners[0], total_runners[1]),
                         )
                     )
                 return tuple(totals)

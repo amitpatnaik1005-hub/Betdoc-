@@ -406,8 +406,9 @@ class OpportunityOrchestrator:
             raise
 
         finally:
-            with contextlib.suppress(Exception):
-                await stream.aclose()
+            if hasattr(stream, "aclose"):
+                with contextlib.suppress(Exception):
+                    await stream.aclose()
 
     def _handle_message(self, message: ConsumedMessage[MarketOpportunity]) -> None:
         """Freshness-gate then offer. Synchronous so the ack is not delayed."""

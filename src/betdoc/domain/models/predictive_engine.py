@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass
-from typing import List
 
 from betdoc.domain.math.errors import DomainMathError
 
@@ -23,7 +22,7 @@ def _finite(value: float, label: str) -> float:
 class TeamMetrics:
     team_id: str
     elo_rating: float
-    form_last_5: List[float]
+    form_last_5: list[float]
     days_rest: int
     home_advantage_weight: float
     offensive_efficiency: float
@@ -89,7 +88,7 @@ class MultiFactorPredictiveEngine:
         exponent = self.fatigue_decay_rate * days_rest * days_rest
         return math.exp(-min(exponent, 745.0))
 
-    def calculate_form_momentum(self, form: List[float]) -> float:
+    def calculate_form_momentum(self, form: list[float]) -> float:
         """Exponentially weighted mean; the last observation is most recent."""
         if len(form) > 5:
             raise DomainMathError(

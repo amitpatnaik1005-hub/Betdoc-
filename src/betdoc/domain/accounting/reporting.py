@@ -40,33 +40,18 @@ as 0.0 reads as "no risk-adjusted edge" when the truth is "not enough data".
 
 from __future__ import annotations
 
-
-
 import logging
-
 from typing import Any, Final
 
-
-
 import polars as pl
-
 from pydantic import BaseModel, ConfigDict
 
-
-
 from betdoc.domain.accounting.types import (
-
     AccountingError,
-
     CurrencyCode,
-
     Money,
-
     from_micros,
-
 )
-
-
 
 __all__ = ["PerformanceRow", "ReportGenerator"]
 

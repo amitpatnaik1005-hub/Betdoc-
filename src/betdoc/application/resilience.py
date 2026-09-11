@@ -301,7 +301,7 @@ def with_circuit_breaker(
             msg = f"retry loop for {circuit_name!r} exited without a result"
             raise RuntimeError(msg)  # pragma: no cover
 
-        wrapper.circuit_breaker = active
+        wrapper.circuit_breaker = active  # type: ignore[attr-defined]
         return wrapper
 
     return decorator

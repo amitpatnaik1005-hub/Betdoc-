@@ -69,49 +69,26 @@ as though they were learned would be a fabrication.
 
 from __future__ import annotations
 
-
-
 import logging
-
 import math
-
 from dataclasses import dataclass
-
 from typing import Any, Final
 
-
-
 import arviz as az
-
 import numpy as np
-
 import polars as pl
-
 import pymc as pm
-
 import pytensor.tensor as pt
-
 from scipy.special import gammaln
 
-
-
 from betdoc.domain.modeling.archetypes.base import BayesianArchetype
-
 from betdoc.domain.modeling.types import (
-
     MATCH_SCHEMA,
-
     ModelUpdateError,
-
     SamplerConfig,
-
     SportArchetype,
-
     validate_frame,
-
 )
-
-
 
 __all__ = ["DynamicCricketArchetype", "ResourceCurve"]
 
@@ -975,15 +952,26 @@ class DynamicCricketArchetype(BayesianArchetype):
 
     def _fit_gamma_moments(samples: np.ndarray) -> tuple[float, float]:
 
-        """Method of moments Gamma fit, returning ``(alpha, beta)``."""
+        """Method of moments Gamma fit, returning ``(alpha, beta)``.
+
+        When variance is negligible (e.g. a completed innings where every
+        projected draw equals the observed total), returns a very concentrated
+        Gamma centered on the mean rather than a degenerate (0, 0) which would
+        represent an undefined distribution.
+        """
 
         mean = float(samples.mean())
 
         variance = float(samples.var())
 
-        if variance <= 0 or mean <= 0:
+        if mean <= 0:
 
-            return 0.0, 0.0
+            return 1e-6, 1.0
+
+        if variance < 1e-6:
+
+            # Concentrate the distribution tightly around the observed mean.
+            return 1000.0, 1000.0 / mean
 
         alpha = mean**2 / variance
 

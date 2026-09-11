@@ -1,50 +1,621 @@
-version: "3.9"
+# ==============================================================================
+
+# BetDoc — production topology
+
+#
+
+# All services sit on one isolated bridge network. Only Nginx publishes ports
+
+# to the host; every other service is reachable exclusively by service name on
+
+# betdoc_net. This means a compromised API container cannot reach Postgres on
+
+# the host's loopback, and the broker is never exposed off-box.
+
+# ==============================================================================
+
+
+
+# Shared log rotation. An unbounded json-file driver is the single most common
+
+# cause of a full disk on a trading box: at HFT tick volume the worker emits
+
+# hundreds of MB/hour, and a full /var/lib/docker wedges every container on the
+
+# host simultaneously.
+
+x-logging: &default-logging
+
+  driver: "json-file"
+
+  options:
+
+    max-size: "10m"
+
+    max-file: "3"
+
+
+
+# File descriptor ceiling. Each WebSocket odds subscriber, Kafka partition
+
+# connection and PG pool member consumes an fd; the Debian default of 1024 is
+
+# exhausted by a few thousand concurrent subscribers and manifests as
+
+# "Too many open files" rather than anything diagnostic.
+
+x-ulimits: &default-ulimits
+
+  nofile:
+
+    soft: 65536
+
+    hard: 65536
+
+
 
 services:
-  postgres:
-    image: timescale/timescaledb:latest-pg16
-    restart: unless-stopped
-    environment:
-      POSTGRES_USER: quant
-      POSTGRES_PASSWORD: quant
-      POSTGRES_DB: betting_quant
-    ports:
-      - "5432:5432"
+
+  # ----------------------------------------------------------------------------
+
+  # Redpanda — Kafka-compatible broker, C++ / seastar, no JVM and no GC pauses.
+
+  # ----------------------------------------------------------------------------
+
+  redpanda:
+
+    image: redpandadata/redpanda:v24.2.7
+
+    container_name: betdoc-redpanda
+
+    command:
+
+      - redpanda
+
+      - start
+
+      - --smp
+
+      - "1"
+
+      - --memory
+
+      - 1G
+
+      - --reserve-memory
+
+      - 0M
+
+      - --overprovisioned
+
+      - --node-id
+
+      - "0"
+
+      - --kafka-addr
+
+      - PLAINTEXT://0.0.0.0:29092
+
+      - --advertise-kafka-addr
+
+      - PLAINTEXT://redpanda:29092
+
+      - --check=false
+
+    networks:
+
+      - betdoc_net
+
     volumes:
-      - pgdata:/var/lib/postgresql/data
+
+      - redpanda_data:/var/lib/redpanda/data
+
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U quant"]
-      interval: 5s
+
+      # Required: betdoc-worker declares condition: service_healthy against
+
+      # this service, which Compose rejects outright if no healthcheck exists.
+
+      # `rpk cluster health` returns non-zero until the controller leader is
+
+      # elected, which is the actual readiness signal — a TCP port check
+
+      # passes several seconds before the broker will accept a produce.
+
+      test: ["CMD-SHELL", "rpk cluster health | grep -E 'Healthy:.+true' || exit 1"]
+
+      interval: 10s
+
       timeout: 5s
-      retries: 10
+
+      retries: 12
+
+      start_period: 20s
+
+    restart: unless-stopped
+
+    ulimits: *default-ulimits
+
+    logging: *default-logging
+
+    deploy:
+
+      resources:
+
+        limits:
+
+          cpus: "1"
+
+          memory: 1500M
+
+        reservations:
+
+          memory: 1G
+
+
+
+  # ----------------------------------------------------------------------------
+
+  # PostgreSQL 16 + pgvector. The pgvector/pgvector image is the plain postgres
+
+  # image with the extension compiled in; postgres:16 would fail at
+
+  # CREATE EXTENSION vector.
+
+  # ----------------------------------------------------------------------------
+
+  postgres:
+
+    image: pgvector/pgvector:pg16
+
+    container_name: betdoc-postgres
+
+    command:
+
+      - postgres
+
+      - -c
+
+      - shared_buffers=256MB
+
+      - -c
+
+      - max_connections=200
+
+      - -c
+
+      - work_mem=16MB
+
+      - -c
+
+      - synchronous_commit=on
+
+      - -c
+
+      - wal_compression=on
+
+    environment:
+
+      POSTGRES_USER: betdoc
+
+      POSTGRES_DB: betdoc
+
+      # Sourced from .env / secrets manager. Never inline a credential here.
+
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set}
+
+      POSTGRES_INITDB_ARGS: "--data-checksums"
+
+      PGDATA: /var/lib/postgresql/data/pgdata
+
+    networks:
+
+      - betdoc_net
+
+    volumes:
+
+      - postgres_data:/var/lib/postgresql/data
+
+      - ./infra/postgres/init:/docker-entrypoint-initdb.d:ro
+
+    healthcheck:
+
+      test: ["CMD-SHELL", "pg_isready -U betdoc -d betdoc"]
+
+      interval: 10s
+
+      timeout: 5s
+
+      retries: 5
+
+      start_period: 30s
+
+    restart: unless-stopped
+
+    ulimits: *default-ulimits
+
+    logging: *default-logging
+
+    deploy:
+
+      resources:
+
+        limits:
+
+          cpus: "2"
+
+          memory: 2G
+
+        reservations:
+
+          memory: 512M
+
+
+
+  # ----------------------------------------------------------------------------
+
+  # Redis — hot odds cache and distributed lock registry.
+
+  # ----------------------------------------------------------------------------
 
   redis:
-    image: redis/redis-stack-server:latest   # includes Streams, TimeSeries, JSON
-    restart: unless-stopped
-    ports:
-      - "6379:6379"
-    volumes:
-      - redisdata:/data
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 5s
-      timeout: 5s
-      retries: 10
 
-  app:
-    build: .
+    image: redis:7.4-alpine
+
+    container_name: betdoc-redis
+
+    command:
+
+      - redis-server
+
+      - --maxmemory
+
+      - 256mb
+
+      - --maxmemory-policy
+
+      - allkeys-lru
+
+      - --appendonly
+
+      - "no"
+
+      - --save
+
+      - ""
+
+      - --tcp-keepalive
+
+      - "60"
+
+    networks:
+
+      - betdoc_net
+
+    healthcheck:
+
+      test: ["CMD", "redis-cli", "ping"]
+
+      interval: 10s
+
+      timeout: 3s
+
+      retries: 5
+
+      start_period: 5s
+
     restart: unless-stopped
-    env_file: .env
-    ports:
-      - "8000:8000"
+
+    ulimits: *default-ulimits
+
+    logging: *default-logging
+
+    deploy:
+
+      resources:
+
+        limits:
+
+          cpus: "1"
+
+          memory: 384M
+
+
+
+  # ----------------------------------------------------------------------------
+
+  # FastAPI application server.
+
+  # ----------------------------------------------------------------------------
+
+  betdoc-api:
+
+    build:
+
+      context: .
+
+      dockerfile: Dockerfile
+
+      target: runner
+
+    image: betdoc/api:${BETDOC_VERSION:-latest}
+
+    container_name: betdoc-api
+
     depends_on:
+
       postgres:
+
         condition: service_healthy
+
       redis:
+
         condition: service_healthy
+
+    environment:
+
+      BETDOC_DATABASE_URL: postgresql+asyncpg://betdoc:${POSTGRES_PASSWORD}@postgres:5432/betdoc
+
+      BETDOC_REDIS_URL: redis://redis:6379/0
+
+      BETDOC_KAFKA_BOOTSTRAP: redpanda:29092
+
+      BETDOC_LOG_LEVEL: ${BETDOC_LOG_LEVEL:-INFO}
+
+    networks:
+
+      - betdoc_net
+
+    expose:
+
+      - "8000"
+
+    # No `ports:` — Nginx is the only ingress. Publishing 8000 to the host
+
+    # would bypass the rate limiter and TLS termination entirely.
+
+    read_only: true
+
+    tmpfs:
+
+      - /tmp:rw,noexec,nosuid,size=512m
+
+    security_opt:
+
+      - no-new-privileges:true
+
+    cap_drop:
+
+      - ALL
+
+    restart: unless-stopped
+
+    ulimits: *default-ulimits
+
+    logging: *default-logging
+
+    deploy:
+
+      resources:
+
+        limits:
+
+          cpus: "2"
+
+          memory: 2G
+
+        reservations:
+
+          memory: 512M
+
+
+
+  # ----------------------------------------------------------------------------
+
+  # Inference worker. Hard CPU and memory ceilings matter more here than
+
+  # anywhere else: an unbounded PyMC sampler with 4 chains on a wide host will
+
+  # allocate until the *host* OOM-killer fires, and the kernel will not
+
+  # necessarily pick this container as its victim.
+
+  # ----------------------------------------------------------------------------
+
+  betdoc-worker:
+
+    build:
+
+      context: .
+
+      dockerfile: Dockerfile
+
+      target: runner
+
+    image: betdoc/worker:${BETDOC_VERSION:-latest}
+
+    container_name: betdoc-worker
+
+    command: ["python", "-m", "betdoc.infrastructure.daemon.worker"]
+
+    depends_on:
+
+      redpanda:
+
+        condition: service_healthy
+
+      postgres:
+
+        condition: service_healthy
+
+    environment:
+
+      BETDOC_DATABASE_URL: postgresql+asyncpg://betdoc:${POSTGRES_PASSWORD}@postgres:5432/betdoc
+
+      BETDOC_KAFKA_BOOTSTRAP: redpanda:29092
+
+      BETDOC_KAFKA_TOPIC: match_state_updates
+
+      BETDOC_KAFKA_GROUP: betdoc-inference
+
+      BETDOC_DLQ_PATH: /app/var/dlq/match_state_updates.dlq.jsonl
+
+      BETDOC_ARTIFACT_DIR: /app/var/artifacts
+
+      BETDOC_INFERENCE_WORKERS: "2"
+
+      BETDOC_LOG_LEVEL: ${BETDOC_LOG_LEVEL:-INFO}
+
+    networks:
+
+      - betdoc_net
+
     volumes:
-      - ./src:/app/src
+
+      - worker_artifacts:/app/var
+
+    tmpfs:
+
+      - /tmp:rw,noexec,nosuid,size=1g
+
+    security_opt:
+
+      - no-new-privileges:true
+
+    cap_drop:
+
+      - ALL
+
+    # SIGTERM must reach the daemon and the in-flight offset commit must land.
+
+    # 60s covers the worst case: finish the current inference, commit, drain.
+
+    stop_grace_period: 60s
+
+    restart: unless-stopped
+
+    ulimits: *default-ulimits
+
+    logging: *default-logging
+
+    deploy:
+
+      resources:
+
+        limits:
+
+          cpus: "2"
+
+          memory: 4G
+
+        reservations:
+
+          cpus: "1"
+
+          memory: 1G
+
+
+
+  # ----------------------------------------------------------------------------
+
+  # Nginx perimeter.
+
+  # ----------------------------------------------------------------------------
+
+  nginx:
+
+    image: nginx:1.27-alpine
+
+    container_name: betdoc-nginx
+
+    depends_on:
+
+      - betdoc-api
+
+    ports:
+
+      - "80:80"
+
+      - "443:443"
+
+    networks:
+
+      - betdoc_net
+
+    volumes:
+
+      - ./infra/nginx.conf:/etc/nginx/nginx.conf:ro
+
+      - ./infra/ssl:/etc/ssl:ro
+
+      - nginx_cache:/var/cache/nginx
+
+    healthcheck:
+
+      test: ["CMD-SHELL", "nginx -t || exit 1"]
+
+      interval: 30s
+
+      timeout: 5s
+
+      retries: 3
+
+    restart: unless-stopped
+
+    ulimits: *default-ulimits
+
+    logging: *default-logging
+
+    deploy:
+
+      resources:
+
+        limits:
+
+          cpus: "1"
+
+          memory: 256M
+
+
+
+networks:
+
+  betdoc_net:
+
+    name: betdoc_net
+
+    driver: bridge
+
+    ipam:
+
+      driver: default
+
+      config:
+
+        - subnet: 172.28.0.0/16
+
+    driver_opts:
+
+      com.docker.network.bridge.name: br-betdoc
+
+      com.docker.network.driver.mtu: "1500"
+
+
 
 volumes:
-  pgdata:
-  redisdata:
+
+  postgres_data:
+
+    name: betdoc_postgres_data
+
+  redpanda_data:
+
+    name: betdoc_redpanda_data
+
+  worker_artifacts:
+
+    name: betdoc_worker_artifacts
+
+  nginx_cache:
+
+    name: betdoc_nginx_cache

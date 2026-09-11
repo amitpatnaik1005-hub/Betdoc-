@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import asyncio
 from datetime import UTC, datetime, timedelta
-from typing import Final
 
 import aiosqlite
 import structlog
@@ -45,7 +44,7 @@ class SqliteExposureLedger:
     async def _init_schema(self) -> None:
         if self._pool is None:
             return
-        
+
         await self._pool.executescript("""
             CREATE TABLE IF NOT EXISTS open_exposures (
                 idempotency_key TEXT PRIMARY KEY,
@@ -73,22 +72,22 @@ class SqliteExposureLedger:
     async def realized_loss_today_paise(self, *, profile_id: str, as_of: datetime) -> int:
         if self._pool is None:
             raise RuntimeError("Database not connected")
-            
+
         utc_date = as_of.astimezone(UTC).date().isoformat()
-        
+
         async with self._pool.execute(
             "SELECT SUM(net_pnl) FROM settlements WHERE profile_id = ? AND settled_date = ?",
             (profile_id, utc_date)
         ) as cursor:
             row = await cursor.fetchone()
             net_pnl = row[0] if row and row[0] is not None else 0
-            
+
         return -net_pnl if net_pnl < 0 else 0
 
     async def open_exposure_paise(self, *, profile_id: str, sport_type: str) -> int:
         if self._pool is None:
             raise RuntimeError("Database not connected")
-            
+
         async with self._pool.execute(
             "SELECT SUM(stake_paise) FROM open_exposures WHERE profile_id = ? AND sport_type = ?",
             (profile_id, sport_type)
@@ -103,7 +102,7 @@ class SqliteExposureLedger:
             raise ValueError("stake_paise must be positive")
 
         placed_at = self._clock.now().astimezone(UTC).isoformat()
-        
+
         try:
             await self._pool.execute(
                 """
@@ -142,13 +141,13 @@ class SqliteExposureLedger:
 
         try:
             await self._pool.execute("BEGIN TRANSACTION")
-            
+
             # Move from open to settled
             await self._pool.execute(
-                "DELETE FROM open_exposures WHERE idempotency_key = ?", 
+                "DELETE FROM open_exposures WHERE idempotency_key = ?",
                 (idempotency_key,)
             )
-            
+
             await self._pool.execute(
                 """
                 INSERT INTO settlements (idempotency_key, profile_id, sport_type, stake_paise, payout_paise, net_pnl, settled_at, settled_date)
@@ -157,12 +156,12 @@ class SqliteExposureLedger:
                 """,
                 (idempotency_key, profile_id, sport_type, stake_paise, payout_paise, net_pnl, settled_iso, settled_date)
             )
-            
+
             await self._pool.commit()
-            
+
             # Asynchronously trigger prune (fire and forget)
-            asyncio.create_task(self._prune_old_days())
-            
+            self._prune_task = asyncio.create_task(self._prune_old_days())
+
         except Exception as e:
             await self._pool.rollback()
             self._log.error("ledger.settlement_failed", error=str(e), idempotency_key=idempotency_key)
@@ -171,7 +170,7 @@ class SqliteExposureLedger:
     async def _prune_old_days(self) -> None:
         if self._pool is None:
             return
-            
+
         cutoff = (self._clock.now() - timedelta(days=self._retain_days)).date().isoformat()
         try:
             await self._pool.execute(

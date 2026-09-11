@@ -91,9 +91,10 @@ from betdoc.domain.intelligence.account_models import (
 )
 from betdoc.domain.intelligence.advisor_models import MarketOpportunity
 from betdoc.infrastructure.ledger.paper_ledger import PaperLedger
-from betdoc.presentation.api.routers.board import BoardBridge, router as board_router
 from betdoc.presentation.api.app import build_api
 from betdoc.presentation.api.broadcaster import CompositeNotifier, WebsocketBroadcaster
+from betdoc.presentation.api.routers.board import BoardBridge
+from betdoc.presentation.api.routers.board import router as board_router
 from betdoc.services.advisor.twin_engine import TwinAdvisorConfig, TwinAdvisorService
 
 __all__ = ["main", "run"]
@@ -504,7 +505,7 @@ async def _run(settings: Settings, shutdown: asyncio.Event) -> None:
         server = uvicorn.Server(
             uvicorn.Config(api_app, host="127.0.0.1", port=8000, log_config=None, lifespan="off")
         )
-        server.install_signal_handlers = False
+        server.install_signal_handlers = False  # type: ignore[attr-defined]
 
         async def _uvicorn_watcher() -> None:
             await shutdown.wait()

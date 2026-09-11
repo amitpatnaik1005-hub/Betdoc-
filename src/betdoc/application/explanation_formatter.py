@@ -27,7 +27,7 @@ class RiskExplanationFormatter:
         constraints = decision.constraints
 
         match reason:
-            case RejectionReason.DAILY_LOSS_LIMIT:
+            case RejectionReason.DAILY_LOSS_LIMIT_REACHED:
                 budget = self._format_inr(constraints.daily_loss_headroom_paise)
                 if rejected:
                     return (
@@ -43,7 +43,7 @@ class RiskExplanationFormatter:
                     "action: accept the reduced stake."
                 )
 
-            case RejectionReason.EXPOSURE_LIMIT:
+            case RejectionReason.OVEREXPOSURE_ON_SPORT:
                 headroom = self._format_inr(
                     min(
                         constraints.sport_exposure_headroom_paise,
@@ -56,7 +56,7 @@ class RiskExplanationFormatter:
                     f"stake exceeds the cap. Suggested alternative: {approved}."
                 )
 
-            case RejectionReason.SINGLE_STAKE_LIMIT:
+            case RejectionReason.EXCEEDS_SINGLE_STAKE_CAP:
                 cap = self._format_inr(constraints.single_stake_cap_paise)
                 if rejected:
                     return (
@@ -76,7 +76,7 @@ class RiskExplanationFormatter:
                     "strictly enforced."
                 )
 
-            case RejectionReason.UNACCEPTABLE_VOLATILITY:
+            case RejectionReason.EXTREME_NEWS_VOLATILITY:
                 return f"Rejected: {decision.detail}."
 
         assert_never(reason)

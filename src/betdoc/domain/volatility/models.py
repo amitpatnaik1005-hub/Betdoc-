@@ -1,6 +1,9 @@
 from __future__ import annotations
+
 from datetime import UTC, datetime
+
 from pydantic import BaseModel, ConfigDict, Field, field_validator
+
 
 class OddsTick(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")

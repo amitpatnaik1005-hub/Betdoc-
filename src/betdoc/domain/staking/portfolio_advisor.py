@@ -2,9 +2,8 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass
-from decimal import Decimal, ROUND_DOWN, localcontext
+from decimal import ROUND_DOWN, Decimal, localcontext
 from threading import RLock
-from typing import Dict, List, Optional, Tuple
 
 from betdoc.domain.math.errors import (
     DomainMathError,
@@ -86,9 +85,9 @@ class SessionPortfolio:
     total_allocated_stake: Decimal
     stop_loss_threshold: Decimal
     expected_session_roi: float
-    allocations: List[AllocatedBet]
+    allocations: list[AllocatedBet]
     is_session_feasible: bool
-    abort_reason: Optional[str] = None
+    abort_reason: str | None = None
 
 
 @dataclass(frozen=True)
@@ -151,12 +150,12 @@ class PortfolioSessionAdvisor:
         self._multiplier: Decimal = Decimal(str(multiplier))
         self._risk_fraction: Decimal = Decimal(str(risk))
         self._single_cap: Decimal = Decimal(str(single_cap))
-        self._bankroll_paise: Optional[int] = None
+        self._bankroll_paise: int | None = None
         self._equity_paise: int = 0
         self._peak_equity_paise: int = 0
         self._loss_limit_paise: int = 0
-        self._reservations: Dict[str, int] = {}
-        self._settlements: Dict[str, int] = {}
+        self._reservations: dict[str, int] = {}
+        self._settlements: dict[str, int] = {}
         self._halted: bool = False
         self._lock = RLock()
 
@@ -248,7 +247,7 @@ class PortfolioSessionAdvisor:
     def generate_session_portfolio(
         self,
         session_bankroll: Decimal,
-        candidates: List[CandidateBet],
+        candidates: list[CandidateBet],
     ) -> SessionPortfolio:
         bankroll = _money(session_bankroll, "session_bankroll")
 
@@ -296,7 +295,7 @@ class PortfolioSessionAdvisor:
                 )
 
             seen: set[str] = set()
-            scored: List[_ScoredCandidate] = []
+            scored: list[_ScoredCandidate] = []
 
             for candidate in candidates:
                 if (
@@ -335,7 +334,7 @@ class PortfolioSessionAdvisor:
                     "No unused positive-EV candidates have a whole-paise stake.",
                 )
 
-            desired: List[Tuple[_ScoredCandidate, Decimal]] = [
+            desired: list[tuple[_ScoredCandidate, Decimal]] = [
                 (item, Decimal(bankroll) * item.fraction)
                 for item in selected
             ]
@@ -344,8 +343,8 @@ class PortfolioSessionAdvisor:
             )
             scale = min(Decimal("1"), Decimal(budget) / total_desired)
 
-            allocations: List[AllocatedBet] = []
-            new_reservations: Dict[str, int] = {}
+            allocations: list[AllocatedBet] = []
+            new_reservations: dict[str, int] = {}
             total_stake = 0
             total_expected_profit = 0
 

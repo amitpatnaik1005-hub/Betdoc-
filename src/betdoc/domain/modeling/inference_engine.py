@@ -15,51 +15,28 @@ into an expected value and a Kelly stake.
 
 from __future__ import annotations
 
-
-
 import asyncio
-
 import logging
-
+from collections.abc import Mapping
 from dataclasses import dataclass
-
-from typing import Any, Final, Mapping
-
-
+from typing import Any, Final
 
 import polars as pl
 
-
-
 from betdoc.domain.modeling.archetypes.base import BayesianArchetype
-
 from betdoc.domain.modeling.archetypes.bradley_terry_h2h import BradleyTerryArchetype
-
 from betdoc.domain.modeling.archetypes.dynamic_cricket import DynamicCricketArchetype
-
 from betdoc.domain.modeling.archetypes.gaussian_spread import GaussianSpreadArchetype
-
 from betdoc.domain.modeling.archetypes.plackett_luce_racing import (
-
     PlackettLuceArchetype,
-
 )
-
 from betdoc.domain.modeling.archetypes.poisson_discrete import PoissonDiscreteArchetype
-
 from betdoc.domain.modeling.types import (
-
     ModelUpdateError,
-
     SamplerConfig,
-
     SportArchetype,
-
     TrainingDiagnostics,
-
 )
-
-
 
 __all__ = ["EdgeAssessment", "InferenceEngine"]
 
@@ -385,7 +362,7 @@ class InferenceEngine:
 
         bankroll: float = 1.0,
 
-    ) -> dict[str, float]:
+    ) -> dict[str, float | bool]:
 
         """Return expected value and the recommended Kelly stake fraction.
 
@@ -499,12 +476,6 @@ class InferenceEngine:
 
         )
 
-        return {
-
-            key: float(value) if not isinstance(value, bool) else float(value)
-
-            for key, value in assessment.to_dict().items()
-
-        }
+        return assessment.to_dict()
 
 

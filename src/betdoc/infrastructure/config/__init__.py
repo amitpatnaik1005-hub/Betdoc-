@@ -17,21 +17,12 @@ raised by both layers.
 
 from __future__ import annotations
 
-
-
 from betdoc.infrastructure.config.encoder import DataEncoder
-
 from betdoc.infrastructure.config.provider import (
-
     ConfigError,
-
     ConfigProvider,
-
     ServiceCredentials,
-
 )
-
-
 
 __all__ = [
 
@@ -43,5 +34,5 @@ __all__ = [
 
     "ServiceCredentials",
 
-] 
+]
 
