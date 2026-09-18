@@ -337,6 +337,8 @@ services:
       dockerfile: Dockerfile
 
       target: runner
+    ports:
+      - '8000:8000'
 
     image: betdoc/api:${BETDOC_VERSION:-latest}
 
@@ -357,10 +359,13 @@ services:
       BETDOC_DATABASE_URL: postgresql+asyncpg://betdoc:${POSTGRES_PASSWORD}@postgres:5432/betdoc
 
       BETDOC_REDIS_URL: redis://redis:6379/0
+      BETDOC_PAPER_LEDGER_PATH: /tmp/betdoc-paper.sqlite3
 
       BETDOC_KAFKA_BOOTSTRAP: redpanda:29092
 
       BETDOC_LOG_LEVEL: ${BETDOC_LOG_LEVEL:-INFO}
+      OPENAI_API_KEY: ${OPENAI_API_KEY}
+      BETDOC_INGESTOR_API_KEY: ${BETDOC_INGESTOR_API_KEY}
 
     networks:
 
@@ -465,6 +470,8 @@ services:
       BETDOC_INFERENCE_WORKERS: "2"
 
       BETDOC_LOG_LEVEL: ${BETDOC_LOG_LEVEL:-INFO}
+      OPENAI_API_KEY: ${OPENAI_API_KEY}
+      BETDOC_INGESTOR_API_KEY: ${BETDOC_INGESTOR_API_KEY}
 
     networks:
 

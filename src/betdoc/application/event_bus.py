@@ -280,7 +280,8 @@ class EventBus:
                     handled = True
                 finally:
                     if handled and not message.acknowledged:
-                        await self.acknowledge(message)
+                        await self.acknowledge_id(stream_name, group_name, message_id)
+                        message.mark_acknowledged()
                     elif not handled:
                         log.warning(
                             "event_bus.left_pending",

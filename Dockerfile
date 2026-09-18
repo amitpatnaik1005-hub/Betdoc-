@@ -204,7 +204,7 @@ COPY --from=builder --chown=root:root /opt/venv /opt/venv
 
 
 
-ENV PATH="/opt/venv/bin:${PATH}" \
+ENV PYTHONPATH="/app/src" PATH="/opt/venv/bin:${PATH}" \
 
     PYTHONUNBUFFERED=1 \
 
@@ -302,10 +302,7 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=40s --retries=3 \
 
 
 
-CMD ["uvicorn", "betdoc.infrastructure.api.app:app", \
+CMD ["python", "-m", "betdoc.main"]
 
-     "--host", "0.0.0.0", "--port", "8000", \
 
-     "--workers", "1", "--loop", "uvloop", "--http", "httptools", \
 
-     "--no-access-log", "--timeout-keep-alive", "65"]

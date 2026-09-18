@@ -95,6 +95,7 @@ from betdoc.presentation.api.app import build_api
 from betdoc.presentation.api.broadcaster import CompositeNotifier, WebsocketBroadcaster
 from betdoc.presentation.api.routers.board import BoardBridge
 from betdoc.presentation.api.routers.board import router as board_router
+from betdoc.presentation.api.routers import oracle, telemetry
 from betdoc.services.advisor.twin_engine import TwinAdvisorConfig, TwinAdvisorService
 
 __all__ = ["main", "run"]
@@ -498,12 +499,20 @@ async def _run(settings: Settings, shutdown: asyncio.Event) -> None:
 
         # in-flight Redis message is abandoned.
 
+        from betdoc.infrastructure.database.database import engine, Base
+        async with engine.begin() as conn:
+            await conn.run_sync(Base.metadata.create_all)
+            
         api_app = build_api(store=store, broadcaster=broadcaster, profile_id=_PROFILE_ID)
         api_app.state.board_bridge = board_bridge
         api_app.include_router(board_router)
+        api_app.include_router(oracle.router)
+        api_app.include_router(telemetry.router)
+        from betdoc.presentation.api.routers import ledger
+        api_app.include_router(ledger.router)
         api_app.description = "Advisor projections and a local-only paper ledger. No sportsbook execution."
         server = uvicorn.Server(
-            uvicorn.Config(api_app, host="127.0.0.1", port=8000, log_config=None, lifespan="off")
+            uvicorn.Config(api_app, host="0.0.0.0", port=8000, log_config=None, lifespan="off")
         )
         server.install_signal_handlers = False  # type: ignore[attr-defined]
 
