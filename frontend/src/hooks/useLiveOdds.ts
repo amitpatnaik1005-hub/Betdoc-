@@ -29,7 +29,8 @@ function isOddsTick(value: unknown): value is OddsTick {
     typeof value.team_away === 'string' &&
     (value.market_type === 'spread' ||
       value.market_type === 'moneyline' ||
-      value.market_type === 'total') &&
+      value.market_type === 'total' ||
+      value.market_type === 'h2h') &&
     isFiniteNumber(value.sportsbook_odds) &&
     isProbability(value.implied_probability) &&
     isProbability(value.model_win_chance) &&

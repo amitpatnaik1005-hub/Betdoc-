@@ -148,6 +148,7 @@ interface BetState {
   revision: number;
   walletReady: boolean;
   oracleHistory: ScoutMessage[];
+  oracleLoading: boolean;
   contextMarketId: string | null;
   selectedMarket: BoardMarket | null;
   pending: PendingPlacement | null;
@@ -158,7 +159,10 @@ interface BetState {
   selectMarket: (market: BoardMarket) => void;
   closeBetslip: () => void;
   appendMessage: (message: ScoutMessage) => void;
-  reserve: (payload: LedgerPlacement, stakePaise: number) => void;
+  updateMessage: (id: string, content: string) => void;
+  setOracleLoading: (loading: boolean) => void;
+  reserve: (payload: LedgerPlacement, stakePaise: number) => Promise<void>;
+  fetchWallet: () => Promise<void>;
   reconcile: (snapshot: WalletSnapshot) => void;
   setSocketConnected: (connected: boolean) => void;
   updateTick: (tick: OddsTick, type?: OddsMessage['type']) => void;
@@ -173,6 +177,7 @@ export const useBetStore = create<BetState>()(
       revision: -1,
       walletReady: false,
       oracleHistory: [],
+      oracleLoading: false,
       contextMarketId: null,
       selectedMarket: null,
       pending: null,
@@ -205,7 +210,28 @@ export const useBetStore = create<BetState>()(
             : [...state.oracleHistory, message],
         })),
 
-      reserve: (payload, stakePaise) => {
+      updateMessage: (id, content) =>
+        set((state) => ({
+          oracleHistory: state.oracleHistory.map(
+            (item) => item.id === id ? { ...item, content } : item
+          ),
+        })),
+
+      setOracleLoading: (loading) => set({ oracleLoading: loading }),
+
+      fetchWallet: async () => {
+        try {
+          const res = await fetch('/api/v1/ledger/wallet');
+          if (res.ok) {
+            const data: WalletSnapshot = await res.json();
+            get().reconcile(data);
+          }
+        } catch (e) {
+          console.error('Failed to fetch wallet:', e);
+        }
+      },
+
+      reserve: async (payload, stakePaise) => {
         const state = get();
 
         if (
@@ -226,6 +252,40 @@ export const useBetStore = create<BetState>()(
           bankroll: state.bankroll - stakePaise,
           lastReceipt: null,
         });
+
+        try {
+          const res = await fetch('/api/v1/ledger/place', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              idempotency_key: payload.idempotency_key,
+              market_id: payload.market_id,
+              stake_paise: stakePaise,
+              model_used: payload.model_used,
+              sport: "soccer"
+            })
+          });
+          if (res.ok) {
+            const data: WalletSnapshot = await res.json();
+            get().reconcile(data);
+          } else {
+             get().reconcile({
+                balance_paise: state.bankroll + stakePaise,
+                revision: state.revision + 1,
+                currency: 'INR',
+                mode: 'paper',
+                receipt: { idempotency_key: payload.idempotency_key, status: 'rejected', reason: 'Server error' }
+             });
+          }
+        } catch (e) {
+           get().reconcile({
+              balance_paise: state.bankroll + stakePaise,
+              revision: state.revision + 1,
+              currency: 'INR',
+              mode: 'paper',
+              receipt: { idempotency_key: payload.idempotency_key, status: 'rejected', reason: 'Network error' }
+           });
+        }
       },
 
       reconcile: (snapshot) =>
