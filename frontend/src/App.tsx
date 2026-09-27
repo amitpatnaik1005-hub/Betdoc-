@@ -1,6 +1,5 @@
-import { lazy, Suspense, useCallback, useEffect, useId, useState, type ReactElement, } from 'react';
-import { AnimatePresence, LayoutGroup, motion, useReducedMotion } from 'framer-motion';
-import { BRAND, AnimatedGlyph, type GlyphMotion, BetdocLogo as BrandLogo } from './ui/brand';
+import { lazy, Suspense, useCallback, useEffect, useId, useState, type ReactElement } from 'react';
+import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
 import {
   BrowserRouter,
   Navigate,
@@ -8,29 +7,34 @@ import {
   Outlet,
   Route,
   Routes,
+  useLocation,
 } from 'react-router-dom';
 
+import { BRAND, AnimatedGlyph, type GlyphMotion, BetdocLogo as BrandLogo } from './ui/brand';
 import { useBetStore as useBankrollStore } from './store/useBetStore';
+import { useUIStore } from './store/useUIStore';
 import { formatINR, formatSignedINR, paiseToRupees } from './pages/BetHistory';
-import { IdempotentBetslip } from './components/betslip/IdempotentBetslip';
+import ExecutionTerminal from './components/ExecutionTerminal';
 import { ScoutDrawer as EmbeddedScout } from './components/oracle/ScoutDrawer';
+import LoginForm from './components/LoginForm';
+import { useAuthStore } from './store/useAuthStore';
 
-const OddsGrid = lazy(() => import('./components/board/OddsGrid').then(m => ({ default: m.OddsGrid })));
-const BetHistory = lazy(() => import('./pages/BetHistory'));
-const TopModels = lazy(() =>
-  import('./pages/TopModels').then((m) => ({ default: m.TopModels })),
-);
+const CommandCenter = lazy(() => import('./pages/CommandCenter').then(m => ({ default: m.CommandCenter })));
+const TheArena = lazy(() => import('./pages/TheArena').then(m => ({ default: m.TheArena })));
+const TheLab = lazy(() => import('./pages/TheLab').then(m => ({ default: m.TheLab })));
+const TheVault = lazy(() => import('./pages/TheVault').then(m => ({ default: m.TheVault })));
+const TheWire = lazy(() => import('./pages/TheWire').then(m => ({ default: m.TheWire })));
+const Core = lazy(() => import('./pages/Core').then(m => ({ default: m.Core })));
+const TheHive = lazy(() => import('./pages/TheHive').then(m => ({ default: m.TheHive })));
+const TheOracle = lazy(() => import('./pages/TheOracle').then(m => ({ default: m.TheOracle })));
+const Phantom = lazy(() => import('./pages/Phantom').then(m => ({ default: m.Phantom })));
+const TheArchive = lazy(() => import('./pages/TheArchive').then(m => ({ default: m.TheArchive })));
+const ControlPanel = lazy(() => import('./pages/ControlPanel').then(m => ({ default: m.ControlPanel })));
 
-
-const NAV_ITEMS = [
-  { to: '/board', label: 'Odds Board', hint: 'LIVE PRICING', icon: 'dashboard' },
-  { to: '/history', label: 'Trade Ledger', hint: 'SETTLED + OPEN', icon: 'receipt_long' },
-  { to: '/models', label: 'Models', hint: 'POSTERIOR RANKS', icon: 'query_stats' },
-] as const;
-
+// ---------------------------------------------------------------------------
+// UTILITIES PRESERVED FROM ORIGINAL
+// ---------------------------------------------------------------------------
 const glide = { type: 'spring', stiffness: 380, damping: 34, mass: 0.8 } as const;
-
-
 
 type Theme = 'light' | 'dark';
 const THEME_KEY = 'betdoc:theme';
@@ -81,15 +85,7 @@ const BrandMark = ({ size = 24, loop = false, className = '' }: BrandMarkProps):
       : { duration: 1.1, times: [0, 0.8, 1, 1], ease: [0.22, 1, 0.36, 1] as any };
 
   return (
-    <svg
-      viewBox="0 0 24 24"
-      width={size}
-      height={size}
-      fill="none"
-      className={className}
-      role="img"
-      aria-label="BetDoc"
-    >
+    <svg viewBox="0 0 24 24" width={size} height={size} fill="none" className={className} role="img" aria-label="BetDoc">
       <defs>
         <linearGradient id={gradientId} x1="0" y1="1" x2="1" y2="0">
           <stop offset="0%" stopColor={BRAND.azure} />
@@ -105,7 +101,6 @@ const BrandMark = ({ size = 24, loop = false, className = '' }: BrandMarkProps):
         </filter>
       </defs>
 
-      {/* Pulse line resolving into an ascending arrow, one continuous stroke */}
       <motion.path
         d="M3 16h3l2.5-6 3 9 2.5-6 6-6"
         stroke={`url(#${gradientId})`}
@@ -127,13 +122,8 @@ const BrandMark = ({ size = 24, loop = false, className = '' }: BrandMarkProps):
         transition={{ ...drawTransition, delay: reduceMotion ? 0 : 0.25 }}
       />
 
-      {/* Signal dot at the arrow tip, ambient breath */}
       <motion.circle
-        cx="20"
-        cy="7"
-        r="1.4"
-        fill={BRAND.violet}
-        filter={`url(#${glowId})`}
+        cx="20" cy="7" r="1.4" fill={BRAND.violet} filter={`url(#${glowId})`}
         initial={reduceMotion ? false : { scale: 0, opacity: 0 }}
         animate={
           reduceMotion
@@ -151,17 +141,13 @@ const BrandMark = ({ size = 24, loop = false, className = '' }: BrandMarkProps):
   );
 };
 
-
-
 type Tone = 'neutral' | 'positive' | 'negative' | 'caution';
-
 const TONE_STYLE: Record<Tone, { readonly icon: string; readonly value: string }> = {
   neutral: { icon: 'text-slate-400 dark:text-slate-500', value: 'text-slate-900 dark:text-slate-50' },
   positive: { icon: 'text-emerald-500', value: 'text-emerald-600 dark:text-emerald-400' },
   negative: { icon: 'text-rose-500', value: 'text-rose-600 dark:text-rose-400' },
   caution: { icon: 'text-amber-500', value: 'text-amber-600 dark:text-amber-400' },
 };
-
 
 interface StatTileProps {
   readonly label: string;
@@ -172,181 +158,7 @@ interface StatTileProps {
   readonly changeKey: number;
 }
 
-
-const SidebarNav = (): ReactElement => {
-  const reduceMotion = useReducedMotion();
-
-  return (
-    <nav aria-label="Primary" className="flex-1 overflow-y-auto px-3 py-2 scrollbar-hide">
-      <LayoutGroup id="sidebar-nav">
-        <ul className="flex flex-col gap-1">
-          {NAV_ITEMS.map(({ to, label, icon }) => (
-            <li key={to}>
-              <NavLink
-                to={to}
-                className={({ isActive }) =>
-                  [
-                    'group relative flex w-full items-center gap-4 rounded-xl px-4 py-3 outline-none',
-                    'transition-colors duration-300',
-                    isActive
-                      ? 'bg-[#C89B3C]/10 text-[#C89B3C] dark:bg-[#C89B3C]/15 dark:text-[#E0B85A]'
-                      : 'text-slate-500 hover:bg-slate-900/[0.04] hover:text-slate-900 dark:text-[#8A8783] dark:hover:bg-white/[0.04] dark:hover:text-[#E8E6E3]',
-                    BRAND.ring,
-                  ].join(' ')
-                }
-              >
-                {({ isActive }) => (
-                  <>
-                    {isActive && (
-                      <motion.span
-                        layoutId="sidebar-active-bar"
-                        transition={reduceMotion ? { duration: 0 } : glide}
-                        className={`absolute left-0 top-1/2 h-6 w-[3px] -translate-y-1/2 rounded-r-full ${BRAND.gradient} shadow-[0_0_12px_rgba(200,155,60,0.8)]`}
-                        aria-hidden="true"
-                      />
-                    )}
-
-                    <span
-                      className={[
-                        'material-symbols-outlined relative z-10 shrink-0 text-[22px] leading-none',
-                        'transition-[color,filter] duration-300',
-                        isActive
-                          ? 'drop-shadow-[0_0_8px_rgba(200,155,60,0.55)]'
-                          : 'group-hover:drop-shadow-[0_0_6px_rgba(200,155,60,0.25)]',
-                      ].join(' ')}
-                      style={{ fontVariationSettings: `'FILL' ${isActive ? 1 : 0}, 'wght' 400` }}
-                      aria-hidden="true"
-                    >
-                      {icon}
-                    </span>
-
-                    <span className="relative z-10 truncate text-sm font-semibold tracking-wide">
-                      {label}
-                    </span>
-                  </>
-                )}
-              </NavLink>
-            </li>
-          ))}
-        </ul>
-      </LayoutGroup>
-    </nav>
-  );
-};
-
-const SidebarFooter = ({
-  theme,
-  onToggleTheme,
-}: {
-  readonly theme: Theme;
-  readonly onToggleTheme: () => void;
-}): ReactElement => {
-  const reduceMotion = useReducedMotion();
-  const [, setHovered] = useState(false);
-  const isDark = theme === 'dark';
-  const label = isDark ? 'Light mode' : 'Dark mode';
-
-  return (
-    <div className="flex flex-col items-center gap-3 px-4 pb-7 pt-4">
-      <span aria-hidden="true" className="h-px w-8 bg-slate-200 dark:bg-white/10" />
-
-      <div
-        className="relative"
-        onMouseEnter={() => setHovered(true)}
-        onMouseLeave={() => setHovered(false)}
-        onFocus={() => setHovered(true)}
-        onBlur={() => setHovered(false)}
-      >
-        <motion.button
-          type="button"
-          onClick={onToggleTheme}
-          aria-label={label}
-          aria-pressed={isDark}
-          whileHover={reduceMotion ? undefined : { scale: 1.06 }}
-          whileTap={{ scale: 0.92 }}
-          transition={glide}
-          className="group relative grid size-12 place-items-center overflow-hidden rounded-2xl bg-white dark:bg-white/[0.04] ring-1 ring-inset ring-slate-200 dark:ring-white/10 outline-none transition-colors hover:bg-slate-50 dark:hover:bg-white/[0.08] focus-visible:ring-2 focus-visible:ring-[#C89B3C]/60 focus-visible:ring-offset-2 focus-visible:ring-offset-white dark:focus-visible:ring-offset-slate-950"
-        >
-          <AnimatePresence mode="wait" initial={false}>
-            <motion.span
-              key={theme}
-              initial={reduceMotion ? false : { rotate: -90, opacity: 0, y: 8 }}
-              animate={{ rotate: 0, opacity: 1, y: 0 }}
-              exit={reduceMotion ? undefined : { rotate: 90, opacity: 0, y: -8 }}
-              transition={glide}
-              className={[
-                'material-symbols-outlined text-[22px] leading-none',
-                isDark ? 'text-[#C89B3C]' : 'text-slate-400 group-hover:text-slate-600',
-              ].join(' ')}
-              style={{ fontVariationSettings: "'FILL' 1, 'wght' 400" }}
-              aria-hidden="true"
-            >
-              {isDark ? 'light_mode' : 'dark_mode'}
-            </motion.span>
-          </AnimatePresence>
-        </motion.button>
-      </div>
-    </div>
-  );
-};
-
-const Sidebar = ({
-  theme,
-  onToggleTheme,
-}: {
-  readonly theme: Theme;
-  readonly onToggleTheme: () => void;
-}): ReactElement => (
-  <aside className="sticky top-0 z-40 flex h-screen w-64 shrink-0 flex-col overflow-visible border-r border-slate-900/[0.06] bg-[#FDFCFB] dark:border-white/[0.06] dark:bg-[#161514]">
-    <div className="flex items-center px-6 pb-6 pt-8">
-      <BrandLogo variant="full" />
-    </div>
-    <SidebarNav />
-    <SidebarFooter theme={theme} onToggleTheme={onToggleTheme} />
-  </aside>
-);
-
-type SocketStatus = 'connecting' | 'live' | 'stalled' | 'offline';
-
-const SOCKET_STYLE = {
-  live: {
-    dot: 'bg-emerald-500',
-    halo: 'bg-emerald-500/40 animate-ping',
-    text: 'text-emerald-600 dark:text-emerald-400',
-    label: 'Live feed',
-  },
-  connecting: {
-    dot: 'bg-[#C89B3C] animate-pulse',
-    halo: '',
-    text: 'text-[#C89B3C] dark:text-[#E0B85A]',
-    label: 'Connecting',
-  },
-  stalled: {
-    dot: 'bg-[#C89B3C]',
-    halo: '',
-    text: 'text-[#C89B3C] dark:text-[#E0B85A]',
-    label: 'Feed stalled',
-  },
-  offline: {
-    dot: 'bg-slate-300 dark:bg-slate-600',
-    halo: '',
-    text: 'text-slate-400 dark:text-slate-500',
-    label: 'Offline',
-  },
-} as const satisfies Record<
-  SocketStatus,
-  { readonly dot: string; readonly halo: string; readonly text: string; readonly label: string }
->;
-
-
-const StatTile = ({
-  label,
-  value,
-  icon,
-  motionPreset,
-  tone = 'neutral',
-  changeKey,
-}: StatTileProps): ReactElement => {
+const StatTile = ({ label, value, icon, motionPreset, tone = 'neutral', changeKey }: StatTileProps): ReactElement => {
   const reduceMotion = useReducedMotion();
   const t = TONE_STYLE[tone];
 
@@ -374,6 +186,14 @@ const StatTile = ({
     </div>
   );
 };
+
+type SocketStatus = 'connecting' | 'live' | 'stalled' | 'offline';
+const SOCKET_STYLE = {
+  live: { dot: 'bg-emerald-500', halo: 'bg-emerald-500/40 animate-ping', text: 'text-emerald-600 dark:text-emerald-400', label: 'Live feed' },
+  connecting: { dot: 'bg-[#C89B3C] animate-pulse', halo: '', text: 'text-[#C89B3C] dark:text-[#E0B85A]', label: 'Connecting' },
+  stalled: { dot: 'bg-[#C89B3C]', halo: '', text: 'text-[#C89B3C] dark:text-[#E0B85A]', label: 'Feed stalled' },
+  offline: { dot: 'bg-slate-300 dark:bg-slate-600', halo: '', text: 'text-slate-400 dark:text-slate-500', label: 'Offline' },
+} as const satisfies Record<SocketStatus, { readonly dot: string; readonly halo: string; readonly text: string; readonly label: string }>;
 
 const StageHeader = (): ReactElement => {
   const balancePaise = useBankrollStore((s: any) => s.bankroll * 100);
@@ -413,9 +233,7 @@ const StageHeader = (): ReactElement => {
           </h1>
           <div className="mt-1 flex items-center gap-2" role="status" aria-live="polite">
             <span className="relative flex size-2 shrink-0" aria-hidden="true">
-              {socket.halo && (
-                <span className={`absolute inline-flex size-full rounded-full ${socket.halo}`} />
-              )}
+              {socket.halo && <span className={`absolute inline-flex size-full rounded-full ${socket.halo}`} />}
               <span className={`relative inline-flex size-2 rounded-full ${socket.dot}`} />
             </span>
             <p className={`text-[11px] font-medium tracking-wide ${socket.text}`}>
@@ -428,41 +246,16 @@ const StageHeader = (): ReactElement => {
       </div>
 
       <div className="flex divide-x divide-slate-200/70 rounded-2xl bg-white ring-1 ring-slate-900/[0.06] dark:divide-white/[0.06] dark:bg-white/[0.04] dark:ring-white/[0.08]">
-        <StatTile
-          label="Bankroll"
-          value={formatINR(paiseToRupees(balancePaise))}
-          icon="account_balance_wallet"
-          motionPreset="breathe"
-          tone="positive"
-          changeKey={balancePaise}
-        />
-        <StatTile
-          label="Exposure"
-          value={formatINR(paiseToRupees(exposurePaise))}
-          icon="inventory_2"
-          motionPreset="sway"
-          tone="caution"
-          changeKey={exposurePaise}
-        />
-        <StatTile
-          label="Session"
-          value={formatSignedINR(dayPnl)}
-          icon={pnlIcon}
-          motionPreset="drift"
-          tone={pnlTone}
-          changeKey={dayPnlPaise}
-        />
+        <StatTile label="Bankroll" value={formatINR(paiseToRupees(balancePaise))} icon="account_balance_wallet" motionPreset="breathe" tone="positive" changeKey={balancePaise} />
+        <StatTile label="Exposure" value={formatINR(paiseToRupees(exposurePaise))} icon="inventory_2" motionPreset="sway" tone="caution" changeKey={exposurePaise} />
+        <StatTile label="Session" value={formatSignedINR(dayPnl)} icon={pnlIcon} motionPreset="drift" tone={pnlTone} changeKey={dayPnlPaise} />
       </div>
     </header>
   );
 };
 
 const FALLBACK_QUIPS = [
-  'Repricing the book',
-  'Sharpening the edge',
-  'Syncing the ledger',
-  'Warming the models',
-  'Reading the tape',
+  'Repricing the book', 'Sharpening the edge', 'Syncing the ledger', 'Warming the models', 'Reading the tape',
 ] as const;
 
 const RouteFallback = (): ReactElement => {
@@ -478,12 +271,7 @@ const RouteFallback = (): ReactElement => {
   const bars = [BRAND.azure, BRAND.dominant, BRAND.violet];
 
   return (
-    <div
-      role="status"
-      aria-live="polite"
-      aria-label="Loading"
-      className="flex min-h-[60vh] w-full flex-col items-center justify-center gap-8 px-8"
-    >
+    <div role="status" aria-live="polite" aria-label="Loading" className="flex min-h-[60vh] w-full flex-col items-center justify-center gap-8 px-8">
       <motion.div
         initial={reduceMotion ? false : { opacity: 0, scale: 0.92, y: 8 }}
         animate={{ opacity: 1, scale: 1, y: 0 }}
@@ -507,10 +295,7 @@ const RouteFallback = (): ReactElement => {
       </motion.div>
 
       <div className="flex flex-col items-center gap-3">
-        <p className={`text-[30px] font-extrabold leading-none tracking-[-0.04em] ${BRAND.gradientText}`}>
-          BetDoc
-        </p>
-
+        <p className={`text-[30px] font-extrabold leading-none tracking-[-0.04em] ${BRAND.gradientText}`}>BetDoc</p>
         <div className="flex h-5 items-center overflow-hidden">
           <AnimatePresence mode="wait" initial={false}>
             <motion.p
@@ -522,13 +307,7 @@ const RouteFallback = (): ReactElement => {
               className="text-[12px] font-medium tabular-nums text-slate-500 dark:text-slate-400"
             >
               {FALLBACK_QUIPS[quip]}
-              <motion.span
-                aria-hidden="true"
-                animate={reduceMotion ? undefined : { opacity: [0, 1, 0] }}
-                transition={{ duration: 1.2, repeat: Infinity, ease: 'easeInOut' as any }}
-              >
-                …
-              </motion.span>
+              <motion.span aria-hidden="true" animate={reduceMotion ? undefined : { opacity: [0, 1, 0] }} transition={{ duration: 1.2, repeat: Infinity, ease: 'easeInOut' as any }}>…</motion.span>
             </motion.p>
           </AnimatePresence>
         </div>
@@ -536,37 +315,162 @@ const RouteFallback = (): ReactElement => {
 
       <div className="flex items-end gap-1.5" aria-hidden="true">
         {bars.map((color, i) => (
-          <motion.span
-            key={color}
-            className="w-1.5 rounded-full"
-            style={{ backgroundColor: color, height: 18 }}
-            animate={reduceMotion ? undefined : { scaleY: [0.4, 1, 0.4] }}
-            transition={{
-              duration: 0.9,
-              repeat: Infinity,
-              delay: i * 0.15,
-              ease: 'easeInOut' as any,
-            }}
-          />
+          <motion.span key={color} className="w-1.5 rounded-full" style={{ backgroundColor: color, height: 18 }} animate={reduceMotion ? undefined : { scaleY: [0.4, 1, 0.4] }} transition={{ duration: 0.9, repeat: Infinity, delay: i * 0.15, ease: 'easeInOut' as any }} />
         ))}
       </div>
     </div>
   );
 };
 
-const ExecutionPanel = (): ReactElement => (
-  <aside className="z-20 flex w-[380px] shrink-0 flex-col border-l border-slate-200/60 bg-white shadow-[-10px_0_40px_rgba(0,0,0,0.04)] h-screen dark:border-white/[0.06] dark:bg-[#161514]">
-    <div className="flex-none max-h-[55%] overflow-y-auto">
-      <IdempotentBetslip />
-    </div>
-    <div className="h-px shrink-0 bg-slate-200/60 dark:bg-white/[0.06]" />
-    <div className="flex-1 min-h-0 flex flex-col">
-      <EmbeddedScout />
-    </div>
-  </aside>
+// ---------------------------------------------------------------------------
+// NEW LAYOUT AND ROUTING FROM ASTRA
+// ---------------------------------------------------------------------------
+const SPRING = { type: 'spring', stiffness: 350, damping: 30 } as const;
+
+const NAV_ITEMS = [
+  { to: '/command-center', label: 'Command Center', icon: 'dashboard',       bot: 'KAUTILYA' },
+  { to: '/arena',          label: 'The Arena',      icon: 'sports_esports',  bot: 'BAJIRAO'  },
+  { to: '/oracle',         label: 'Oracle',         icon: 'auto_awesome',    bot: 'KAUTILYA' },
+  { to: '/lab',            label: 'The Lab',        icon: 'science',         bot: 'ARYABHATA'},
+  { to: '/hive',           label: 'The Hive',       icon: 'hive',            bot: 'VIDUR'    },
+  { to: '/vault',          label: 'The Vault',      icon: 'account_balance', bot: 'TODAR MAL'},
+  { to: '/phantom',        label: 'Phantom',        icon: 'blur_on',         bot: 'BAJIRAO'  },
+  { to: '/wire',           label: 'The Wire',       icon: 'newspaper',       bot: 'VIDUR'    },
+  { to: '/archive',        label: 'Archive',        icon: 'inventory_2',     bot: 'TODAR MAL'},
+  { to: '/core',           label: 'Core',           icon: 'memory',          bot: 'PRATAP'   },
+  { to: '/control-panel',  label: 'Control Panel',  icon: 'settings',        bot: 'KAUTILYA' },
+] as const;
+
+const SidebarNav = ({ collapsed }: { collapsed: boolean }) => (
+  <nav className="flex-1 overflow-y-auto px-3 py-2 scrollbar-hide">
+    <ul className="flex flex-col gap-1">
+      {NAV_ITEMS.map(({ to, label, icon }) => (
+        <li key={to}>
+          <NavLink
+            to={to}
+            className={({ isActive }) =>
+              [
+                'group flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-colors duration-150',
+                isActive
+                  ? 'text-white'
+                  : 'text-slate-500 hover:bg-slate-100 dark:hover:bg-white/5 hover:text-slate-900 dark:hover:text-white',
+              ].join(' ')
+            }
+            style={({ isActive }) =>
+              isActive
+                ? {
+                    background: `linear-gradient(135deg, ${BRAND.dominant}, ${BRAND.azure})`,
+                    boxShadow: `0 2px 12px ${BRAND.azure}55`,
+                  }
+                : {}
+            }
+          >
+            {({ isActive }) => (
+              <>
+                <span
+                  className={[
+                    'material-symbols-outlined shrink-0 text-xl transition-all',
+                    collapsed ? 'mx-auto' : '',
+                    isActive ? 'text-white' : '',
+                  ].join(' ')}
+                >
+                  {icon}
+                </span>
+                <motion.span
+                  className="whitespace-nowrap overflow-hidden leading-none"
+                  animate={{
+                    opacity: collapsed ? 0 : 1,
+                    width: collapsed ? 0 : 'auto',
+                    marginLeft: collapsed ? 0 : undefined,
+                  }}
+                  transition={SPRING}
+                >
+                  {label}
+                </motion.span>
+              </>
+            )}
+          </NavLink>
+        </li>
+      ))}
+    </ul>
+  </nav>
 );
 
-const AppShell = (): ReactElement => {
+const Sidebar = ({ theme, onToggleTheme }: { theme: string; onToggleTheme: () => void; }) => {
+  const { isLeftCollapsed, toggleLeft } = useUIStore();
+
+  return (
+    <motion.aside
+      layout
+      animate={{ width: isLeftCollapsed ? 80 : 264 }}
+      transition={SPRING}
+      className="sticky top-0 z-40 flex h-screen shrink-0 flex-col border-r border-slate-200 dark:border-white/10 bg-[#FDFCFB] dark:bg-[#161514] overflow-hidden"
+    >
+      <div className="flex items-center px-4 pb-6 pt-8 overflow-hidden">
+        <AnimatePresence mode="wait">
+          {!isLeftCollapsed ? (
+            <motion.div key="full-logo" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.15 }}>
+              <BrandLogo variant="full" />
+            </motion.div>
+          ) : (
+            <motion.div key="mark-logo" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.15 }} className="mx-auto">
+              <BrandLogo variant="mark" />
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </div>
+
+      <SidebarNav collapsed={isLeftCollapsed} />
+
+      <div className="flex flex-col gap-1 border-t border-slate-200 dark:border-white/10 p-3">
+        <button onClick={onToggleTheme} className="flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm text-slate-500 hover:bg-slate-100 dark:hover:bg-white/5 transition-colors" title="Toggle theme">
+          <span className="material-symbols-outlined shrink-0 text-xl">{theme === 'dark' ? 'light_mode' : 'dark_mode'}</span>
+          <motion.span className="whitespace-nowrap overflow-hidden" animate={{ opacity: isLeftCollapsed ? 0 : 1, width: isLeftCollapsed ? 0 : 'auto' }} transition={SPRING}>
+            {theme === 'dark' ? 'Light Mode' : 'Dark Mode'}
+          </motion.span>
+        </button>
+        <button onClick={toggleLeft} className="flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm text-slate-400 hover:bg-slate-100 dark:hover:bg-white/5 transition-colors" title={isLeftCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}>
+          <motion.span className="material-symbols-outlined shrink-0 text-xl" animate={{ rotate: isLeftCollapsed ? 180 : 0 }} transition={SPRING}>chevron_left</motion.span>
+          <motion.span className="whitespace-nowrap overflow-hidden" animate={{ opacity: isLeftCollapsed ? 0 : 1, width: isLeftCollapsed ? 0 : 'auto' }} transition={SPRING}>
+            Collapse
+          </motion.span>
+        </button>
+      </div>
+    </motion.aside>
+  );
+};
+
+const ExecutionPanel = () => {
+  const { isRightCollapsed, toggleRight } = useUIStore();
+
+  return (
+    <motion.aside
+      layout
+      animate={{ width: isRightCollapsed ? 80 : 380 }}
+      transition={SPRING}
+      className="z-20 flex shrink-0 flex-col border-l border-slate-200 dark:border-white/10 bg-white dark:bg-[#161514] h-screen overflow-hidden"
+    >
+      {isRightCollapsed ? (
+        <div className="flex flex-col items-center gap-4 pt-6">
+          <button onClick={toggleRight} title="Expand panel" className="flex h-10 w-10 items-center justify-center rounded-xl text-slate-400 hover:bg-slate-100 dark:hover:bg-white/5 transition-colors"><span className="material-symbols-outlined text-xl">chevron_left</span></button>
+          <button onClick={toggleRight} title="Open Betslip" className="flex h-10 w-10 items-center justify-center rounded-xl text-slate-400 hover:bg-slate-100 dark:hover:bg-white/5 transition-colors"><span className="material-symbols-outlined text-xl">receipt_long</span></button>
+          <button onClick={toggleRight} title="Open Scout Oracle" className="flex h-10 w-10 items-center justify-center rounded-xl text-slate-400 hover:bg-slate-100 dark:hover:bg-white/5 transition-colors"><span className="material-symbols-outlined text-xl">chat</span></button>
+        </div>
+      ) : (
+        <motion.div className="flex flex-col h-full w-[380px]" initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.2 }}>
+          <div className="flex items-center justify-between border-b border-slate-200 dark:border-white/10 px-4 py-3 shrink-0">
+            <span className="text-xs font-bold uppercase tracking-widest" style={{ color: BRAND.azure }}>Execution Panel</span>
+            <button onClick={toggleRight} title="Collapse panel" className="flex h-7 w-7 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 dark:hover:bg-white/5 transition-colors"><span className="material-symbols-outlined text-base">chevron_right</span></button>
+          </div>
+          <div className="flex-none max-h-[55%] overflow-y-auto"><ExecutionTerminal /></div>
+          <div className="flex-1 min-h-0 flex flex-col"><EmbeddedScout /></div>
+        </motion.div>
+      )}
+    </motion.aside>
+  );
+};
+
+const AppShell = () => {
   const { theme, toggle } = useTheme();
 
   useEffect(() => {
@@ -576,53 +480,115 @@ const AppShell = (): ReactElement => {
   return (
     <div className="flex h-screen w-full overflow-hidden bg-[#F8F6F0] text-slate-900 antialiased selection:bg-[#C89B3C]/30 dark:bg-[#121110] dark:text-[#E8E6E3]">
       <Sidebar theme={theme} onToggleTheme={toggle} />
-      <div className="relative flex min-w-0 flex-1 flex-col overflow-y-auto">
+      <motion.main
+        layout
+        transition={SPRING}
+        className="relative flex min-w-0 flex-1 flex-col overflow-y-auto overflow-x-hidden"
+      >
         <StageHeader />
-        <main className="flex-1 px-8 pb-10">
+        <div className="flex-1 px-8 pb-10">
           <Suspense fallback={<RouteFallback />}>
             <Outlet />
           </Suspense>
-        </main>
-      </div>
+        </div>
+      </motion.main>
       <ExecutionPanel />
     </div>
   );
 };
 
-const NotFound = (): ReactElement => (
-  <div className="mx-auto max-w-md rounded-3xl bg-white px-8 py-16 text-center shadow-[0_8px_30px_rgb(0,0,0,0.04)] dark:bg-white/[0.04]">
-    <span className="mx-auto grid size-14 place-items-center rounded-2xl bg-rose-50 dark:bg-rose-950/30">
-      <span
-        className="material-symbols-outlined text-[26px] leading-none text-rose-600 dark:text-rose-400"
-        aria-hidden="true"
+const AnimatedRoute = ({ children }: { children: React.ReactNode }) => {
+  const location = useLocation();
+  return (
+    <AnimatePresence mode="wait">
+      <motion.div
+        key={location.pathname}
+        initial={{ opacity: 0, y: 10 }}
+        animate={{ opacity: 1, y: 0 }}
+        exit={{ opacity: 0, y: -10 }}
+        transition={{ duration: 0.18 }}
+        className="h-full"
       >
-        report
-      </span>
-    </span>
-    <p className="mt-4 font-mono text-[10px] font-bold uppercase tracking-[0.24em] text-rose-600 dark:text-rose-400">
-      404
-    </p>
-    <h2 className="mt-2 text-xl font-black tracking-tighter text-slate-900 dark:text-slate-50">
-      No such instrument
-    </h2>
-    <p className="mt-1.5 text-[13px] text-slate-500 dark:text-slate-400">
-      That route is not mounted on this terminal.
-    </p>
-  </div>
-);
+        {children}
+      </motion.div>
+    </AnimatePresence>
+  );
+};
 
-const App = (): ReactElement => (
-  <BrowserRouter>
-    <Routes>
-      <Route element={<AppShell />}>
-        <Route index element={<Navigate to="/board" replace />} />
-        <Route path="/board" element={<OddsGrid />} />
-        <Route path="/history" element={<BetHistory />} />
-        <Route path="/models" element={<TopModels />} />
-        <Route path="*" element={<NotFound />} />
+const App = () => {
+  const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
+
+  if (!isAuthenticated) {
+    return <LoginForm />;
+  }
+
+  return (
+    <BrowserRouter>
+      <Routes>
+        <Route element={<AppShell />}>
+          <Route index element={<Navigate replace to="/command-center" />} />
+        
+        <Route path="/command-center" element={
+          <AnimatedRoute>
+            <CommandCenter />
+          </AnimatedRoute>
+        } />
+        <Route path="/arena" element={
+          <AnimatedRoute>
+            <TheArena />
+          </AnimatedRoute>
+        } />
+        <Route path="/lab" element={
+          <AnimatedRoute>
+            <TheLab />
+          </AnimatedRoute>
+        } />
+        <Route path="/vault" element={
+          <AnimatedRoute>
+            <TheVault />
+          </AnimatedRoute>
+        } />
+        <Route path="/wire" element={
+          <AnimatedRoute>
+            <TheWire />
+          </AnimatedRoute>
+        } />
+        <Route path="/core" element={
+          <AnimatedRoute>
+            <Core />
+          </AnimatedRoute>
+        } />
+        <Route path="/hive" element={
+          <AnimatedRoute>
+            <TheHive />
+          </AnimatedRoute>
+        } />
+        <Route path="/oracle" element={
+          <AnimatedRoute>
+            <TheOracle />
+          </AnimatedRoute>
+        } />
+        <Route path="/phantom" element={
+          <AnimatedRoute>
+            <Phantom />
+          </AnimatedRoute>
+        } />
+        <Route path="/archive" element={
+          <AnimatedRoute>
+            <TheArchive />
+          </AnimatedRoute>
+        } />
+        <Route path="/control-panel" element={
+          <AnimatedRoute>
+            <ControlPanel />
+          </AnimatedRoute>
+        } />
+        
+        <Route path="*" element={<Navigate replace to="/command-center" />} />
       </Route>
     </Routes>
   </BrowserRouter>
-);
+  );
+};
 
 export default App;
