@@ -1,6 +1,6 @@
 from fastapi import APIRouter
 
-from app.api.v1 import auth, bet, exchange, ingestion, ws, execution, admin, odds, engine, capital, bet_calculator, oracle, vault, arena, market_signals, dashboard
+from app.api.v1 import auth, bet, exchange, ingestion, ws, execution, admin, odds, engine, capital, bet_calculator, oracle, vault, arena, market_signals, dashboard, the_wire
 
 api_router = APIRouter(prefix="/api/v1")
 
@@ -20,3 +20,4 @@ api_router.include_router(vault.router, prefix="/vault")
 api_router.include_router(arena.router, prefix="/arena")
 api_router.include_router(market_signals.router, prefix="/signals")
 api_router.include_router(dashboard.router, prefix="/dashboard")
+api_router.include_router(the_wire.router, prefix="/the-wire")
