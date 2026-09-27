@@ -4,7 +4,12 @@ from math import prod
 
 from pydantic import ValidationError
 
-from app.domain.bet_types.calculator import calculate_potential_return, structure_combinations
+from app.domain.bet_types.calculator import (
+    calculate_total_stake,
+    line_stake,
+    number_of_bets,
+    structure_combinations,
+)
 from app.domain.math.utilities import kelly_criterion
 from app.domain.oracle.temperature import calculate_risk_temperature
 from app.domain.risk.common import safe_float
@@ -114,12 +119,12 @@ class AshokaOracle:
                 continue  # dust for this leg; budget may still fund the next one
 
             try:
-                structure = SingleBet(unit_stake=stake, leg=leg)
+                structure = SingleBet(stake=stake, leg=leg)
             except ValidationError as exc:
                 ashoka_log.warning("Core single rejected for leg %s: %s", leg.leg_id, exc.errors())
                 continue
 
-            cost = calculate_potential_return(structure).total_cost
+            cost = calculate_total_stake(structure)
             ev = structure_true_ev(structure)
             suggestions.append(
                 OracleSuggestion(
@@ -142,21 +147,21 @@ class AshokaOracle:
             if convexity_budget > 0.0:
                 satellite = self._build_satellite(valid_legs[:n_legs], convexity_budget)
                 if satellite is not None:
-                    calc = calculate_potential_return(satellite)
+                    cost = calculate_total_stake(satellite)
                     ev = structure_true_ev(satellite)  # PHASE 5
                     suggestions.append(
                         OracleSuggestion(
                             structure=satellite,
                             total_ev_pct=round(ev * 100.0, 4),
-                            capital_allocated=round(calc.total_cost, 4),
+                            capital_allocated=round(cost, 4),
                             rationale=(
                                 f"SATELLITE {satellite.structure_type}: {n_legs} uncorrelated legs, "
-                                f"{calc.number_of_bets} lines @ {satellite.unit_stake:.4f}, "
+                                f"{number_of_bets(satellite)} lines @ {float(line_stake(satellite)):.4f}, "
                                 f"avg fold EV={ev:+.2%} (assumes leg independence)"
                             ),
                         )
                     )
-                    current_fiat_deployed += calc.total_cost
+                    current_fiat_deployed += cost
 
         # PHASE 6: Output
         ashoka_log.info(
@@ -221,7 +226,7 @@ class AshokaOracle:
                 unit_stake = floor_money(min(budget, MAX_UNIT_STAKE))
                 if unit_stake < self.min_stake:
                     return None
-                return ParlayBet(unit_stake=unit_stake, legs=system_legs)
+                return ParlayBet(stake=unit_stake, legs=system_legs)
 
             structure_cls = SYSTEMS_WITHOUT_SINGLES.get(n)
             if structure_cls is None:

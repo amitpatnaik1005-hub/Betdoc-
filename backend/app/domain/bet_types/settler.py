@@ -1,11 +1,33 @@
-from math import prod
+from decimal import Decimal
 
-from app.domain.bet_types.calculator import money, safe_odds, structure_combinations
-from app.domain.risk.common import safe_float
-from app.schemas.bet_structures import AnyBetStructure, EachWayBet, LayBet, ParlayBet, SingleBet
-from app.schemas.bet_types import BaseLeg, LegSettlementContext, LegStatus, SettlementResult
+from app.domain.bet_types.calculator import (
+    ONE,
+    ZERO,
+    dprod,
+    lay_liability,
+    legs_of,
+    line_stake,
+    money,
+    safe_odds,
+    structure_combinations,
+    to_dec,
+)
+from app.schemas.bet_types import (
+    AnyBetStructure,
+    BaseLeg,
+    EachWayBet,
+    EachWayLeg,
+    LayBet,
+    LegSettlementContext,
+    LegStatus,
+    ParlayBet,
+    SettleRequest,
+    SettlementResult,
+    SingleBet,
+)
 
-_EPS = 1e-6
+TWO = Decimal(2)
+_EPS = Decimal("0.000001")
 
 _LAY_STATUS_MAP: dict[LegStatus, LegStatus] = {
     LegStatus.WON: LegStatus.LOST,
@@ -17,149 +39,210 @@ _LAY_STATUS_MAP: dict[LegStatus, LegStatus] = {
 
 
 class SettlementError(ValueError):
-    """Raised when settlement input is incomplete or invalid."""
+    """Incomplete or invalid settlement input."""
 
 
-def _pending() -> SettlementResult:
-    return SettlementResult(status=LegStatus.PENDING, payout=0.0, profit=0.0)
+# ---------- Leg math ----------
+
+def resolved_status(context: LegSettlementContext) -> LegStatus:
+    """PLAYER SCRATCH RULE: overrides any reported outcome, including PENDING."""
+    return LegStatus.VOID if context.player_did_not_participate else context.status
 
 
-def _get_context(leg: BaseLeg, contexts: dict[str, LegSettlementContext]) -> LegSettlementContext:
-    ctx = contexts.get(leg.leg_id)
+def _rule4(context: LegSettlementContext) -> Decimal:
+    r4 = to_dec(context.rule4_deduction_pct)
+    return min(max(r4, ZERO), ONE)
+
+
+def _divisor(context: LegSettlementContext) -> Decimal:
+    return Decimal(max(1, int(context.dead_heat_divisor)))
+
+
+def effective_win_odds(odds: Decimal, context: LegSettlementContext) -> Decimal:
+    """Rule 4 on profit first, then dead heat divides the whole stake."""
+    if context.player_did_not_participate:
+        return ONE
+    profit = (safe_odds(odds) - ONE) * (ONE - _rule4(context))
+    return (ONE + profit) / _divisor(context)
+
+
+def effective_place_odds(odds: Decimal, num: int, den: int, context: LegSettlementContext) -> Decimal:
+    """RULE 4 PLACE CASCADE: deducted win profit x (num/den), then dead heat."""
+    if context.player_did_not_participate:
+        return ONE
+    if den <= 0 or num < 0:
+        raise SettlementError("Invalid place terms")
+    win_profit = (safe_odds(odds) - ONE) * (ONE - _rule4(context))
+    place_profit = win_profit * Decimal(num) / Decimal(den)
+    return (ONE + place_profit) / _divisor(context)
+
+
+def _win_multiplier(leg: BaseLeg, context: LegSettlementContext) -> Decimal:
+    status = resolved_status(context)
+    odds = to_dec(leg.odds)
+    match status:
+        case LegStatus.VOID:
+            return ONE
+        case LegStatus.LOST:
+            return ZERO
+        case LegStatus.WON:
+            return effective_win_odds(odds, context)
+        case LegStatus.HALF_WON:
+            return (effective_win_odds(odds, context) + ONE) / TWO
+        case LegStatus.HALF_LOST:
+            return ONE / TWO
+    raise SettlementError(f"Leg '{leg.leg_id}' is not settled")
+
+
+def _place_multiplier(leg: EachWayLeg, context: LegSettlementContext) -> Decimal:
+    status = resolved_status(context)
+    if status == LegStatus.VOID:
+        return ONE
+    if status in (LegStatus.HALF_WON, LegStatus.HALF_LOST):
+        raise SettlementError(f"Half results are invalid for each-way leg '{leg.leg_id}'")
+    if status == LegStatus.PENDING:
+        raise SettlementError(f"Leg '{leg.leg_id}' is not settled")
+    placed = status == LegStatus.WON or (
+        context.finishing_position is not None and context.finishing_position <= leg.place_places
+    )
+    if not placed:
+        return ZERO
+    return effective_place_odds(to_dec(leg.odds), leg.place_numerator, leg.place_denominator, context)
+
+
+# ---------- Helpers ----------
+
+def _get_context(leg_id: str, contexts: dict[str, LegSettlementContext]) -> LegSettlementContext:
+    ctx = contexts.get(leg_id)
     if ctx is None:
-        raise SettlementError(f"Missing settlement context for leg '{leg.leg_id}'")
+        raise SettlementError(f"Missing settlement context for leg '{leg_id}'")
     return ctx
 
 
-def effective_win_odds(odds: float, ctx: LegSettlementContext) -> float:
-    """Rule 4 deducts from winnings only; dead heat divides the whole stake."""
-    o = safe_odds(odds)
-    dh = ctx.dead_heat_denominator if ctx.dead_heat_denominator >= 1 else 1
-    r4 = min(max(safe_float(ctx.rule4_deduction_pct), 0.0), 1.0)
-    return safe_float((1.0 + (o - 1.0) * (1.0 - r4)) / dh)
-
-
-def leg_multiplier(odds: float, ctx: LegSettlementContext) -> float:
-    """Return multiplier applied to the stake carried into this leg."""
-    match ctx.status:
-        case LegStatus.WON:
-            return effective_win_odds(odds, ctx)
-        case LegStatus.HALF_WON:
-            return (effective_win_odds(odds, ctx) + 1.0) / 2.0
-        case LegStatus.HALF_LOST:
-            return 0.5
-        case LegStatus.VOID:
-            return 1.0
-        case LegStatus.LOST:
-            return 0.0
-    raise SettlementError(f"Cannot compute multiplier for status {ctx.status}")
-
-
-def _derive_status(payout: float, cost: float) -> LegStatus:
-    if payout <= _EPS:
+def _derive_status(gross: Decimal, total: Decimal) -> LegStatus:
+    if gross <= _EPS:
         return LegStatus.LOST
-    diff = payout - cost
+    diff = gross - total
     if abs(diff) <= _EPS:
         return LegStatus.VOID
     return LegStatus.WON if diff > 0 else LegStatus.HALF_LOST
 
 
-def _settle_single(structure: SingleBet, contexts: dict[str, LegSettlementContext]) -> SettlementResult:
-    ctx = _get_context(structure.leg, contexts)
-    if ctx.status == LegStatus.PENDING:
-        return _pending()
-    stake = safe_float(structure.unit_stake)
-    payout = stake * leg_multiplier(structure.leg.odds, ctx)
-    return SettlementResult(status=ctx.status, payout=money(payout), profit=money(payout - stake))
-
-
-def _settle_combination(structure: AnyBetStructure, contexts: dict[str, LegSettlementContext]) -> SettlementResult:
-    legs: list[BaseLeg] = list(structure.legs)  # type: ignore[union-attr]
-    leg_ctx = {leg.leg_id: _get_context(leg, contexts) for leg in legs}
-    combos = structure_combinations(structure)
-    stake = safe_float(structure.unit_stake)
-    total_cost = stake * len(combos)
-    statuses = [c.status for c in leg_ctx.values()]
-
-    # A parlay with any lost leg is dead regardless of pending legs.
-    if isinstance(structure, ParlayBet) and LegStatus.LOST in statuses:
-        return SettlementResult(status=LegStatus.LOST, payout=0.0, profit=money(-total_cost))
-    if LegStatus.PENDING in statuses:
-        return _pending()
-
-    multipliers = {leg.leg_id: leg_multiplier(leg.odds, leg_ctx[leg.leg_id]) for leg in legs}
-
-    payout = 0.0
-    for combo in combos:
-        active = [leg for leg in combo if leg_ctx[leg.leg_id].status != LegStatus.VOID]
-        if not active:
-            payout += stake  # fully voided line refunds its unit stake
-            continue
-        payout += stake * prod(multipliers[leg.leg_id] for leg in active)
-
-    if all(s == LegStatus.VOID for s in statuses):
-        status = LegStatus.VOID
-    else:
-        status = _derive_status(payout, total_cost)
-    return SettlementResult(status=status, payout=money(payout), profit=money(payout - total_cost))
-
-
-def _settle_each_way(structure: EachWayBet, contexts: dict[str, LegSettlementContext]) -> SettlementResult:
-    leg = structure.leg
-    ctx = _get_context(leg, contexts)
-    stake = safe_float(structure.unit_stake)
-    total_cost = stake * 2
-
-    if ctx.status == LegStatus.PENDING:
-        return _pending()
-    if ctx.status in (LegStatus.HALF_WON, LegStatus.HALF_LOST):
-        raise SettlementError("Half results are not valid for each-way bets")
-    if ctx.status == LegStatus.VOID:
-        return SettlementResult(status=LegStatus.VOID, payout=money(total_cost), profit=0.0)
-
-    won = ctx.status == LegStatus.WON
-    placed = won or (ctx.finishing_position is not None and ctx.finishing_position <= leg.place_terms)
-    place_odds = 1.0 + (safe_odds(leg.odds) - 1.0) * safe_float(leg.place_fraction)
-
-    win_payout = stake * effective_win_odds(leg.odds, ctx) if won else 0.0
-    place_payout = stake * effective_win_odds(place_odds, ctx) if placed else 0.0
-    payout = win_payout + place_payout
-
-    status = LegStatus.WON if won else _derive_status(payout, total_cost)
-    return SettlementResult(status=status, payout=money(payout), profit=money(payout - total_cost))
-
-
-def _settle_lay(structure: LayBet, contexts: dict[str, LegSettlementContext]) -> SettlementResult:
-    ctx = _get_context(structure.leg, contexts)
-    if ctx.status == LegStatus.PENDING:
-        return _pending()
-
-    stake = safe_float(structure.unit_stake)
-    liability = stake * (safe_odds(structure.leg.odds) - 1.0)
-    backer_odds = effective_win_odds(structure.leg.odds, ctx)
-
-    backer_profit = {
-        LegStatus.WON: stake * (backer_odds - 1.0),
-        LegStatus.HALF_WON: stake * (backer_odds - 1.0) / 2.0,
-        LegStatus.LOST: -stake,
-        LegStatus.HALF_LOST: -stake / 2.0,
-        LegStatus.VOID: 0.0,
-    }[ctx.status]
-
-    layer_profit = -backer_profit
-    payout = max(0.0, liability + layer_profit)  # liability is locked up front
+def _finalize(status: LegStatus, total: Decimal, gross: Decimal, commission_pct: float) -> SettlementResult:
+    net = gross - total
+    rate = min(max(to_dec(commission_pct), ZERO), ONE)
+    commission = net * rate if net > ZERO else ZERO
+    payout = gross - commission
     return SettlementResult(
-        status=_LAY_STATUS_MAP[ctx.status],
+        status=status,
+        total_stake=money(total),
+        gross_payout=money(gross),
+        commission=money(commission),
         payout=money(payout),
-        profit=money(layer_profit),
+        profit=money(payout - total),
     )
 
 
-def settle_bet(structure: AnyBetStructure, leg_contexts: dict[str, LegSettlementContext]) -> SettlementResult:
-    if isinstance(structure, LayBet):
-        return _settle_lay(structure, leg_contexts)
-    if isinstance(structure, EachWayBet):
-        return _settle_each_way(structure, leg_contexts)
+def _pending(total: Decimal) -> SettlementResult:
+    return SettlementResult(
+        status=LegStatus.PENDING, total_stake=money(total),
+        gross_payout=0.0, commission=0.0, payout=0.0, profit=0.0,
+    )
+
+
+def _line_payout(
+    combo: tuple[BaseLeg, ...],
+    stake: Decimal,
+    statuses: dict[str, LegStatus],
+    multipliers: dict[str, Decimal],
+) -> Decimal:
+    active = [leg for leg in combo if statuses[leg.leg_id] != LegStatus.VOID]
+    if not active:
+        return stake  # VOID CASCADE: fully voided line refunds its stake
+    return stake * dprod(multipliers[leg.leg_id] for leg in active)
+
+
+# ---------- Structure settlement ----------
+
+def _settle_standard(structure: AnyBetStructure, contexts: dict[str, LegSettlementContext], commission: float) -> SettlementResult:
+    legs = legs_of(structure)
+    ctx_map = {leg.leg_id: _get_context(leg.leg_id, contexts) for leg in legs}
+    statuses = {leg_id: resolved_status(ctx) for leg_id, ctx in ctx_map.items()}
+    combos = structure_combinations(structure)
+    stake = line_stake(structure)
+    total = stake * Decimal(len(combos))
+
+    if isinstance(structure, ParlayBet) and LegStatus.LOST in statuses.values():
+        return _finalize(LegStatus.LOST, total, ZERO, commission)
+    if LegStatus.PENDING in statuses.values():
+        return _pending(total)
+
+    multipliers = {leg.leg_id: _win_multiplier(leg, ctx_map[leg.leg_id]) for leg in legs}
+    gross = sum((_line_payout(c, stake, statuses, multipliers) for c in combos), ZERO)
+
     if isinstance(structure, SingleBet):
-        return _settle_single(structure, leg_contexts)
-    return _settle_combination(structure, leg_contexts)
+        status = statuses[structure.leg.leg_id]
+    elif all(s == LegStatus.VOID for s in statuses.values()):
+        status = LegStatus.VOID
+    else:
+        status = _derive_status(gross, total)
+    return _finalize(status, total, gross, commission)
+
+
+def _settle_each_way(structure: EachWayBet, contexts: dict[str, LegSettlementContext], commission: float) -> SettlementResult:
+    inner = structure.bet
+    legs = legs_of(inner)
+    ctx_map = {leg.leg_id: _get_context(leg.leg_id, contexts) for leg in legs}
+    statuses = {leg_id: resolved_status(ctx) for leg_id, ctx in ctx_map.items()}
+    combos = structure_combinations(inner)
+    stake = line_stake(inner)
+    total = TWO * stake * Decimal(len(combos))
+
+    if LegStatus.PENDING in statuses.values():
+        return _pending(total)
+
+    win_mult = {leg.leg_id: _win_multiplier(leg, ctx_map[leg.leg_id]) for leg in legs}
+    place_mult = {
+        leg.leg_id: _place_multiplier(leg, ctx_map[leg.leg_id])  # type: ignore[arg-type]
+        for leg in legs
+    }
+    win_payout = sum((_line_payout(c, stake, statuses, win_mult) for c in combos), ZERO)
+    place_payout = sum((_line_payout(c, stake, statuses, place_mult) for c in combos), ZERO)
+    gross = win_payout + place_payout
+
+    if all(s == LegStatus.VOID for s in statuses.values()):
+        status = LegStatus.VOID
+    else:
+        status = _derive_status(gross, total)
+    return _finalize(status, total, gross, commission)
+
+
+def _settle_lay(structure: LayBet, contexts: dict[str, LegSettlementContext], commission: float) -> SettlementResult:
+    ctx = _get_context(structure.leg_id, contexts)
+    status = resolved_status(ctx)
+    liability = lay_liability(structure)
+    if status == LegStatus.PENDING:
+        return _pending(liability)
+
+    backer_stake = to_dec(structure.backer_stake)
+    backer_odds = effective_win_odds(to_dec(structure.odds), ctx)
+    backer_profit = {
+        LegStatus.WON: backer_stake * (backer_odds - ONE),
+        LegStatus.HALF_WON: backer_stake * (backer_odds - ONE) / TWO,
+        LegStatus.LOST: -backer_stake,
+        LegStatus.HALF_LOST: -backer_stake / TWO,
+        LegStatus.VOID: ZERO,
+    }[status]
+
+    layer_profit = -backer_profit
+    gross = max(ZERO, liability + layer_profit)  # liability locked up front is returned + winnings
+    return _finalize(_LAY_STATUS_MAP[status], liability, gross, commission)
+
+
+def settle_bet(request: SettleRequest) -> SettlementResult:
+    structure = request.structure
+    if isinstance(structure, LayBet):
+        return _settle_lay(structure, request.leg_contexts, request.commission_pct)
+    if isinstance(structure, EachWayBet):
+        return _settle_each_way(structure, request.leg_contexts, request.commission_pct)
+    return _settle_standard(structure, request.leg_contexts, request.commission_pct)
