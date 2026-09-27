@@ -1,0 +1,1 @@
+"""BetDoc domain layer."""
