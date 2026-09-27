@@ -4,8 +4,9 @@ from decimal import Decimal
 
 import numpy as np
 
-SETTLED_STATUSES: tuple[str, ...] = ("WON", "LOST", "VOID")
+SETTLED_STATUSES: tuple[str, ...] = ("WON", "LOST", "VOID", "HALF_WON", "HALF_LOST", "CASH_OUT")
 ACTIVE_STATUSES: tuple[str, ...] = ("PENDING", "PENDING_NETWORK", "ACCEPTED", "UNKNOWN")
+_PNL_STATUSES: frozenset[str] = frozenset({"WON", "LOST", "HALF_WON", "HALF_LOST", "CASH_OUT"})
 
 
 def safe_float(value: object) -> float:
@@ -33,11 +34,9 @@ def to_finite_array(values: Iterable[object] | None) -> np.ndarray:
 
 
 def bet_profit(status: str | None, stake: Decimal | float | None, payout: Decimal | float | None) -> float:
-    """Payout NULL Guard. VOID = 0; WON/LOST = payout - stake, or -stake if payout is NULL."""
+    """Payout NULL Guard. VOID = 0; any P&L status = payout - stake, or -stake if payout is NULL."""
     normalized = (status or "").upper()
-    if normalized == "VOID":
-        return 0.0
-    if normalized not in ("WON", "LOST"):
+    if normalized == "VOID" or normalized not in _PNL_STATUSES:
         return 0.0
     stake_f = safe_float(stake)
     if payout is None:

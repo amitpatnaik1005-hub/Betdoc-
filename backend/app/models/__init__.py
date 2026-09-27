@@ -49,7 +49,17 @@ class Base(AsyncAttrs, DeclarativeBase):
     metadata = MetaData(naming_convention=NAMING_CONVENTION)
 
 
-BET_STATUSES = ("PENDING", "WON", "LOST", "VOID")
+BET_STATUSES: tuple[str, ...] = (
+    "PENDING", "PENDING_NETWORK", "ACCEPTED", "REJECTED", "UNKNOWN",
+    "WON", "LOST", "VOID", "HALF_WON", "HALF_LOST", "CASH_OUT",
+)
+RESOLVED_BET_STATUSES: tuple[str, ...] = (
+    "WON", "LOST", "VOID", "HALF_WON", "HALF_LOST", "CASH_OUT",
+)
+
+
+def _sql_in_list(values: tuple[str, ...]) -> str:
+    return ", ".join(f"'{v}'" for v in values)
 
 
 class User(Base):
@@ -128,13 +138,9 @@ class BetLedger(Base):
         CheckConstraint("stake > 0", name="stake_positive"),
         CheckConstraint("odds > 1", name="odds_above_one"),
         CheckConstraint("true_probability >= 0 AND true_probability <= 1", name="true_probability_range"),
+        CheckConstraint(f"status IN ({_sql_in_list(BET_STATUSES)})", name="status_valid"),
         CheckConstraint(
-            "status IN ('PENDING', 'PENDING_NETWORK', 'ACCEPTED', 'REJECTED', 'UNKNOWN', 'WON', 'LOST', 'VOID')",
-            name="status_valid"
-        ),
-        CheckConstraint(
-            "(status IN ('PENDING', 'PENDING_NETWORK', 'UNKNOWN', 'ACCEPTED') AND resolved_at IS NULL AND payout IS NULL) OR "
-            "(status IN ('WON', 'LOST', 'VOID', 'REJECTED') AND resolved_at IS NOT NULL)",
+            f"status NOT IN ({_sql_in_list(RESOLVED_BET_STATUSES)}) OR resolved_at IS NOT NULL",
             name="resolution_consistent",
         ),
         CheckConstraint("payout IS NULL OR payout >= 0", name="payout_non_negative"),
@@ -180,6 +186,7 @@ class BetLedger(Base):
     status: Mapped[str] = mapped_column(String(32), default="PENDING", server_default="PENDING", index=True)
     placed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, server_default=func.now())
     resolved_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    strategy_name: Mapped[Optional[str]] = mapped_column(String(64), nullable=True, index=True)
 
     exchange_account: Mapped["ExchangeAccount"] = relationship(back_populates="bets")
 
