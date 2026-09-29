@@ -198,3 +198,5 @@ from app.models.odds import OddsSnapshot  # noqa: E402,F401
 from app.models.the_hive import BotProfileModel, HiveTaskModel, HiveTaskDependencyModel, SelfLearningLogModel  # noqa: E402,F401
 
 from app.models.the_core import CoreEngineMetricsModel, SmallcaseRegistryModel, TestBenchRunModel, BacktestJobModel
+
+from app.models.popular_picks import PopularParlayModel, ParlayReviewGateModel
