@@ -196,3 +196,5 @@ from app.models.the_lab import ResearchReportModel, ExperimentModel  # noqa: E40
 # Must stay at the bottom: odds.py imports Base from this package
 from app.models.odds import OddsSnapshot  # noqa: E402,F401
 from app.models.the_hive import BotProfileModel, HiveTaskModel, HiveTaskDependencyModel, SelfLearningLogModel  # noqa: E402,F401
+
+from app.models.the_core import CoreEngineMetricsModel, SmallcaseRegistryModel, TestBenchRunModel, BacktestJobModel
