@@ -192,5 +192,6 @@ class BetLedger(Base):
 
 from app.models.risk import StopLossConfigModel, StopLossEventModel  # noqa: E402,F401
 from app.models.market_signals import MarketTickModel  # noqa: E402,F401
+from app.models.the_lab import ResearchReportModel, ExperimentModel  # noqa: E402,F401
 # Must stay at the bottom: odds.py imports Base from this package
 from app.models.odds import OddsSnapshot  # noqa: E402,F401
