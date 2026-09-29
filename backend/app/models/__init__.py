@@ -200,3 +200,5 @@ from app.models.the_hive import BotProfileModel, HiveTaskModel, HiveTaskDependen
 from app.models.the_core import CoreEngineMetricsModel, SmallcaseRegistryModel, TestBenchRunModel, BacktestJobModel
 
 from app.models.popular_picks import PopularParlayModel, ParlayReviewGateModel
+
+from app.models.competitive_intel import CompetitorBotModel, FeatureGapAlertModel, DevSuggestionModel
