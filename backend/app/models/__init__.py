@@ -206,3 +206,5 @@ from app.models.competitive_intel import CompetitorBotModel, FeatureGapAlertMode
 from app.models.oracle_scout import OracleScoutHistoryModel
 
 from app.models.archive import ArchiveAccessLogModel
+
+from app.models.control_panel import SystemSettingsModel

@@ -1,6 +1,6 @@
 from fastapi import APIRouter
 
-from app.api.v1 import auth, bet, exchange, ingestion, ws, execution, admin, odds, engine, capital, bet_calculator, oracle, vault, arena, market_signals, dashboard, the_wire, the_lab, the_hive, the_core, popular_picks, competitive_intel, oracle_scout, archive
+from app.api.v1 import auth, bet, exchange, ingestion, ws, execution, admin, odds, engine, capital, bet_calculator, oracle, vault, arena, market_signals, dashboard, the_wire, the_lab, the_hive, the_core, popular_picks, competitive_intel, oracle_scout, archive, control_panel
 
 api_router = APIRouter(prefix="/api/v1")
 
@@ -28,3 +28,4 @@ api_router.include_router(popular_picks.router, prefix='/popular-picks')
 api_router.include_router(competitive_intel.router, prefix='/rnd/competitive-intel')
 api_router.include_router(oracle_scout.router, prefix='/oracle-scout')
 api_router.include_router(archive.router, prefix='/archive')
+api_router.include_router(control_panel.router, prefix='/control-panel')
