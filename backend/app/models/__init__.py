@@ -204,3 +204,5 @@ from app.models.popular_picks import PopularParlayModel, ParlayReviewGateModel
 from app.models.competitive_intel import CompetitorBotModel, FeatureGapAlertModel, DevSuggestionModel
 
 from app.models.oracle_scout import OracleScoutHistoryModel
+
+from app.models.archive import ArchiveAccessLogModel
