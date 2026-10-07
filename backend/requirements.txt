@@ -12,6 +12,16 @@ python-multipart>=0.0.9
 
 httpx>=0.27
 tenacity>=8.2
+websockets>=13.0
+
+# Omni-Ingestion: Redis pub/sub, Celery workers, distributed rate limiting
+redis>=5.0
+celery[redis]>=5.4
+
+# Production server (gunicorn.conf.py)
+gunicorn>=22.0
+psutil>=5.9  # Core engine telemetry (process CPU / memory)
 
 numpy>=1.26.0
 scipy>=1.11.0
+scikit-learn>=1.5

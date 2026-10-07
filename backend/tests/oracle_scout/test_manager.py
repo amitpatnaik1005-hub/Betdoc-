@@ -159,3 +159,15 @@ async def test_history_empty_for_unknown_user(manager, db_session, insert_histor
 async def test_history_rejects_invalid_limit(manager, db_session, limit):
     with pytest.raises(ScoutDomainError):
         await manager.get_history(db_session, user_id=None, limit=limit)
+
+
+def test_briefings_quote_the_live_book_and_odds_maths():
+    from app.domain.oracle_scout.manager import ScoutFacts, compose_response
+
+    facts = ScoutFacts(bankroll=10_000.0, exposure=500.0, daily_pnl=-120.0, open_positions=2, win_rate_pct=55.0, stop_loss_status="ARMED")
+    vault = compose_response("vault", "how much should I stake?", facts)
+    assert "bankroll management" in vault  # the guidance stays...
+    assert "INR 100.00 to INR 200.00" in vault and "(5.0%)" in vault  # ...and quotes the user's own numbers
+    arena = compose_response("arena", "is 2.50 value here?", facts)
+    assert "2.50 implies 40.0%" in arena and "2 open positions" in arena
+    assert "Your book" not in compose_response("default", "hello")  # anonymous callers get no figures

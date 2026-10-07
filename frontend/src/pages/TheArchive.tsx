@@ -1,682 +1,196 @@
-import { motion, AnimatePresence } from 'framer-motion';
+import { useState, type FormEvent } from 'react';
+import { apiClient } from '../api/client';
+import { downloadCsv, formatAgo, formatDate, formatInt, formatPct } from '../lib/format';
+import { runMutation, useResource } from '../lib/resource';
+import { CommanderHero, MOTIFS } from '../ui/hero';
+import { DivergingBars } from '../ui/charts';
+import { Async, Button, EmptyState, Field, KeyValues, Page, Panel, Pill, Select, StatusBadge, TextInput } from '../ui/kit';
 
 // ---------------------------------------------------------------------------
-// PHYSICS
+// CONTRACTS
 // ---------------------------------------------------------------------------
-const SPRING = { type: 'spring', stiffness: 350, damping: 30 } as const;
+interface Overview { encryption_status: string; algorithm: string; last_backup_at: string | null; total_tables: number; database_status: 'ONLINE' | 'DEGRADED'; probe_latency_ms: number | null; total_records: number }
+interface TableSummary { table_name: string; row_count: number }
+interface TableData { table_name: string; limit: number; offset: number; data: Record<string, unknown>[] }
+interface Smallcase { id: string; name: string; status: string }
+interface Backtest { id: string; smallcase_id: string; start_date: string; end_date: string; total_matches_simulated: number; roi_pct: number | null; accuracy_pct: number | null; max_drawdown_pct: number | null; status: string; error_detail: string | null; created_at: string; completed_at: string | null }
 
-const CARD_VARIANTS = {
-  hidden: { opacity: 0, y: 18 },
-  show:   { opacity: 1, y: 0, transition: SPRING },
-};
-
-const GRID_VARIANTS = {
-  hidden: { opacity: 0 },
-  show:   { opacity: 1, transition: { staggerChildren: 0.1 } },
-};
-
-const ITEM_VARIANTS = {
-  hidden: { opacity: 0, y: 14 },
-  show:   { opacity: 1, y: 0, transition: SPRING },
-};
+const PAGE = 50;
+const cell = (v: unknown): string => (v === null || v === undefined ? '—' : typeof v === 'object' ? JSON.stringify(v) : String(v));
 
 // ---------------------------------------------------------------------------
-// INTERFACES
+// TABLE BROWSER
 // ---------------------------------------------------------------------------
-interface BacktestResult {
-  id: string;
-  strategyName: string;
-  dataset: string;
-  roi: number;
-  maxDrawdown: number;
-  sharpeRatio: number;
-}
-
-interface StorageNode {
-  id: string;
-  name: string;
-  type: 'glacier' | 'postgres' | 'redis';
-  capacityPct: number;
-  status: 'indexing' | 'idle' | 'archiving';
-}
-
-// ---------------------------------------------------------------------------
-// STATIC DATA
-// ---------------------------------------------------------------------------
-const BACKTEST_RESULTS: BacktestResult[] = [
-  {
-    id: 'bt-001',
-    strategyName: 'Asian Handicap Scalper',
-    dataset: 'EPL 2018–2023',
-    roi: 14.2,
-    maxDrawdown: 4.1,
-    sharpeRatio: 2.14,
-  },
-  {
-    id: 'bt-002',
-    strategyName: 'IPL Bayesian Win Model',
-    dataset: 'IPL 2015–2024',
-    roi: 9.7,
-    maxDrawdown: 7.8,
-    sharpeRatio: 1.82,
-  },
-  {
-    id: 'bt-003',
-    strategyName: 'Tennis Surface ELO',
-    dataset: 'ATP/WTA 2019–2024',
-    roi: -2.3,
-    maxDrawdown: 18.4,
-    sharpeRatio: 0.61,
-  },
-  {
-    id: 'bt-004',
-    strategyName: 'Kelly Compound Arb',
-    dataset: 'Multi-Sport 2020–2024',
-    roi: 22.8,
-    maxDrawdown: 11.2,
-    sharpeRatio: 3.07,
-  },
-];
-
-const STORAGE_NODES: StorageNode[] = [
-  {
-    id: 'sn-001',
-    name: 'AWS S3 Glacier',
-    type: 'glacier',
-    capacityPct: 71,
-    status: 'archiving',
-  },
-  {
-    id: 'sn-002',
-    name: 'Postgres Cold Storage',
-    type: 'postgres',
-    capacityPct: 48,
-    status: 'indexing',
-  },
-  {
-    id: 'sn-003',
-    name: 'Redis Hot Cache',
-    type: 'redis',
-    capacityPct: 23,
-    status: 'idle',
-  },
-];
-
-// ---------------------------------------------------------------------------
-// STYLE MAPS
-// ---------------------------------------------------------------------------
-const NODE_TYPE_CONFIG: Record<
-  StorageNode['type'],
-  { icon: string; color: string }
-> = {
-  glacier:  { icon: 'ac_unit',    color: '#64748B' },
-  postgres: { icon: 'storage',    color: '#B45309' },
-  redis:    { icon: 'bolt',       color: '#F59E0B' },
-};
-
-const NODE_STATUS_CONFIG: Record<
-  StorageNode['status'],
-  { icon: string; label: string; spin: boolean }
-> = {
-  indexing:  { icon: 'sync',    label: 'INDEXING',  spin: true  },
-  archiving: { icon: 'archive', label: 'ARCHIVING', spin: false },
-  idle:      { icon: 'pause',   label: 'IDLE',      spin: false },
-};
-
-// ---------------------------------------------------------------------------
-// UTILITY: SECTION LABEL
-// ---------------------------------------------------------------------------
-const SectionLabel = ({ icon, label }: { icon: string; label: string }) => (
-  <div className="flex items-center gap-2">
-    <span
-      className="material-symbols-outlined text-base"
-      style={{ color: '#B45309' }}
-    >
-      {icon}
-    </span>
-    <span
-      className="text-xs font-bold uppercase tracking-[0.15em]"
-      style={{ color: '#B45309' }}
-    >
-      {label}
-    </span>
-  </div>
-);
-
-// ---------------------------------------------------------------------------
-// SUB-COMPONENT: TYPEWRITER LINE
-// ---------------------------------------------------------------------------
-const TypewriterLine = ({ text }: { text: string }) => {
-  const words = text.split(' ');
-  return (
-    <h2 className="max-w-2xl text-xl font-bold tracking-tight text-slate-100 lg:text-2xl">
-      {words.map((word, i) => (
-        <motion.span
-          key={i}
-          className="inline-block mr-[0.3em]"
-          initial={{ opacity: 0, y: 8 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ ...SPRING, delay: 0.04 * i }}
-        >
-          {word}
-        </motion.span>
-      ))}
-    </h2>
-  );
-};
-
-// ---------------------------------------------------------------------------
-// SUB-COMPONENT: DEEP STORAGE CONSOLE
-// ---------------------------------------------------------------------------
-
-// LED blink configs — pre-defined to avoid inline random calls on every render
-const LED_CONFIGS = [
-  [
-    { dur: 1.2, delay: 0.0 }, { dur: 2.1, delay: 0.4 }, { dur: 1.7, delay: 0.9 },
-    { dur: 0.9, delay: 0.2 }, { dur: 1.5, delay: 0.7 }, { dur: 2.4, delay: 0.1 },
-  ],
-  [
-    { dur: 1.8, delay: 0.6 }, { dur: 1.1, delay: 0.3 }, { dur: 2.2, delay: 0.8 },
-    { dur: 1.4, delay: 0.0 }, { dur: 0.8, delay: 0.5 }, { dur: 1.9, delay: 1.1 },
-  ],
-  [
-    { dur: 2.0, delay: 0.2 }, { dur: 1.3, delay: 0.7 }, { dur: 1.6, delay: 0.4 },
-    { dur: 2.3, delay: 0.9 }, { dur: 1.0, delay: 0.1 }, { dur: 1.7, delay: 0.6 },
-  ],
-];
-
-// LED color alternates between amber and bronze per rack
-const LED_COLORS = ['#F59E0B', '#B45309', '#F59E0B', '#64748B', '#F59E0B', '#B45309'];
-
-const DeepStorageConsole = () => (
-  <motion.div
-    variants={CARD_VARIANTS}
-    className="lg:col-span-12 relative overflow-hidden rounded-2xl p-8"
-    style={{
-      background: 'rgba(180,83,9,0.05)',
-      backdropFilter: 'blur(12px)',
-      border: '1px solid rgba(180,83,9,0.15)',
-    }}
-  >
-    {/* Server Rack SVG Background */}
-    <svg
-      aria-hidden="true"
-      className="pointer-events-none absolute -right-8 top-0 h-full w-[420px] opacity-[0.18]"
-      viewBox="0 0 400 400"
-      fill="none"
-    >
-      {/* Rack chassis outline */}
-      <rect
-        x="140" y="80" width="200" height="240" rx="6"
-        stroke="#B45309" strokeWidth="1" fill="none"
-      />
-      {/* Rack mounting rails */}
-      <line x1="148" y1="80"  x2="148" y2="320" stroke="#B45309" strokeWidth="0.5" opacity="0.5" />
-      <line x1="332" y1="80"  x2="332" y2="320" stroke="#B45309" strokeWidth="0.5" opacity="0.5" />
-
-      {/* 3 server units */}
-      {[100, 160, 220].map((y, rackIdx) => (
-        <g key={y}>
-          {/* Server chassis */}
-          <rect
-            x="150" y={y} width="180" height="40" rx="4"
-            stroke="#B45309" strokeWidth="1.5" fill="rgba(180,83,9,0.06)"
-          />
-          {/* Vent slots */}
-          {[0, 1, 2].map((slot) => (
-            <rect
-              key={slot}
-              x={158 + slot * 8} y={y + 14} width="4" height="12" rx="1"
-              fill="#B45309" fillOpacity="0.3"
-            />
-          ))}
-          {/* Drive bay indicator */}
-          <rect
-            x="190" y={y + 10} width="60" height="20" rx="2"
-            stroke="#64748B" strokeWidth="0.75" fill="none"
-          />
-          {/* LED indicators */}
-          {LED_CONFIGS[rackIdx].map((cfg, ledIdx) => (
-            <motion.circle
-              key={ledIdx}
-              cx={270 + ledIdx * 9}
-              cy={y + 20}
-              r={3}
-              fill={LED_COLORS[ledIdx]}
-              animate={{ opacity: [0.2, 1, 0.3, 0.9, 0.1, 0.8, 0.2] }}
-              transition={{
-                duration: cfg.dur,
-                repeat: Infinity,
-                delay: cfg.delay,
-                ease: 'linear',
-              }}
-            />
-          ))}
-        </g>
-      ))}
-
-      {/* Cable management — bottom */}
-      {[160, 185, 210, 235, 260, 285, 310].map((x, i) => (
-        <motion.path
-          key={i}
-          d={`M${x},320 C${x},340 ${x + 10},345 ${x + 5},360`}
-          stroke="#64748B"
-          strokeWidth="1"
-          fill="none"
-          animate={{ opacity: [0.2, 0.5, 0.2] }}
-          transition={{ duration: 2 + i * 0.3, repeat: Infinity, delay: i * 0.2 }}
-        />
-      ))}
-
-      {/* Power indicator top */}
-      <motion.circle
-        cx="320" cy="90" r="5"
-        fill="#22C55E"
-        animate={{ opacity: [0.6, 1, 0.6] }}
-        transition={{ duration: 1.8, repeat: Infinity }}
-      />
-    </svg>
-
-    {/* Content */}
-    <div className="relative z-10 flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
-      <div className="flex flex-col gap-3">
-        {/* Identity badge */}
-        <div className="flex items-center gap-2">
-          <motion.span
-            className="h-2 w-2 rounded-full"
-            style={{ background: '#B45309' }}
-            animate={{ opacity: [1, 0.3, 1] }}
-            transition={{ duration: 1.6, repeat: Infinity }}
-          />
-          <span
-            className="text-xs font-bold uppercase tracking-[0.2em]"
-            style={{ color: '#B45309' }}
-          >
-            Data Lake · THE ARCHIVE
-          </span>
-        </div>
-
-        <TypewriterLine text="ARCHIVE ACTIVE. 4.2 Billion historical market states indexed. Ready for backtesting." />
-
-        <p className="max-w-xl text-sm text-slate-400">
-          4 backtest strategies on record. AWS Glacier at 71% capacity —
-          archiving in progress. Postgres cold storage indexing new EPL dataset.
-        </p>
-      </div>
-
-      {/* Action row */}
-      <div className="flex flex-wrap gap-3 shrink-0">
-        {[
-          { label: 'Run Backtest',  icon: 'play_circle',  accent: '#F59E0B' },
-          { label: 'Query Ledger', icon: 'manage_search', accent: '#B45309' },
-          { label: 'Export CSV',   icon: 'download',      accent: '#64748B' },
-        ].map(({ label, icon, accent }) => (
-          <motion.button
-            key={label}
-            whileHover={{ scale: 1.04 }}
-            whileTap={{ scale: 0.97 }}
-            transition={SPRING}
-            className="flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold outline-none transition-colors"
-            style={{
-              background: `${accent}10`,
-              border: `1px solid ${accent}30`,
-              color: accent,
-            }}
-          >
-            <span className="material-symbols-outlined text-base">{icon}</span>
-            {label}
-          </motion.button>
-        ))}
-      </div>
-    </div>
-  </motion.div>
-);
-
-// ---------------------------------------------------------------------------
-// SUB-COMPONENT: BACKTEST CARD
-// ---------------------------------------------------------------------------
-const BacktestCard = ({ result, index }: { result: BacktestResult; index: number }) => {
-  const roiPositive    = result.roi > 0;
-  const drawdownDanger = result.maxDrawdown > 15;
+const TableBrowser = ({ tables }: { tables: ReturnType<typeof useResource<TableSummary[]>> }) => {
+  const [name, setName] = useState<string | null>(null);
+  const [offset, setOffset] = useState(0);
+  const selected = name ?? tables.data?.find((t) => t.row_count > 0)?.table_name ?? tables.data?.[0]?.table_name ?? null;
+  const data = useResource(selected ? `archive:table:${selected}:${offset}` : null, () => apiClient.get<TableData>(`/archive/tables/${encodeURIComponent(selected ?? '')}/data`, { limit: PAGE, offset }));
+  const total = tables.data?.find((t) => t.table_name === selected)?.row_count ?? 0;
+  const columns = data.data?.data[0] ? Object.keys(data.data.data[0]) : [];
 
   return (
-    <motion.div
-      variants={ITEM_VARIANTS}
-      whileHover={{ y: -2, boxShadow: '0 0 20px rgba(180,83,9,0.12)' }}
-      transition={SPRING}
-      className="rounded-2xl p-5"
-      style={{
-        background: 'rgba(255,255,255,0.04)',
-        backdropFilter: 'blur(12px)',
-        border: '1px solid rgba(255,255,255,0.07)',
-      }}
+    <Panel
+      title="Table browser"
+      icon="table_view"
+      className="lg:col-span-12"
+      updatedAt={data.updatedAt}
+      subtitle="read-only · sensitive columns redacted · access logged"
+      actions={
+        <Button size="sm" icon="download" disabled={!data.data?.data.length} onClick={() => downloadCsv(`${selected}-${offset}.csv`, data.data?.data ?? [])}>
+          Export page
+        </Button>
+      }
     >
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 items-center">
-
-        {/* Col 1: Strategy + Dataset */}
-        <div className="col-span-2 md:col-span-1 flex flex-col gap-0.5">
-          <span className="text-sm font-bold text-slate-100 leading-tight">
-            {result.strategyName}
-          </span>
-          <span className="text-[11px] text-slate-500">{result.dataset}</span>
-        </div>
-
-        {/* Col 2: ROI */}
-        <div className="flex flex-col gap-0.5">
-          <span className="text-[10px] uppercase tracking-widest text-slate-500">
-            ROI
-          </span>
-          <span
-            className="font-mono text-xl font-bold tabular-nums"
-            style={{ color: roiPositive ? '#22C55E' : '#EF4444' }}
-          >
-            {roiPositive ? '+' : ''}{result.roi}%
-          </span>
-        </div>
-
-        {/* Col 3: Max Drawdown */}
-        <div className="flex flex-col gap-0.5">
-          <span className="text-[10px] uppercase tracking-widest text-slate-500">
-            Max DD
-          </span>
-          <span
-            className="font-mono text-xl font-bold tabular-nums"
-            style={{ color: drawdownDanger ? '#EF4444' : '#94A3B8' }}
-          >
-            {result.maxDrawdown}%
-          </span>
-        </div>
-
-        {/* Col 4: Sharpe Ratio */}
-        <div className="flex flex-col gap-0.5">
-          <span className="text-[10px] uppercase tracking-widest text-slate-500">
-            Sharpe
-          </span>
-          <span
-            className="font-mono text-2xl font-black tabular-nums"
-            style={{
-              color: result.sharpeRatio >= 2
-                ? '#F59E0B'
-                : result.sharpeRatio >= 1
-                ? '#94A3B8'
-                : '#EF4444',
-            }}
-          >
-            {result.sharpeRatio.toFixed(2)}
-          </span>
-        </div>
-      </div>
-
-      {/* Bottom accent bar — ROI-colored */}
-      <div className="mt-4 h-0.5 w-full rounded-full overflow-hidden bg-white/5">
-        <motion.div
-          className="h-full rounded-full"
-          style={{
-            background: roiPositive ? '#22C55E' : '#EF4444',
-            width: `${Math.min(100, Math.abs(result.roi) * 4)}%`,
-          }}
-          initial={{ width: '0%' }}
-          animate={{ width: `${Math.min(100, Math.abs(result.roi) * 4)}%` }}
-          transition={{ ...SPRING, delay: 0.2 + index * 0.07 }}
-        />
-      </div>
-    </motion.div>
-  );
-};
-
-// ---------------------------------------------------------------------------
-// SUB-COMPONENT: BACKTEST LEDGER
-// ---------------------------------------------------------------------------
-const BacktestLedger = () => (
-  <motion.div
-    variants={CARD_VARIANTS}
-    className="lg:col-span-8 flex flex-col gap-4"
-  >
-    <SectionLabel icon="history" label="Backtest Strategy Ledger" />
-
-    <motion.div
-      className="grid grid-cols-1 gap-4"
-      variants={GRID_VARIANTS}
-      initial="hidden"
-      animate="show"
-    >
-      <AnimatePresence>
-        {BACKTEST_RESULTS.map((result, i) => (
-          <BacktestCard key={result.id} result={result} index={i} />
-        ))}
-      </AnimatePresence>
-    </motion.div>
-
-    {/* Summary footer */}
-    <div
-      className="flex items-center justify-between rounded-xl px-4 py-3"
-      style={{
-        background: 'rgba(245,158,11,0.06)',
-        border: '1px solid rgba(245,158,11,0.15)',
-      }}
-    >
-      <span className="text-xs text-slate-500">
-        Best strategy · Kelly Compound Arb
-      </span>
-      <span
-        className="font-mono text-sm font-bold tabular-nums"
-        style={{ color: '#22C55E' }}
-      >
-        +22.8% ROI · Sharpe 3.07
-      </span>
-    </div>
-  </motion.div>
-);
-
-// ---------------------------------------------------------------------------
-// SUB-COMPONENT: STORAGE NODE CARD
-// ---------------------------------------------------------------------------
-const StorageNodeCard = ({
-  node,
-  index,
-}: {
-  node: StorageNode;
-  index: number;
-}) => {
-  const typeCfg   = NODE_TYPE_CONFIG[node.type];
-  const statusCfg = NODE_STATUS_CONFIG[node.status];
-
-  const capacityColor =
-    node.capacityPct > 80
-      ? '#EF4444'
-      : node.capacityPct > 60
-      ? '#F59E0B'
-      : '#B45309';
-
-  return (
-    <motion.div
-      variants={ITEM_VARIANTS}
-      whileHover={{ backgroundColor: 'rgba(255,255,255,0.05)' }}
-      transition={SPRING}
-      className="flex flex-col gap-3 rounded-xl p-4"
-      style={{
-        background: 'rgba(255,255,255,0.03)',
-        border: '1px solid rgba(255,255,255,0.06)',
-      }}
-    >
-      {/* Header */}
-      <div className="flex items-center justify-between gap-2">
-        <div className="flex items-center gap-2.5">
-          <div
-            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg"
-            style={{
-              background: `${typeCfg.color}15`,
-              border: `1px solid ${typeCfg.color}30`,
-            }}
-          >
-            <span
-              className="material-symbols-outlined text-base"
-              style={{ color: typeCfg.color }}
-            >
-              {typeCfg.icon}
-            </span>
+      <div className="flex flex-col gap-4">
+        <div className="flex flex-wrap items-end gap-3">
+          <Field label="Table" className="w-72">
+            <Select value={selected ?? ''} onChange={(e) => { setName(e.target.value); setOffset(0); }}>
+              {(tables.data ?? []).map((t) => <option key={t.table_name} value={t.table_name}>{t.table_name} ({formatInt(t.row_count)})</option>)}
+            </Select>
+          </Field>
+          <div className="flex items-center gap-2 pb-0.5 text-xs text-slate-500">
+            <Button size="sm" icon="chevron_left" disabled={offset === 0} onClick={() => setOffset(Math.max(0, offset - PAGE))}>Prev</Button>
+            <span className="tabular-nums">{total === 0 ? 0 : offset + 1}–{Math.min(offset + PAGE, total)} of {formatInt(total)}</span>
+            <Button size="sm" icon="chevron_right" disabled={offset + PAGE >= total} onClick={() => setOffset(offset + PAGE)}>Next</Button>
           </div>
-          <span className="text-sm font-bold text-slate-200 leading-tight">
-            {node.name}
-          </span>
         </div>
-
-        {/* Status */}
-        <div className="flex items-center gap-1.5 shrink-0">
-          {statusCfg.spin ? (
-            <motion.span
-              className="material-symbols-outlined text-base"
-              style={{ color: '#F59E0B' }}
-              animate={{ rotate: 360 }}
-              transition={{ duration: 1.4, repeat: Infinity, ease: 'linear' }}
-            >
-              {statusCfg.icon}
-            </motion.span>
-          ) : node.status === 'archiving' ? (
-            <span
-              className="material-symbols-outlined text-base"
-              style={{ color: '#F59E0B' }}
-            >
-              {statusCfg.icon}
-            </span>
-          ) : (
-            <span
-              className="material-symbols-outlined text-base"
-              style={{ color: '#64748B' }}
-            >
-              {statusCfg.icon}
-            </span>
+        <Async resource={data} isEmpty={(d) => d.data.length === 0} empty={<EmptyState icon="table_rows" title="Empty table" />}>
+          {(d) => (
+            <div className="-mx-4 -mb-4 max-h-[460px] overflow-auto">
+              <table className="w-full text-left text-xs">
+                <thead className="sticky top-0 bg-white dark:bg-[#161514]">
+                  <tr className="border-b border-slate-900/[0.06] dark:border-white/[0.06]">
+                    {columns.map((c) => <th key={c} className="whitespace-nowrap px-3 py-2 text-[10px] font-bold uppercase tracking-[0.12em] text-slate-400">{c}</th>)}
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-900/[0.04] dark:divide-white/[0.04]">
+                  {d.data.map((row, i) => (
+                    <tr key={i} className="hover:bg-slate-900/[0.02] dark:hover:bg-white/[0.02]">
+                      {columns.map((c) => <td key={c} className="max-w-[260px] truncate whitespace-nowrap px-3 py-1.5 font-mono text-slate-600 dark:text-slate-300" title={cell(row[c])}>{cell(row[c])}</td>)}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           )}
-          <span
-            className="font-mono text-[10px] font-bold uppercase tracking-wider"
-            style={{
-              color: node.status === 'idle' ? '#64748B' : '#F59E0B',
-            }}
-          >
-            {statusCfg.label}
-          </span>
-        </div>
+        </Async>
       </div>
-
-      {/* Capacity bar */}
-      <div className="flex flex-col gap-1.5">
-        <div className="flex items-center justify-between">
-          <span className="text-[10px] uppercase tracking-widest text-slate-600">
-            Capacity
-          </span>
-          <span
-            className="font-mono text-xs font-bold tabular-nums"
-            style={{ color: capacityColor }}
-          >
-            {node.capacityPct}%
-          </span>
-        </div>
-        <div className="h-1.5 w-full rounded-full overflow-hidden bg-white/5">
-          <motion.div
-            className="h-full rounded-full"
-            style={{ background: '#B45309' }}
-            initial={{ width: '0%' }}
-            animate={{ width: `${node.capacityPct}%` }}
-            transition={{ ...SPRING, delay: 0.2 + index * 0.1 }}
-          />
-        </div>
-      </div>
-    </motion.div>
+    </Panel>
   );
 };
 
 // ---------------------------------------------------------------------------
-// SUB-COMPONENT: STORAGE NODE TELEMETRY
+// BACKTEST LEDGER
 // ---------------------------------------------------------------------------
-const StorageNodeTelemetry = () => (
-  <motion.div
-    variants={CARD_VARIANTS}
-    className="lg:col-span-4 flex flex-col gap-4"
-  >
-    <SectionLabel icon="dns" label="Storage Node Telemetry" />
+const BacktestLedger = () => {
+  const backtests = useResource('core:backtests', () => apiClient.get<Backtest[]>('/core/backtests', { limit: 25 }), { intervalMs: 10_000 });
+  const smallcases = useResource('core:smallcases', () => apiClient.get<Smallcase[]>('/core/smallcases'));
+  const today = new Date().toISOString().slice(0, 10);
+  const monthAgo = new Date(Date.now() - 30 * 86_400_000).toISOString().slice(0, 10);
+  const [form, setForm] = useState({ smallcase: '', start: monthAgo, end: today });
+  const [busy, setBusy] = useState(false);
+  const names = new Map((smallcases.data ?? []).map((s) => [s.id, s.name]));
+  const smallcaseId = form.smallcase || smallcases.data?.[0]?.id || '';
 
-    <div
-      className="flex flex-col gap-4 rounded-2xl p-5"
-      style={{
-        background: 'rgba(255,255,255,0.04)',
-        backdropFilter: 'blur(12px)',
-        border: '1px solid rgba(255,255,255,0.07)',
-      }}
-    >
-      {/* Panel header */}
-      <div className="flex items-center justify-between border-b border-white/5 pb-3">
-        <span className="text-xs font-bold text-slate-400">3 Nodes Active</span>
-        <span
-          className="flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-widest"
-          style={{
-            background: 'rgba(180,83,9,0.12)',
-            color: '#B45309',
-            border: '1px solid rgba(180,83,9,0.3)',
-          }}
-        >
-          <motion.span
-            className="h-1.5 w-1.5 rounded-full"
-            style={{ background: '#B45309' }}
-            animate={{ opacity: [1, 0.3, 1] }}
-            transition={{ duration: 1.6, repeat: Infinity }}
-          />
-          WRITING
-        </span>
-      </div>
+  const run = async (e: FormEvent) => {
+    e.preventDefault();
+    if (!smallcaseId) return;
+    setBusy(true);
+    await runMutation(() => apiClient.post('/core/backtest', { smallcase_id: smallcaseId, start_date: form.start, end_date: form.end }), {
+      invalidate: ['core', 'commanders'], success: 'Backtest queued', errorTitle: 'Backtest rejected',
+    });
+    setBusy(false);
+  };
 
-      {/* Total storage summary */}
-      <div className="flex items-baseline gap-2">
-        <span className="text-2xl font-bold tabular-nums text-slate-100">
-          4.2B
-        </span>
-        <span className="text-xs text-slate-500">market states indexed</span>
-      </div>
-
-      {/* Node cards */}
-      <motion.div
-        className="flex flex-col gap-3"
-        variants={GRID_VARIANTS}
-        initial="hidden"
-        animate="show"
-      >
-        <AnimatePresence>
-          {STORAGE_NODES.map((node, i) => (
-            <StorageNodeCard key={node.id} node={node} index={i} />
-          ))}
-        </AnimatePresence>
-      </motion.div>
-
-      {/* Footer action */}
-      <motion.button
-        whileHover={{ scale: 1.02 }}
-        whileTap={{ scale: 0.97 }}
-        transition={SPRING}
-        className="mt-1 flex w-full items-center justify-center gap-2 rounded-xl py-2.5 text-sm font-bold"
-        style={{
-          background: 'rgba(180,83,9,0.08)',
-          border: '1px solid rgba(180,83,9,0.25)',
-          color: '#B45309',
-        }}
-      >
-        <span className="material-symbols-outlined text-base">storage</span>
-        Manage Storage Nodes
-      </motion.button>
-    </div>
-  </motion.div>
-);
+  return (
+    <Panel title="Backtest strategy ledger" icon="history" className="lg:col-span-7" updatedAt={backtests.updatedAt} subtitle="synthetic Monte Carlo markets">
+      <form id="backtest-form" onSubmit={run} className="mb-4 flex flex-wrap items-end gap-2.5">
+        <Field label="Smallcase" className="min-w-[180px] flex-1">
+          <Select value={smallcaseId} onChange={(e) => setForm({ ...form, smallcase: e.target.value })}>
+            {(smallcases.data ?? []).map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+          </Select>
+        </Field>
+        <Field label="From"><TextInput type="date" value={form.start} onChange={(e) => setForm({ ...form, start: e.target.value })} /></Field>
+        <Field label="To"><TextInput type="date" value={form.end} onChange={(e) => setForm({ ...form, end: e.target.value })} /></Field>
+        <Button type="submit" variant="primary" icon="play_circle" busy={busy} disabled={!smallcaseId}>Run backtest</Button>
+      </form>
+      {!smallcases.data?.length && smallcases.data && <p className="mb-3 text-xs text-amber-600">No smallcases yet: bootstrap the engine from Core first.</p>}
+      <p className="mb-3 text-[11px] text-slate-400">The engine replays each pipeline against synthetic markets drawn per day in the range (no historical results are stored to replay).</p>
+      <Async resource={backtests} isEmpty={(r) => r.length === 0} empty={<EmptyState icon="history" title="No backtests yet" />}>
+        {(rows) => (
+          <ul className="flex flex-col gap-2">
+            {rows.map((b) => (
+              <li key={b.id} className="grid grid-cols-2 items-center gap-3 rounded-xl bg-slate-50 px-3 py-2.5 sm:grid-cols-[1.4fr_repeat(3,0.7fr)_auto] dark:bg-white/[0.03]">
+                <span className="min-w-0">
+                  <span className="block truncate text-sm font-semibold text-slate-800 dark:text-slate-100">{names.get(b.smallcase_id) ?? b.smallcase_id.slice(0, 8)}</span>
+                  <span className="text-[11px] text-slate-400">{formatDate(b.start_date)} → {formatDate(b.end_date)} · {formatInt(b.total_matches_simulated)} matches</span>
+                </span>
+                <span className={`text-sm font-semibold tabular-nums ${(b.roi_pct ?? 0) >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`}>{b.roi_pct === null ? '—' : `${b.roi_pct >= 0 ? '+' : ''}${formatPct(b.roi_pct)}`}<span className="block text-[10px] font-normal text-slate-400">ROI</span></span>
+                <span className="text-sm tabular-nums">{b.accuracy_pct === null ? '—' : formatPct(b.accuracy_pct)}<span className="block text-[10px] text-slate-400">accuracy</span></span>
+                <span className="text-sm tabular-nums">{b.max_drawdown_pct === null ? '—' : formatPct(b.max_drawdown_pct)}<span className="block text-[10px] text-slate-400">max DD</span></span>
+                <StatusBadge status={b.status} />
+              </li>
+            ))}
+          </ul>
+        )}
+      </Async>
+    </Panel>
+  );
+};
 
 // ---------------------------------------------------------------------------
 // NAMED EXPORT: THE ARCHIVE
 // ---------------------------------------------------------------------------
-export const TheArchive = () => (
-  <motion.div
-    variants={GRID_VARIANTS}
-    initial="hidden"
-    animate="show"
-    className="grid grid-cols-1 lg:grid-cols-12 gap-6 w-full max-w-7xl mx-auto py-6"
-  >
-    <DeepStorageConsole />
-    <BacktestLedger />
-    <StorageNodeTelemetry />
-  </motion.div>
-);
+export const TheArchive = () => {
+  const overview = useResource('archive:overview', () => apiClient.get<Overview>('/archive/overview'), { intervalMs: 60_000 });
+  const tables = useResource('archive:tables', () => apiClient.get<TableSummary[]>('/archive/tables'), { intervalMs: 60_000 });
+  const o = overview.data;
+  const largest = [...(tables.data ?? [])].sort((a, b) => b.row_count - a.row_count).slice(0, 10);
+
+  return (
+    <Page>
+      <CommanderHero
+        commander="TODAR MAL"
+        headline={o ? `ARCHIVE ${o.database_status}. ${formatInt(o.total_records)} records across ${o.total_tables} tables, probe ${o.probe_latency_ms?.toFixed(1) ?? '—'}ms.` : 'ARCHIVE syncing the warehouse inventory…'}
+        motif={MOTIFS.stack}
+        detail="Read-only warehouse view. Credential tables are never browsable, sensitive columns are redacted, and every table read is written to the access log."
+        actions={
+          <>
+            <Button variant="primary" icon="play_circle" onClick={() => document.getElementById('backtest-form')?.scrollIntoView({ behavior: 'smooth', block: 'center' })}>Run backtest</Button>
+            <Button icon="refresh" onClick={() => { void overview.refresh(); void tables.refresh(); }}>Re-inventory</Button>
+          </>
+        }
+      />
+      <Panel title="Vault posture" icon="lock" className="lg:col-span-5" updatedAt={overview.updatedAt}>
+        <Async resource={overview}>
+          {(ov) => (
+            <KeyValues items={[
+              { label: 'Database', value: <StatusBadge status={ov.database_status} /> },
+              { label: 'Encryption', value: ov.encryption_status },
+              { label: 'Algorithm', value: ov.algorithm },
+              { label: 'Last backup', value: ov.last_backup_at ? formatAgo(ov.last_backup_at) : <Pill tone="warning" icon="warning">none visible</Pill> },
+              { label: 'Tables', value: formatInt(ov.total_tables) },
+              { label: 'Records', value: formatInt(ov.total_records) },
+            ]} />
+          )}
+        </Async>
+        {o && !o.last_backup_at && <p className="mt-3 text-[11px] text-slate-400">Set ARCHIVE_BACKUP_DIR to the directory scripts/backup.sh writes to and the newest archive's time appears here.</p>}
+      </Panel>
+      <Panel title="Storage by table" icon="dns" className="lg:col-span-7" updatedAt={tables.updatedAt} subtitle="largest 10">
+        <Async resource={tables} isEmpty={() => largest.length === 0} empty={<EmptyState icon="dns" title="No tables" />}>
+          {() => <DivergingBars caption="Row count by table" formatValue={formatInt} items={largest.map((t) => ({ label: t.table_name, value: t.row_count }))} />}
+        </Async>
+      </Panel>
+      <TableBrowser tables={tables} />
+      <BacktestLedger />
+      <Panel title="Retention notes" icon="info" className="lg:col-span-5">
+        <ul className="list-disc space-y-2 pl-4 text-xs leading-relaxed text-slate-600 dark:text-slate-300">
+          <li>The bet ledger is append-only and idempotent: an order key can never be written twice.</li>
+          <li>Odds snapshots keep every bookmaker update, which powers the Lab's drift reports and the Oracle consensus.</li>
+          <li>Exports download exactly what is on screen (one page of {PAGE} rows) as CSV.</li>
+        </ul>
+      </Panel>
+    </Page>
+  );
+};

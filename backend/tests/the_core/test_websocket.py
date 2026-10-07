@@ -16,6 +16,9 @@ from fastapi.testclient import TestClient
 
 
 
+from app.api.deps import get_ws_user
+
+
 from app.api.v1 import the_core as core_api
 
 from app.api.v1.the_core import ConnectionManager
@@ -49,6 +52,8 @@ def app(manager):
     application.include_router(core_api.router, prefix="/api/v1/engine")
 
     application.dependency_overrides[core_api.get_ws_manager] = lambda: manager
+
+    application.dependency_overrides[get_ws_user] = lambda: None  # authenticated user stand-in
 
     return application
 
@@ -261,3 +266,14 @@ def test_backtest_worker_streams_state(app, manager, orch, sqlite_database):
         assert completed["payload"]["total_matches_simulated"] == 250
 
 
+
+
+def test_rejects_unauthenticated_handshake(manager):
+    application = FastAPI()
+    application.include_router(core_api.router, prefix="/api/v1/engine")
+    application.dependency_overrides[core_api.get_ws_manager] = lambda: manager
+    from starlette.websockets import WebSocketDisconnect
+    with TestClient(application) as client, pytest.raises(WebSocketDisconnect) as exc_info:
+        with client.websocket_connect(LIVE):
+            pass
+    assert exc_info.value.code == 1008

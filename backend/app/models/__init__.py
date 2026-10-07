@@ -208,3 +208,13 @@ from app.models.oracle_scout import OracleScoutHistoryModel
 from app.models.archive import ArchiveAccessLogModel
 
 from app.models.control_panel import SystemSettingsModel
+
+# Groups 54-58: registered so Alembic autogenerate sees them (otherwise it emits DROP TABLE).
+from app.models.bookmakers import BookmakerConfigModel  # noqa: E402,F401
+from app.models.cfo import CfoAlertModel, TaxRecordModel, StressTestResultModel, CfoAdvisoryModel  # noqa: E402,F401
+from app.models.human_touch import HumanTouchConfigModel, MatchNarrativeModel, HumanOverrideLogModel  # noqa: E402,F401
+from app.models.phantom import ArbitrageOpportunityModel, PhantomCalculationLogModel  # noqa: E402,F401
+from app.models.sports import SportConfigModel  # noqa: E402,F401
+from app.models.omni_vault import OmniProviderConfig, OmniProviderEndpoint, OmniRawPayload, OmniQuarantineLog  # noqa: E402,F401
+# Module import, not names: integration.models imports Base from here, so it may still be initialising.
+import app.domain.integration.models  # noqa: E402,F401

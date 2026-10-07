@@ -7,7 +7,6 @@ from app.domain.the_lab.experiments import (
 from app.domain.the_lab.health import MONITORED_SOURCES, ApiHealthMonitor
 from app.domain.the_lab.research import (
     RESEARCH_TIMEOUT_SECONDS,
-    MockResearchAgent,
     ResearchAgent,
     ResearchExecutor,
     ResearchReportManager,
@@ -29,7 +28,6 @@ __all__ = [
     "ExperimentStateConflictError",
     "ExperimentStatus",
     "InvalidExperimentWinnerError",
-    "MockResearchAgent",
     "ResearchAgent",
     "ResearchExecutor",
     "ResearchReportManager",

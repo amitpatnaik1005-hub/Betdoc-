@@ -5,13 +5,14 @@ from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, s
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.api.deps import CurrentUser, get_db
+from app.core.database import AsyncSessionLocal
+from app.domain.the_lab.data_agent import DataResearchAgent
 from app.domain.the_lab import (
     ApiHealthMonitor,
     ExperimentManager,
     ExperimentNotFoundError,
     ExperimentStateConflictError,
     InvalidExperimentWinnerError,
-    MockResearchAgent,
     ResearchExecutor,
     ResearchReportManager,
 )
@@ -33,7 +34,7 @@ Offset = Annotated[int, Query(ge=0, description="Rows to skip")]
 health_monitor = ApiHealthMonitor()
 research_manager = ResearchReportManager()
 research_executor = ResearchExecutor()
-research_agent = MockResearchAgent()
+research_agent = DataResearchAgent(AsyncSessionLocal)
 experiment_manager = ExperimentManager()
 
 

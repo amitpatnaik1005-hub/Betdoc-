@@ -1,6 +1,5 @@
 """ArchiveManager: health overview, table inventory and safe read-only browsing."""
 
-import asyncio
 import base64
 import logging
 import math
@@ -11,6 +10,7 @@ from datetime import UTC, date, datetime, timedelta
 from datetime import time as dt_time
 from decimal import Decimal
 from enum import Enum
+from pathlib import Path
 from typing import Any
 from uuid import UUID
 
@@ -28,8 +28,10 @@ logger = logging.getLogger("betdoc.archive")
 DEFAULT_PAGE_LIMIT = 50
 MAX_PAGE_LIMIT = 1_000
 MAX_TARGET_RESOURCE_LENGTH = 120
-DEFAULT_PROBE_LATENCY_S = 0.005
-BACKUP_AGE = timedelta(hours=2)
+# What actually protects data at rest: credential columns are Fernet-encrypted (core.security, VaultCrypto).
+ENCRYPTION_STATUS = "Field-level (credentials)"
+ENCRYPTION_ALGORITHM = "Fernet (AES-128-CBC + HMAC-SHA256)"
+BACKUP_GLOB = "*.sql.gz"  # scripts/backup.sh output
 REDACTED = "***REDACTED***"
 
 SENSITIVE_COLUMN_PATTERN = re.compile(
@@ -87,13 +89,18 @@ class ArchiveManager:
     def __init__(
         self,
         *,
-        probe_latency_s: float = DEFAULT_PROBE_LATENCY_S,
         blocked_tables: Iterable[str] = (),
+        backup_dir: str | Path | None = None,
     ) -> None:
-        if probe_latency_s < 0:
-            raise ValueError("probe_latency_s must be non-negative.")
-        self._probe_latency_s = probe_latency_s
         self._blocked_tables = frozenset(blocked_tables)
+        self._backup_dir = Path(backup_dir) if backup_dir else None
+
+    def _last_backup_at(self) -> datetime | None:
+        """Modification time of the newest pg_dump archive, or None when no backup is visible."""
+        if self._backup_dir is None or not self._backup_dir.is_dir():
+            return None
+        newest = max((f.stat().st_mtime for f in self._backup_dir.glob(BACKUP_GLOB)), default=None)
+        return datetime.fromtimestamp(newest, UTC) if newest is not None else None
 
     # ------------------------------------------------------------------ inventory helpers
 
@@ -119,7 +126,6 @@ class ArchiveManager:
         try:
             started = time.perf_counter()
             await db.execute(select(literal(1)))
-            await asyncio.sleep(self._probe_latency_s)  # mock storage-engine health probe
             probe_latency_ms = round((time.perf_counter() - started) * 1000.0, 3)
             total_records = sum(entry["row_count"] for entry in await self.get_tables(db))
         except SQLAlchemyError:
@@ -128,9 +134,9 @@ class ArchiveManager:
             logger.error("ARCHIVE: database health probe failed.", exc_info=True)
 
         overview = {
-            "encryption_status": "E2E Active",
-            "algorithm": "AES-256-GCM",
-            "last_backup_at": datetime.now(UTC) - BACKUP_AGE,
+            "encryption_status": ENCRYPTION_STATUS,
+            "algorithm": ENCRYPTION_ALGORITHM,
+            "last_backup_at": self._last_backup_at(),
             "total_tables": len(Base.metadata.tables),
             "database_status": database_status,
             "probe_latency_ms": probe_latency_ms,
@@ -150,6 +156,8 @@ class ArchiveManager:
         materialized = await self._materialized_tables(db)
         summaries: list[dict[str, Any]] = []
         for name, table in sorted(Base.metadata.tables.items()):
+            if name in self._blocked_tables:
+                continue  # not browsable, so not listed either
             if name not in materialized:
                 logger.warning("ARCHIVE: table %s is registered but not present in the database; skipped.", name)
                 continue

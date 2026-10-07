@@ -20,7 +20,8 @@ def safe_float(value: object) -> float:
 
 def to_finite_array(values: Iterable[object] | None) -> np.ndarray:
     """Float64 array with NaN/inf removed. Decimals are cast via float() first."""
-    if not values:
+    # `is None`, not truthiness: `not ndarray` raises for arrays with more than one element.
+    if values is None:
         return np.empty(0, dtype=np.float64)
     cleaned: list[float] = []
     for v in values:

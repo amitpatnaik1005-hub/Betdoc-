@@ -18,23 +18,25 @@ def utc_now() -> datetime:
 
 
 class LegendaryBot(StrEnum):
-    KAUTILYA = "KAUTILYA"
-    ASHOKA = "ASHOKA"
-    KUMBHA = "KUMBHA"
-    PANINI = "PANINI"
-    SHIVAJI = "SHIVAJI"
-    PRITHVIRAJ = "PRITHVIRAJ"
-    BIRBAL = "BIRBAL"
-    PORUS = "PORUS"
-    ARYABHATA = "ARYABHATA"
-    TODAR_MAL = "TODAR MAL"
-    VIDUR = "VIDUR"
-    BAJIRAO = "BAJIRAO"
-    PRATAP = "PRATAP"
-    VARAHMIHIR = "VARAHMIHIR"
-    GARUDA = "GARUDA"
-    VIKRAMADITYA = "VIKRAMADITYA"
-    KAPILENDRADEVA = "KAPILENDRADEVA"
+    """The 17 commanders, in handoff order. Must match frontend/src/config/commanders.config.ts."""
+
+    ASHOKA = "ASHOKA"  # Oracle: prediction engine
+    KAUTILYA = "KAUTILYA"  # Command Center: master control
+    BAJIRAO = "BAJIRAO"  # The Arena: live execution
+    VIDUR = "VIDUR"  # The Hive / The Wire: social & news sentiment
+    KUMBHA = "KUMBHA"  # The Vault: capital management
+    PANINI = "PANINI"  # The Lab: quantitative research
+    PRATAP = "PRATAP"  # Core: system architecture
+    GARUDA = "GARUDA"  # Phantom: stealth scraping
+    TODAR_MAL = "TODAR MAL"  # Archive: data warehouse
+    ARYABHATA = "ARYABHATA"  # Math engine: probability distributions
+    CHANAKYA = "CHANAKYA"  # Risk management: Kelly criterion
+    SHIVAJI = "SHIVAJI"  # Security: VaultCrypto
+    DRONA = "DRONA"  # Training: ML ops
+    BHEESHMA = "BHEESHMA"  # Rules & compliance: rate limiting
+    KARNA = "KARNA"  # Competitive intel: odds shopping
+    ARJUNA = "ARJUNA"  # Sniper: high-frequency execution
+    DEVRAYA = "DEVRAYA"  # Visualization: UI rendering
 
 
 class BotStatus(StrEnum):

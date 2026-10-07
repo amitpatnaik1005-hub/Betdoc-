@@ -7,6 +7,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_db
+from app.core.config import settings
 from app.domain.archive.errors import ArchiveDomainError, TableNotFoundError
 from app.domain.archive.manager import DEFAULT_PAGE_LIMIT, MAX_PAGE_LIMIT, ArchiveManager
 from app.schemas.archive import ArchiveOverviewResponse, TableDataResponse, TableSummaryRead
@@ -15,7 +16,17 @@ logger = logging.getLogger("betdoc.archive")
 
 router = APIRouter(tags=["The Archive"])
 
-_manager = ArchiveManager()
+# Tables holding credentials or password hashes are never browsable, encrypted or not.
+SENSITIVE_TABLES: frozenset[str] = frozenset({
+    "users",
+    "exchange_accounts",
+    "api_credentials",
+    "bookmaker_configs",
+    "omni_provider_configs",
+    "system_settings",
+})
+
+_manager = ArchiveManager(blocked_tables=SENSITIVE_TABLES, backup_dir=settings.ARCHIVE_BACKUP_DIR)
 
 
 def get_archive_manager() -> ArchiveManager:

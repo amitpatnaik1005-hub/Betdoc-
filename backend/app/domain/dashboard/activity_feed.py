@@ -12,6 +12,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 
 from app.domain.dashboard._common import align_to_column, ensure_aware_utc, json_safe, to_float, utc_now
+from app.domain.dashboard.summary_builder import SETTLED_STATUSES
 from app.domain.market_signals.steam_detector import SteamDetectorEngine
 from app.models import BetLedger, ExchangeAccount
 from app.models.market_signals import MarketTickModel
@@ -53,14 +54,18 @@ async def _fetch_bet_events(session: AsyncSession, user_id: UUID, limit: int) ->
     for bet, event_ts in (await session.execute(stmt)).all():
         stake = to_float(bet.stake)
         status = str(bet.status)
+        pnl = None
         if status == "PENDING":
             event_type = "BET_PLACED"
             message = f"Bet placed | {bet.market_type} | stake {stake:.2f}"
-            pnl = None
-        else:
+        elif status in SETTLED_STATUSES:
             event_type = f"BET_{status}"
             pnl = to_float(bet.payout) - stake
             message = f"Bet {status} | {bet.market_type} | stake {stake:.2f} | P&L {pnl:+.2f}"
+        else:
+            # Open (ACCEPTED, PENDING_NETWORK, UNKNOWN) or never-filled: no P&L yet.
+            event_type = f"BET_{status}"
+            message = f"Bet {status} | {bet.market_type} | {bet.selection} @ {to_float(bet.odds):.2f} | stake {stake:.2f}"
         events.append(
             ActivityEvent(
                 event_type=event_type,

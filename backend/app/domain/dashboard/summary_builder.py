@@ -7,17 +7,17 @@ from uuid import UUID
 from sqlalchemy import and_, case, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import get_settings
 from app.domain.dashboard._common import align_to_column, ensure_aware_utc, to_float, utc_now
+from app.domain.risk.common import ACTIVE_STATUSES
 from app.models import BetLedger, ExchangeAccount, RiskMandate
 from app.schemas.dashboard import DashboardSummary
 
-MOCK_TOTAL_BANKROLL = 10_000.0
 MIN_TZ_OFFSET_HOURS = -12.0
 MAX_TZ_OFFSET_HOURS = 14.0
 STOP_LOSS_WARNING_RATIO = 0.80
 STOP_LOSS_BREACH_RATIO = 1.00
 
-STATUS_PENDING = "PENDING"
 SETTLED_STATUSES = ("WON", "LOST", "HALF_WON", "HALF_LOST", "VOID", "CASH_OUT")
 
 
@@ -90,11 +90,15 @@ async def build_dashboard_summary(
             _status_count("LOST").label("lost"),
             _status_count("HALF_WON").label("half_won"),
             _status_count("HALF_LOST").label("half_lost"),
-            _status_count(STATUS_PENDING).label("active_bets"),
+            _status_count(*ACTIVE_STATUSES).label("active_bets"),
             func.coalesce(
-                func.sum(case((BetLedger.status == STATUS_PENDING, BetLedger.stake), else_=0.0)),
+                func.sum(case((BetLedger.status.in_(ACTIVE_STATUSES), BetLedger.stake), else_=0.0)),
                 0.0,
             ).label("exposure"),
+            func.coalesce(
+                func.sum(case((BetLedger.status.in_(SETTLED_STATUSES), pnl_expr), else_=0.0)),
+                0.0,
+            ).label("realized_pnl"),
         )
         .select_from(BetLedger)
         .join(ExchangeAccount, BetLedger.exchange_account_id == ExchangeAccount.id)
@@ -112,7 +116,8 @@ async def build_dashboard_summary(
     max_exposure = None if mandate_limit is None else to_float(mandate_limit)
 
     return DashboardSummary(
-        total_bankroll=MOCK_TOTAL_BANKROLL,
+        # Configured starting capital plus everything realised since.
+        total_bankroll=round(get_settings().starting_bankroll + to_float(row.realized_pnl), 2),
         daily_pnl=round(to_float(row.daily_pnl), 2),
         active_bets_count=int(row.active_bets or 0),
         win_rate_pct=asian_win_rate_pct(

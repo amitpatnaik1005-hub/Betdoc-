@@ -50,3 +50,6 @@ dumps/
 *.swp
 .DS_Store
 Thumbs.db
+
+# ---- Local scratch archive (generator scripts, Astra prompts) ---------------
+_archive/

@@ -117,7 +117,7 @@ async def test_claim_complete_flow(client: AsyncClient, recorder: RecordingManag
     empty = await client.post("/hive/tasks/claim", json={"bot_name": "GARUDA"})
     assert empty.status_code == 204
 
-    intruder = await client.patch(f"/hive/tasks/{task_id}/complete", json={"bot_name": "PORUS"})
+    intruder = await client.patch(f"/hive/tasks/{task_id}/complete", json={"bot_name": "CHANAKYA"})
     assert intruder.status_code == 409
 
     done = await client.patch(
@@ -140,15 +140,15 @@ async def test_fail_retry_then_cascade(client: AsyncClient, recorder: RecordingM
     child = await _new_task(client, title="dependent", priority=10)
     assert (await client.post(f"/hive/tasks/{child}/dependencies", json={"parent_task_id": parent})).status_code == 201
 
-    await client.post("/hive/tasks/claim", json={"bot_name": "PRITHVIRAJ"})
-    first = await client.patch(f"/hive/tasks/{parent}/fail", json={"bot_name": "PRITHVIRAJ", "error": {"code": 503}})
+    await client.post("/hive/tasks/claim", json={"bot_name": "KARNA"})
+    first = await client.patch(f"/hive/tasks/{parent}/fail", json={"bot_name": "KARNA", "error": {"code": 503}})
     assert first.status_code == 200
     assert first.json()["retried"] is True
     assert first.json()["task"]["status"] == "BACKLOG"
     assert first.json()["task"]["assignee_name"] is None
 
-    await client.post("/hive/tasks/claim", json={"bot_name": "PRITHVIRAJ"})
-    second = await client.patch(f"/hive/tasks/{parent}/fail", json={"bot_name": "PRITHVIRAJ", "error": {"code": 503}})
+    await client.post("/hive/tasks/claim", json={"bot_name": "KARNA"})
+    second = await client.patch(f"/hive/tasks/{parent}/fail", json={"bot_name": "KARNA", "error": {"code": 503}})
     assert second.status_code == 200
     assert second.json()["retried"] is False
     assert second.json()["task"]["status"] == "FAILED"
@@ -159,14 +159,14 @@ async def test_fail_retry_then_cascade(client: AsyncClient, recorder: RecordingM
     assert TaskEventType.TASK_FAILED in recorder.types()
     assert TaskEventType.TASK_CASCADE_FAILED in recorder.types()
 
-    not_owner = await client.patch(f"/hive/tasks/{parent}/fail", json={"bot_name": "PRITHVIRAJ", "error": {}})
+    not_owner = await client.patch(f"/hive/tasks/{parent}/fail", json={"bot_name": "KARNA", "error": {}})
     assert not_owner.status_code == 409
 
 
 @pytest.mark.asyncio
 async def test_learning_log_endpoint(client: AsyncClient) -> None:
     body = {
-        "bot_name": "VIKRAMADITYA",
+        "bot_name": "DEVRAYA",
         "parameter_name": "kelly_multiplier",
         "old_value": 0.25,
         "new_value": 0.2,

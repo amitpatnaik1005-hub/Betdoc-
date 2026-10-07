@@ -16,7 +16,7 @@ from app.schemas.odds import (
     OddsSelection,
 )
 
-prithviraj = logging.getLogger("betdoc.prithviraj")  # steam detection
+karna = logging.getLogger("betdoc.karna")  # steam detection
 
 router = APIRouter(tags=["odds"])
 
@@ -168,8 +168,8 @@ async def get_movements(
             )
         )
 
-    prithviraj.info(
-        "PRITHVIRAJ: Steam detection query executed. user_id=%s match_id=%s bookmaker=%s "
+    karna.info(
+        "KARNA: Steam detection query executed. user_id=%s match_id=%s bookmaker=%s "
         "rows=%d points=%d",
         current_user.id,
         match_id,

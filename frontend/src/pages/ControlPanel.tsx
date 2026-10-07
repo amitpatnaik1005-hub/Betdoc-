@@ -1,626 +1,344 @@
-import { useState } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
-import { useCommandStore } from '../store/useCommandStore';
+import { useEffect, useState, type FormEvent } from 'react';
+import { apiClient } from '../api/client';
+import { type ControlSettings, emergencyStop, resumeTrading, useControls, useExchanges } from '../lib/api';
+import { formatAgo, formatINR, formatRatioPct, humanize } from '../lib/format';
+import { runMutation, useResource } from '../lib/resource';
+import { useSystemStore } from '../store/useSystemStore';
+import { CommanderHero, MOTIFS } from '../ui/hero';
+import { Async, Button, ConfirmButton, EmptyState, Field, KeyValues, NumberInput, Page, Panel, Pill, Select, StatusBadge, TextInput, Toggle, num } from '../ui/kit';
 
 // ---------------------------------------------------------------------------
-// PHYSICS
+// CONTRACTS
 // ---------------------------------------------------------------------------
-const SPRING = { type: 'spring', stiffness: 350, damping: 30 } as const;
+interface BookmakerConfig { id: string; name: string; is_active: boolean; base_url: string | null; priority_rank: number; has_api_key: boolean; updated_at: string }
+interface SportConfig { id: string; sport_name: string; is_active: boolean; config: Record<string, unknown>; updated_at: string }
+interface OmniHealth { generated_at: string; total: number; active: number; degraded: number; open_circuits: number; redis_available: boolean; providers: { provider_id: string; provider_name: string; category_code: string; is_active: boolean; health_status: string; breaker_state: string; recent_failures: number | null }[] }
 
-const CARD_VARIANTS = {
-  hidden: { opacity: 0, y: 18 },
-  show:   { opacity: 1, y: 0, transition: SPRING },
-};
-
-const GRID_VARIANTS = {
-  hidden: { opacity: 0 },
-  show:   { opacity: 1, transition: { staggerChildren: 0.1 } },
-};
-
-const ITEM_VARIANTS = {
-  hidden: { opacity: 0, y: 14 },
-  show:   { opacity: 1, y: 0, transition: SPRING },
-};
+const SPORTS = ['cricket', 'basketball', 'tennis'] as const;
+const EXCHANGES = ['Pinnacle', 'Betfair'] as const;
 
 // ---------------------------------------------------------------------------
-// INTERFACES
+// GLOBAL OVERRIDES (risk limits + automation)
 // ---------------------------------------------------------------------------
-interface ExchangeLink {
-  id: string;
-  name: string;
-  type: 'primary' | 'backup' | 'aggregator';
-  ping: number;
-  status: 'connected' | 'syncing' | 'offline';
-}
+const GlobalOverrides = ({ settings }: { settings: ControlSettings }) => {
+  const [d, setD] = useState({
+    max_bet_size: String(settings.max_bet_size), max_daily_exposure: String(settings.max_daily_exposure), global_stop_loss: String(settings.global_stop_loss),
+    default_kelly_fraction: String(settings.default_kelly_fraction), research_frequency_minutes: String(settings.research_frequency_minutes), bots_enabled: settings.bots_enabled,
+  });
+  useEffect(() => {
+    setD({
+      max_bet_size: String(settings.max_bet_size), max_daily_exposure: String(settings.max_daily_exposure), global_stop_loss: String(settings.global_stop_loss),
+      default_kelly_fraction: String(settings.default_kelly_fraction), research_frequency_minutes: String(settings.research_frequency_minutes), bots_enabled: settings.bots_enabled,
+    });
+  }, [settings]);
 
-interface GlobalOverride {
-  id: string;
-  label: string;
-  description: string;
-  defaultActive: boolean;
-}
+  const save = (e: FormEvent) => {
+    e.preventDefault();
+    void runMutation(() => apiClient.patch<ControlSettings>('/control-panel', {
+      max_bet_size: num(d.max_bet_size), max_daily_exposure: num(d.max_daily_exposure), global_stop_loss: num(d.global_stop_loss),
+      default_kelly_fraction: num(d.default_kelly_fraction), research_frequency_minutes: Math.round(num(d.research_frequency_minutes)), bots_enabled: d.bots_enabled,
+    }), { invalidate: ['system', 'control-panel', 'commanders', 'dashboard'], success: 'Global limits saved and enforced on the next order', errorTitle: 'Limits rejected' });
+  };
 
-// ---------------------------------------------------------------------------
-// STATIC DATA
-// ---------------------------------------------------------------------------
-const EXCHANGE_LINKS: ExchangeLink[] = [
-  {
-    id: 'ex-001',
-    name: 'Pinnacle Primary',
-    type: 'primary',
-    ping: 18,
-    status: 'connected',
-  },
-  {
-    id: 'ex-002',
-    name: 'Betfair Exchange',
-    type: 'primary',
-    ping: 24,
-    status: 'connected',
-  },
-  {
-    id: 'ex-003',
-    name: 'Smarkets Aggregator',
-    type: 'aggregator',
-    ping: 41,
-    status: 'syncing',
-  },
-  {
-    id: 'ex-004',
-    name: 'Bookmaker.eu Backup',
-    type: 'backup',
-    ping: 9999,
-    status: 'offline',
-  },
-];
-
-const GLOBAL_OVERRIDES: GlobalOverride[] = [
-  {
-    id: 'ov-001',
-    label: 'Auto-Execution',
-    description: 'Allow bots to place bets without manual confirmation.',
-    defaultActive: true,
-  },
-  {
-    id: 'ov-002',
-    label: 'Dark Pool Routing',
-    description: 'Route large stakes through Phantom micro-fragment engine.',
-    defaultActive: true,
-  },
-  {
-    id: 'ov-003',
-    label: 'Strict Risk Limits',
-    description: 'Hard-block any bet exceeding Pratap mandate thresholds.',
-    defaultActive: false,
-  },
-];
-
-// ---------------------------------------------------------------------------
-// STYLE MAPS
-// ---------------------------------------------------------------------------
-const EXCHANGE_TYPE_CONFIG: Record<
-  ExchangeLink['type'],
-  { label: string; color: string }
-> = {
-  primary:    { label: 'PRIMARY',    color: '#06B6D4' },
-  backup:     { label: 'BACKUP',     color: '#64748B' },
-  aggregator: { label: 'AGGREGATOR', color: '#A855F7' },
-};
-
-const EXCHANGE_STATUS_CONFIG: Record<
-  ExchangeLink['status'],
-  { color: string; label: string; icon: string; spin: boolean }
-> = {
-  connected: { color: '#10B981', label: 'CONNECTED', icon: 'check_circle', spin: false },
-  syncing:   { color: '#06B6D4', label: 'SYNCING',   icon: 'sync',         spin: true  },
-  offline:   { color: '#F43F5E', label: 'OFFLINE',   icon: 'cancel',       spin: false },
-};
-
-// ---------------------------------------------------------------------------
-// UTILITY: SECTION LABEL
-// ---------------------------------------------------------------------------
-const SectionLabel = ({ icon, label }: { icon: string; label: string }) => (
-  <div className="flex items-center gap-2">
-    <span
-      className="material-symbols-outlined text-base"
-      style={{ color: '#06B6D4' }}
-    >
-      {icon}
-    </span>
-    <span
-      className="text-xs font-bold uppercase tracking-[0.15em]"
-      style={{ color: '#06B6D4' }}
-    >
-      {label}
-    </span>
-  </div>
-);
-
-// ---------------------------------------------------------------------------
-// SUB-COMPONENT: TYPEWRITER LINE
-// ---------------------------------------------------------------------------
-const TypewriterLine = ({ text }: { text: string }) => {
-  const words = text.split(' ');
   return (
-    <h2 className="max-w-2xl text-xl font-bold tracking-tight text-slate-100 lg:text-2xl">
-      {words.map((word, i) => (
-        <motion.span
-          key={i}
-          className="inline-block mr-[0.3em]"
-          initial={{ opacity: 0, y: 8 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ ...SPRING, delay: 0.04 * i }}
-        >
-          {word}
-        </motion.span>
-      ))}
-    </h2>
+    <Panel title="Global overrides" icon="tune" className="lg:col-span-7" subtitle={`updated ${formatAgo(settings.updated_at)}`}>
+      <form onSubmit={save} className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+        <Field label="Max bet size ₹" hint="Every order above this is refused by execution."><NumberInput min="0" value={d.max_bet_size} onChange={(e) => setD({ ...d, max_bet_size: e.target.value })} /></Field>
+        <Field label="Max daily exposure ₹" hint="0 = trading halted (what the kill switch sets)."><NumberInput min="0" value={d.max_daily_exposure} onChange={(e) => setD({ ...d, max_daily_exposure: e.target.value })} /></Field>
+        <Field label="Global stop-loss ₹"><NumberInput min="0" value={d.global_stop_loss} onChange={(e) => setD({ ...d, global_stop_loss: e.target.value })} /></Field>
+        <Field label="Default Kelly fraction" hint="Used by the terminal and the Oracle allocator."><NumberInput min="0" max="1" step="0.05" value={d.default_kelly_fraction} onChange={(e) => setD({ ...d, default_kelly_fraction: e.target.value })} /></Field>
+        <Field label="Research cadence (min)"><NumberInput min="1" value={d.research_frequency_minutes} onChange={(e) => setD({ ...d, research_frequency_minutes: e.target.value })} /></Field>
+        <div className="flex items-center justify-between gap-3 rounded-xl bg-slate-50 px-3 py-2 dark:bg-white/[0.03]">
+          <div>
+            <p className="text-sm font-semibold text-slate-800 dark:text-slate-100">Automated bots</p>
+            <p className="text-[11px] text-slate-500 dark:text-slate-400">Commander automation (manual orders unaffected).</p>
+          </div>
+          <Toggle label="Automated bots" checked={d.bots_enabled} onChange={(v) => setD({ ...d, bots_enabled: v })} />
+        </div>
+        <Button type="submit" variant="primary" icon="save" className="sm:col-span-2">Save overrides</Button>
+      </form>
+    </Panel>
   );
 };
 
 // ---------------------------------------------------------------------------
-// SUB-COMPONENT: MASTER CONFIG CONSOLE
+// CREDENTIALS (write-only)
 // ---------------------------------------------------------------------------
-const MasterConfigConsole = () => (
-  <motion.div
-    variants={CARD_VARIANTS}
-    className="lg:col-span-12 relative overflow-hidden rounded-2xl p-8"
-    style={{
-      background: 'rgba(6,182,212,0.05)',
-      backdropFilter: 'blur(12px)',
-      border: '1px solid rgba(6,182,212,0.15)',
-    }}
-  >
-    {/* Interlocking Gears SVG Background */}
-    <svg
-      aria-hidden="true"
-      className="pointer-events-none absolute -right-8 -top-8 h-[400px] w-[420px]"
-      viewBox="0 0 400 400"
-      fill="none"
-      style={{ opacity: 0.15 }}
-    >
-      {/* Gear 1 — large, clockwise */}
-      <motion.circle
-        cx="160" cy="200" r="70"
-        stroke="#06B6D4"
-        strokeWidth="16"
-        strokeDasharray="24 16"
-        fill="none"
-        animate={{ rotate: 360 }}
-        transition={{ duration: 20, repeat: Infinity, ease: 'linear' }}
-        style={{ transformOrigin: '160px 200px' }}
-      />
-      {/* Gear 1 inner hub */}
-      <circle
-        cx="160" cy="200" r="40"
-        stroke="#06B6D4"
-        strokeWidth="2"
-        fill="rgba(6,182,212,0.06)"
-      />
-      <motion.circle
-        cx="160" cy="200" r="14"
-        fill="#06B6D4"
-        fillOpacity="0.3"
-        animate={{ opacity: [0.3, 0.7, 0.3] }}
-        transition={{ duration: 2.4, repeat: Infinity }}
-      />
-
-      {/* Gear 2 — small, counter-clockwise, meshed */}
-      <motion.circle
-        cx="290" cy="200" r="46"
-        stroke="#06B6D4"
-        strokeWidth="12"
-        strokeDasharray="18 12"
-        fill="none"
-        animate={{ rotate: -360 }}
-        transition={{ duration: 13.1, repeat: Infinity, ease: 'linear' }}
-        style={{ transformOrigin: '290px 200px' }}
-      />
-      {/* Gear 2 inner hub */}
-      <circle
-        cx="290" cy="200" r="20"
-        stroke="#06B6D4"
-        strokeWidth="1.5"
-        fill="rgba(6,182,212,0.06)"
-      />
-      <motion.circle
-        cx="290" cy="200" r="8"
-        fill="#06B6D4"
-        fillOpacity="0.3"
-        animate={{ opacity: [0.3, 0.8, 0.3] }}
-        transition={{ duration: 1.8, repeat: Infinity, delay: 0.6 }}
-      />
-
-      {/* Mesh point indicator */}
-      <motion.circle
-        cx="226" cy="200" r="4"
-        fill="#10B981"
-        animate={{ opacity: [0.4, 1, 0.4], r: [4, 6, 4] }}
-        transition={{ duration: 1.2, repeat: Infinity }}
-      />
-
-      {/* Decorative axle lines */}
-      <line x1="160" y1="130" x2="160" y2="270" stroke="#06B6D4" strokeWidth="0.5" opacity="0.4" />
-      <line x1="90"  y1="200" x2="230" y2="200" stroke="#06B6D4" strokeWidth="0.5" opacity="0.4" />
-      <line x1="290" y1="154" x2="290" y2="246" stroke="#06B6D4" strokeWidth="0.5" opacity="0.4" />
-      <line x1="244" y1="200" x2="336" y2="200" stroke="#06B6D4" strokeWidth="0.5" opacity="0.4" />
-    </svg>
-
-    {/* Content */}
-    <div className="relative z-10 flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
-      <div className="flex flex-col gap-3">
-        {/* Identity badge */}
-        <div className="flex items-center gap-2">
-          <motion.span
-            className="h-2 w-2 rounded-full"
-            style={{ background: '#06B6D4' }}
-            animate={{ opacity: [1, 0.3, 1] }}
-            transition={{ duration: 1.4, repeat: Infinity }}
-          />
-          <span
-            className="text-xs font-bold uppercase tracking-[0.2em]"
-            style={{ color: '#06B6D4' }}
-          >
-            Master Configuration · CONTROL PANEL
-          </span>
-        </div>
-
-        <TypewriterLine text="SYSTEM CONTROL. Master configuration and global overrides active." />
-
-        <p className="max-w-xl text-sm text-slate-400">
-          4 exchange integrations monitored. 2 of 3 global overrides active.
-          All subsystems reporting to PRATAP. Kill switch armed and ready.
-        </p>
-      </div>
-
-      {/* Action row */}
-      <div className="flex flex-wrap gap-3 shrink-0">
-        {[
-          { label: 'Restart Engine', icon: 'restart_alt',    accent: '#06B6D4' },
-          { label: 'Clear Cache',    icon: 'delete_sweep',   accent: '#A855F7' },
-          { label: 'Audit Logs',     icon: 'policy',         accent: '#64748B' },
-        ].map(({ label, icon, accent }) => (
-          <motion.button
-            key={label}
-            whileHover={{ scale: 1.04 }}
-            whileTap={{ scale: 0.97 }}
-            transition={SPRING}
-            className="flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold outline-none transition-colors"
-            style={{
-              background: `${accent}10`,
-              border: `1px solid ${accent}30`,
-              color: accent,
-            }}
-          >
-            <span className="material-symbols-outlined text-base">{icon}</span>
-            {label}
-          </motion.button>
-        ))}
-      </div>
+const Credentials = ({ settings }: { settings: ControlSettings }) => {
+  const [keys, setKeys] = useState({ odds_api_key: '', news_api_key: '', omniroute_url: '' });
+  const save = (field: keyof typeof keys) => {
+    const value = keys[field].trim();
+    if (!value) return;
+    void runMutation(() => apiClient.patch('/control-panel', { [field]: value }), {
+      invalidate: ['system', 'control-panel'], success: `${humanize(field)} updated`, errorTitle: 'Rejected',
+    }).then((ok) => ok && setKeys((k) => ({ ...k, [field]: '' })));
+  };
+  const row = (field: keyof typeof keys, label: string, current: string | null, placeholder: string) => (
+    <div className="flex items-end gap-2">
+      <Field label={label} className="flex-1" hint={current ? `Stored: ${current}` : 'Not set'}>
+        <TextInput type={field === 'omniroute_url' ? 'url' : 'password'} value={keys[field]} onChange={(e) => setKeys({ ...keys, [field]: e.target.value })} placeholder={placeholder} autoComplete="off" />
+      </Field>
+      <Button icon="save" disabled={!keys[field].trim()} onClick={() => save(field)} className="mb-5">Save</Button>
     </div>
-  </motion.div>
-);
-
-// ---------------------------------------------------------------------------
-// SUB-COMPONENT: EXCHANGE CARD
-// ---------------------------------------------------------------------------
-const ExchangeCard = ({ link }: { link: ExchangeLink }) => {
-  const typeCfg   = EXCHANGE_TYPE_CONFIG[link.type];
-  const statusCfg = EXCHANGE_STATUS_CONFIG[link.status];
-  const pingFast  = link.ping < 50;
-
+  );
   return (
-    <motion.div
-      variants={ITEM_VARIANTS}
-      whileHover={{ y: -2, boxShadow: '0 0 20px rgba(6,182,212,0.1)' }}
-      transition={SPRING}
-      className="flex flex-col gap-4 rounded-2xl p-5"
-      style={{
-        background: 'rgba(255,255,255,0.03)',
-        backdropFilter: 'blur(12px)',
-        border: `1px solid ${statusCfg.color}22`,
-      }}
-    >
-      {/* Header */}
-      <div className="flex items-start justify-between gap-2">
-        <div className="flex flex-col gap-1">
-          <span className="font-mono text-sm font-bold text-slate-100 leading-tight">
-            {link.name}
-          </span>
-          {/* Type badge */}
-          <span
-            className="w-fit rounded-md px-2 py-0.5 font-mono text-[10px] font-bold uppercase tracking-wider"
-            style={{
-              background: `${typeCfg.color}15`,
-              color: typeCfg.color,
-              border: `1px solid ${typeCfg.color}30`,
-            }}
-          >
-            {typeCfg.label}
-          </span>
-        </div>
+    <Panel title="Integrations" icon="key" className="lg:col-span-5" subtitle="write-only; never echoed back">
+      <div className="flex flex-col gap-1">
+        {row('odds_api_key', 'Odds API key', settings.odds_api_key, 'paste to replace')}
+        {row('news_api_key', 'News API key', settings.news_api_key, 'paste to replace')}
+        {row('omniroute_url', 'OmniRoute URL', settings.omniroute_url, 'https://…')}
+      </div>
+    </Panel>
+  );
+};
 
-        {/* Status indicator */}
-        <div className="flex shrink-0 items-center gap-1.5">
-          {statusCfg.spin ? (
-            <motion.span
-              className="material-symbols-outlined text-base"
-              style={{ color: statusCfg.color }}
-              animate={{ rotate: 360 }}
-              transition={{ duration: 1.2, repeat: Infinity, ease: 'linear' }}
-            >
-              {statusCfg.icon}
-            </motion.span>
-          ) : (
-            <span
-              className="material-symbols-outlined text-base"
-              style={{ color: statusCfg.color }}
-            >
-              {statusCfg.icon}
-            </span>
+// ---------------------------------------------------------------------------
+// EXCHANGE ACCOUNTS
+// ---------------------------------------------------------------------------
+const ExchangeAccounts = () => {
+  const exchanges = useExchanges();
+  const [form, setForm] = useState({ exchange_name: 'Pinnacle', api_key: '', api_secret: '' });
+  const [busy, setBusy] = useState(false);
+  const link = async (e: FormEvent) => {
+    e.preventDefault();
+    if (!form.api_key || !form.api_secret) return;
+    setBusy(true);
+    const ok = await runMutation(() => apiClient.post('/exchanges', form), { invalidate: ['exchanges'], success: `${form.exchange_name} account linked`, errorTitle: 'Could not link account' });
+    setBusy(false);
+    if (ok) setForm({ ...form, api_key: '', api_secret: '' });
+  };
+  return (
+    <Panel title="Exchange API integrations" icon="cable" className="lg:col-span-6" updatedAt={exchanges.updatedAt} subtitle="credentials encrypted at rest">
+      <div className="flex flex-col gap-4">
+        <Async resource={exchanges} isEmpty={(r) => r.length === 0} empty={<EmptyState icon="cable" title="No exchange linked" detail="Link an account to route orders. Every adapter currently executes on the paper exchange." />}>
+          {(rows) => (
+            <ul className="flex flex-col gap-2">
+              {rows.map((a) => (
+                <li key={a.id} className="flex items-center justify-between gap-3 rounded-xl bg-slate-50 px-3 py-2.5 dark:bg-white/[0.03]">
+                  <span className="flex items-center gap-2"><span className="text-sm font-semibold text-slate-800 dark:text-slate-100">{a.exchange_name}</span><Pill tone="info">paper</Pill></span>
+                  <span className="flex items-center gap-2">
+                    <StatusBadge status={a.is_active ? 'CONNECTED' : 'DISABLED'} />
+                    {a.is_active && (
+                      <ConfirmButton size="sm" variant="ghost" confirmLabel="Deactivate?" onConfirm={() => void runMutation(() => apiClient.patch(`/exchanges/${a.id}/deactivate`), { invalidate: ['exchanges'], success: `${a.exchange_name} deactivated` })}>
+                        Deactivate
+                      </ConfirmButton>
+                    )}
+                  </span>
+                </li>
+              ))}
+            </ul>
           )}
-          <span
-            className="font-mono text-[10px] font-bold uppercase tracking-wider"
-            style={{ color: statusCfg.color }}
-          >
-            {statusCfg.label}
-          </span>
+        </Async>
+        <form onSubmit={link} className="grid grid-cols-1 gap-2.5 sm:grid-cols-3">
+          <Field label="Exchange"><Select value={form.exchange_name} onChange={(e) => setForm({ ...form, exchange_name: e.target.value })}>{EXCHANGES.map((x) => <option key={x}>{x}</option>)}</Select></Field>
+          <Field label="API key"><TextInput type="password" value={form.api_key} onChange={(e) => setForm({ ...form, api_key: e.target.value })} autoComplete="off" /></Field>
+          <Field label="API secret"><TextInput type="password" value={form.api_secret} onChange={(e) => setForm({ ...form, api_secret: e.target.value })} autoComplete="off" /></Field>
+          <Button type="submit" variant="primary" icon="link" busy={busy} disabled={!form.api_key || !form.api_secret} className="sm:col-span-3">Link account</Button>
+        </form>
+      </div>
+    </Panel>
+  );
+};
+
+// ---------------------------------------------------------------------------
+// BOOKMAKER ROUTING TABLE
+// ---------------------------------------------------------------------------
+const Bookmakers = () => {
+  const books = useResource('bookmakers:config', () => apiClient.get<BookmakerConfig[]>('/bookmakers/config'));
+  const [form, setForm] = useState({ name: '', priority_rank: '100', base_url: '' });
+  const add = (e: FormEvent) => {
+    e.preventDefault();
+    if (!form.name.trim()) return;
+    void runMutation(() => apiClient.post('/bookmakers/config', { name: form.name.trim(), is_active: true, priority_rank: Math.round(num(form.priority_rank)) || 100, base_url: form.base_url.trim() || null }), {
+      invalidate: ['bookmakers'], success: `${form.name} added to routing`, errorTitle: 'Bookmaker rejected',
+    }).then((ok) => ok && setForm({ name: '', priority_rank: '100', base_url: '' }));
+  };
+  const toggle = (b: BookmakerConfig) => runMutation(() => apiClient.put(`/bookmakers/${encodeURIComponent(b.name)}/config`, { is_active: !b.is_active }), {
+    invalidate: ['bookmakers'], success: `${b.name} ${b.is_active ? 'disabled' : 'enabled'}`,
+  });
+  return (
+    <Panel title="Bookmaker routing" icon="alt_route" className="lg:col-span-6" updatedAt={books.updatedAt} subtitle="used by the Phantom odds router">
+      <div className="flex flex-col gap-4">
+        <Async resource={books} isEmpty={(r) => r.length === 0} empty={<EmptyState icon="alt_route" title="No bookmakers configured" detail="With none configured, routing considers every quoting book." />}>
+          {(rows) => (
+            <ul className="flex flex-col gap-2">
+              {[...rows].sort((a, b) => a.priority_rank - b.priority_rank).map((b) => (
+                <li key={b.id} className="flex items-center justify-between gap-3 rounded-xl bg-slate-50 px-3 py-2 dark:bg-white/[0.03]">
+                  <span className="min-w-0"><span className="block truncate text-sm font-semibold text-slate-800 dark:text-slate-100">{b.name}</span><span className="text-[11px] text-slate-400">priority {b.priority_rank}{b.has_api_key ? ' · key stored' : ''}</span></span>
+                  <Toggle label={`${b.name} active`} checked={b.is_active} onChange={() => void toggle(b)} />
+                </li>
+              ))}
+            </ul>
+          )}
+        </Async>
+        <form onSubmit={add} className="grid grid-cols-1 gap-2.5 sm:grid-cols-[1fr_100px_1fr_auto] sm:items-end">
+          <Field label="Name"><TextInput value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="Pinnacle" /></Field>
+          <Field label="Priority"><NumberInput value={form.priority_rank} onChange={(e) => setForm({ ...form, priority_rank: e.target.value })} /></Field>
+          <Field label="Base URL"><TextInput type="url" value={form.base_url} onChange={(e) => setForm({ ...form, base_url: e.target.value })} placeholder="optional" /></Field>
+          <Button type="submit" icon="add" disabled={!form.name.trim()}>Add</Button>
+        </form>
+      </div>
+    </Panel>
+  );
+};
+
+// ---------------------------------------------------------------------------
+// MULTI-SPORT ENGINE
+// ---------------------------------------------------------------------------
+const SportsEngine = () => {
+  const [sport, setSport] = useState<(typeof SPORTS)[number]>('cricket');
+  const cfg = useResource(`sports:${sport}`, () => apiClient.get<SportConfig>(`/sports/${sport}/config`));
+  const [json, setJson] = useState('');
+  const [calc, setCalc] = useState<Record<string, string>>({ resources: '62.5', target: '280', home_rating: '112', away_rating: '108', home_pace: '99', away_pace: '101', league_pace: '100', serve: '0.64', elo: '1850', opp_elo: '1780' });
+  const [result, setResult] = useState<Record<string, unknown> | null>(null);
+  useEffect(() => { if (cfg.data) setJson(JSON.stringify(cfg.data.config, null, 2)); setResult(null); }, [cfg.data]);
+
+  const saveConfig = () => {
+    let parsed: unknown;
+    try { parsed = JSON.parse(json); } catch { void runMutation(() => Promise.reject(new Error('Config is not valid JSON')), { errorTitle: 'Invalid config' }); return; }
+    void runMutation(() => apiClient.put(`/sports/${sport}/config`, { is_active: cfg.data?.is_active ?? true, config: parsed }), { invalidate: ['sports'], success: `${sport} model config saved`, errorTitle: 'Config rejected' });
+  };
+  const toggle = (v: boolean) => cfg.data && void runMutation(() => apiClient.put(`/sports/${sport}/config`, { is_active: v, config: cfg.data!.config }), { invalidate: ['sports'], success: `${sport} ${v ? 'enabled' : 'disabled'}` });
+  const run = async () => {
+    const f = (k: string) => num(calc[k]);
+    const call = sport === 'cricket'
+      ? () => apiClient.post<Record<string, unknown>>('/sports/cricket/calculate-dls', { resources_left_pct: f('resources'), original_target: f('target') })
+      : sport === 'basketball'
+        ? () => apiClient.post<Record<string, unknown>>('/sports/basketball/calculate-spread', { home_rating: f('home_rating'), away_rating: f('away_rating'), home_pace: f('home_pace'), away_pace: f('away_pace'), league_avg_pace: f('league_pace') })
+        : () => apiClient.post<Record<string, unknown>>('/sports/tennis/calculate-game-prob', { base_serve_prob: f('serve'), player_surface_elo: f('elo'), opponent_surface_elo: f('opp_elo') });
+    const res = await runMutation(call, { errorTitle: 'Model rejected the inputs' });
+    if (res) setResult(res);
+  };
+  const input = (k: string, label: string) => <Field key={k} label={label}><NumberInput value={calc[k]} onChange={(e) => setCalc({ ...calc, [k]: e.target.value })} /></Field>;
+
+  return (
+    <Panel title="Multi-sport engine" icon="sports" className="lg:col-span-12" updatedAt={cfg.updatedAt}>
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+        <div className="flex gap-1.5" role="tablist">
+          {SPORTS.map((s) => (
+            <button key={s} type="button" role="tab" aria-selected={sport === s} onClick={() => setSport(s)} className={`rounded-lg px-3 py-1.5 text-xs font-semibold capitalize ${sport === s ? 'bg-[var(--accent)] text-[var(--accent-ink)]' : 'bg-slate-100 text-slate-600 dark:bg-white/[0.05] dark:text-slate-300'}`}>{s}</button>
+          ))}
+        </div>
+        {cfg.data && <span className="flex items-center gap-2 text-xs text-slate-500">Model active <Toggle label={`${sport} active`} checked={cfg.data.is_active} onChange={(v) => toggle(v)} /></span>}
+      </div>
+      <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
+        <Async resource={cfg}>
+          {() => (
+            <div className="flex flex-col gap-2">
+              <Field label="Model parameters (JSON)">
+                <textarea value={json} onChange={(e) => setJson(e.target.value)} rows={9} spellCheck={false} className="w-full rounded-xl bg-white px-3 py-2 font-mono text-xs text-slate-800 ring-1 ring-inset ring-slate-900/10 focus:outline-none focus:ring-2 focus:ring-[var(--accent)] dark:bg-white/[0.04] dark:text-slate-100 dark:ring-white/10" />
+              </Field>
+              <Button icon="save" onClick={saveConfig}>Save parameters</Button>
+            </div>
+          )}
+        </Async>
+        <div className="flex flex-col gap-3 rounded-xl bg-slate-50 p-4 dark:bg-white/[0.03]">
+          <p className="text-sm font-semibold capitalize text-slate-800 dark:text-slate-100">{sport === 'cricket' ? 'DLS par score' : sport === 'basketball' ? 'Pace-adjusted spread' : 'Service game probability'}</p>
+          <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3">
+            {sport === 'cricket' && [input('resources', 'Resources left %'), input('target', 'Original target')]}
+            {sport === 'basketball' && [input('home_rating', 'Home rating'), input('away_rating', 'Away rating'), input('home_pace', 'Home pace'), input('away_pace', 'Away pace'), input('league_pace', 'League pace')]}
+            {sport === 'tennis' && [input('serve', 'Base serve prob'), input('elo', 'Player surface Elo'), input('opp_elo', 'Opponent Elo')]}
+          </div>
+          <Button variant="primary" icon="calculate" onClick={() => void run()}>Calculate</Button>
+          {result && <KeyValues items={Object.entries(result).map(([k, v]) => ({ label: humanize(k), value: typeof v === 'number' ? (v > 0 && v < 1 ? formatRatioPct(v) : v.toFixed(2)) : String(v) }))} />}
         </div>
       </div>
-
-      {/* Ping telemetry */}
-      <div className="flex items-center justify-between border-t border-white/5 pt-3">
-        <span className="font-mono text-[10px] uppercase tracking-widest text-slate-600">
-          Ping
-        </span>
-        <span
-          className="font-mono text-sm font-bold tabular-nums"
-          style={{
-            color: link.status === 'offline'
-              ? '#F43F5E'
-              : pingFast
-              ? '#10B981'
-              : '#F59E0B',
-          }}
-        >
-          {link.status === 'offline' ? 'TIMEOUT' : `${link.ping}ms`}
-        </span>
-      </div>
-    </motion.div>
+    </Panel>
   );
 };
 
 // ---------------------------------------------------------------------------
-// SUB-COMPONENT: EXCHANGE INTEGRATIONS
+// OMNI ADMIN (token-gated)
 // ---------------------------------------------------------------------------
-const ExchangeIntegrations = () => (
-  <motion.div
-    variants={CARD_VARIANTS}
-    className="lg:col-span-8 flex flex-col gap-4"
-  >
-    <SectionLabel icon="cable" label="Exchange API Integrations" />
-
-    <motion.div
-      className="grid grid-cols-1 md:grid-cols-2 gap-4"
-      variants={GRID_VARIANTS}
-      initial="hidden"
-      animate="show"
-    >
-      <AnimatePresence>
-        {EXCHANGE_LINKS.map((link) => (
-          <ExchangeCard key={link.id} link={link} />
-        ))}
-      </AnimatePresence>
-    </motion.div>
-
-    {/* Integration summary footer */}
-    <div
-      className="flex items-center justify-between rounded-xl px-4 py-3"
-      style={{
-        background: 'rgba(16,185,129,0.06)',
-        border: '1px solid rgba(16,185,129,0.15)',
-      }}
-    >
-      <div className="flex items-center gap-2">
-        <motion.span
-          className="h-2 w-2 rounded-full"
-          style={{ background: '#10B981' }}
-          animate={{ opacity: [1, 0.3, 1] }}
-          transition={{ duration: 1.2, repeat: Infinity }}
-        />
-        <span className="text-xs text-slate-400">
-          2 primary feeds live · avg latency
-        </span>
-      </div>
-      <span
-        className="font-mono text-sm font-bold tabular-nums"
-        style={{ color: '#10B981' }}
-      >
-        21ms
-      </span>
-    </div>
-  </motion.div>
-);
-
-// ---------------------------------------------------------------------------
-// SUB-COMPONENT: OVERRIDE ROW (isolated state)
-// ---------------------------------------------------------------------------
-const OverrideRow = ({ override }: { override: GlobalOverride }) => {
-  const [active, setActive] = useState(override.defaultActive);
-
+const OmniAdmin = () => {
+  const [token, setToken] = useState('');
+  const [health, setHealth] = useState<OmniHealth | null>(null);
+  const [error, setError] = useState('');
+  const load = async (e: FormEvent) => {
+    e.preventDefault();
+    setError('');
+    // The admin token is a server secret: sent once in a header, never stored.
+    const res = await fetch(`${import.meta.env.VITE_API_BASE_URL || '/api/v1'}/admin/omni/health`, { headers: { 'X-Omni-Admin-Token': token } });
+    if (!res.ok) {
+      setHealth(null);
+      setError(res.status === 401 ? 'Invalid admin token' : res.status === 503 ? 'Omni admin is not configured on the server' : `HTTP ${res.status}`);
+      return;
+    }
+    setHealth(await res.json());
+  };
   return (
-    <motion.div
-      variants={ITEM_VARIANTS}
-      className="flex items-start justify-between gap-4 rounded-xl p-4"
-      style={{
-        background: 'rgba(255,255,255,0.03)',
-        border: `1px solid ${active ? 'rgba(16,185,129,0.2)' : 'rgba(255,255,255,0.06)'}`,
-      }}
-      animate={{
-        borderColor: active
-          ? 'rgba(16,185,129,0.2)'
-          : 'rgba(255,255,255,0.06)',
-      }}
-      transition={SPRING}
-    >
-      {/* Label + description */}
-      <div className="flex flex-col gap-0.5 flex-1 min-w-0">
-        <span
-          className="text-sm font-bold leading-tight"
-          style={{ color: active ? '#F1F5F9' : '#64748B' }}
-        >
-          {override.label}
-        </span>
-        <span className="text-[11px] text-slate-600 leading-relaxed">
-          {override.description}
-        </span>
-      </div>
-
-      {/* Custom Framer Motion toggle */}
-      <button
-        onClick={() => setActive((v) => !v)}
-        className="shrink-0 outline-none focus:outline-none"
-        aria-label={`Toggle ${override.label}`}
-      >
-        <motion.div
-          className="relative flex h-6 w-11 cursor-pointer items-center rounded-full p-0.5"
-          animate={{ backgroundColor: active ? '#10B981' : '#475569' }}
-          transition={SPRING}
-        >
-          <motion.div
-            className="h-5 w-5 rounded-full shadow-md"
-            style={{ background: '#FFFFFF' }}
-            animate={{ x: active ? 20 : 0 }}
-            transition={SPRING}
-          />
-        </motion.div>
-      </button>
-    </motion.div>
-  );
-};
-
-// ---------------------------------------------------------------------------
-// SUB-COMPONENT: GLOBAL OVERRIDES
-// ---------------------------------------------------------------------------
-const GlobalOverrides = () => {
-  const triggerKillSwitch = useCommandStore((s) => s.triggerKillSwitch);
-
-  return (
-  <motion.div
-    variants={CARD_VARIANTS}
-    className="lg:col-span-4 flex flex-col gap-4"
-  >
-    <SectionLabel icon="toggle_on" label="Global Overrides" />
-
-    <div
-      className="flex flex-col gap-4 rounded-2xl p-5"
-      style={{
-        background: 'rgba(255,255,255,0.03)',
-        backdropFilter: 'blur(12px)',
-        border: '1px solid rgba(255,255,255,0.07)',
-      }}
-    >
-      {/* Panel header */}
-      <div className="flex items-center justify-between border-b border-white/5 pb-3">
-        <span className="text-xs font-bold text-slate-400">System Overrides</span>
-        <span
-          className="flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-widest"
-          style={{
-            background: 'rgba(6,182,212,0.12)',
-            color: '#06B6D4',
-            border: '1px solid rgba(6,182,212,0.3)',
-          }}
-        >
-          <motion.span
-            className="h-1.5 w-1.5 rounded-full"
-            style={{ background: '#06B6D4' }}
-            animate={{ opacity: [1, 0.3, 1] }}
-            transition={{ duration: 1.4, repeat: Infinity }}
-          />
-          LIVE
-        </span>
-      </div>
-
-      {/* Override rows — each isolated with own useState */}
-      <motion.div
-        className="flex flex-col gap-3"
-        variants={GRID_VARIANTS}
-        initial="hidden"
-        animate="show"
-      >
-        <AnimatePresence>
-          {GLOBAL_OVERRIDES.map((override) => (
-            <OverrideRow key={override.id} override={override} />
-          ))}
-        </AnimatePresence>
-      </motion.div>
-
-      {/* Spacer */}
-      <div className="flex-1" />
-
-      {/* Override summary */}
-      <div
-        className="flex items-center justify-between rounded-xl px-3 py-2.5"
-        style={{
-          background: 'rgba(255,255,255,0.03)',
-          border: '1px solid rgba(255,255,255,0.06)',
-        }}
-      >
-        <span className="text-[11px] text-slate-500">Active overrides</span>
-        <span
-          className="font-mono text-sm font-bold"
-          style={{ color: '#10B981' }}
-        >
-          2 / 3
-        </span>
-      </div>
-
-      {/* GLOBAL KILL SWITCH */}
-      <motion.button
-        onClick={triggerKillSwitch}
-        whileHover={{ scale: 1.02 }}
-        whileTap={{ scale: 0.97 }}
-        transition={SPRING}
-        className="flex w-full items-center justify-center gap-2 rounded-xl py-3.5 text-sm font-black uppercase tracking-widest"
-        style={{
-          background: '#F43F5E',
-          color: '#FFFFFF',
-          boxShadow: '0 0 24px rgba(244,63,94,0.4)',
-        }}
-        animate={{
-          boxShadow: [
-            '0 0 16px rgba(244,63,94,0.3)',
-            '0 0 32px rgba(244,63,94,0.55)',
-            '0 0 16px rgba(244,63,94,0.3)',
-          ],
-        }}
-      >
-        <span className="material-symbols-outlined text-base">
-          power_settings_new
-        </span>
-        GLOBAL KILL SWITCH
-      </motion.button>
-
-      <p className="text-center font-mono text-[9px] text-slate-700">
-        Halts all execution · Disconnects all feeds · Logs event
-      </p>
-    </div>
-  </motion.div>
+    <Panel title="Omni-ingestion providers" icon="hub" className="lg:col-span-12" subtitle="admin token required">
+      <form onSubmit={load} className="mb-4 flex items-end gap-2">
+        <Field label="X-Omni-Admin-Token" className="max-w-sm flex-1"><TextInput type="password" value={token} onChange={(e) => setToken(e.target.value)} autoComplete="off" /></Field>
+        <Button type="submit" icon="visibility" disabled={!token} className="mb-0">Load health</Button>
+      </form>
+      {error && <p className="text-xs text-rose-600">{error}</p>}
+      {health ? (
+        <div className="flex flex-col gap-3">
+          <div className="flex flex-wrap gap-2">
+            <Pill tone="neutral">{health.total} providers</Pill>
+            <Pill tone="good">{health.active} active</Pill>
+            <Pill tone={health.degraded ? 'warning' : 'neutral'}>{health.degraded} degraded</Pill>
+            <Pill tone={health.open_circuits ? 'critical' : 'neutral'}>{health.open_circuits} open circuits</Pill>
+            <Pill tone={health.redis_available ? 'good' : 'critical'}>Redis {health.redis_available ? 'up' : 'down'}</Pill>
+          </div>
+          {health.providers.length === 0 ? <EmptyState icon="hub" title="No providers registered" detail="Register providers through POST /api/v1/admin/omni/providers." /> : (
+            <ul className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
+              {health.providers.map((p) => (
+                <li key={p.provider_id} className="flex items-center justify-between gap-2 rounded-xl bg-slate-50 px-3 py-2 dark:bg-white/[0.03]">
+                  <span className="min-w-0"><span className="block truncate text-sm font-semibold">{p.provider_name}</span><span className="text-[11px] text-slate-400">category {p.category_code} · breaker {p.breaker_state}</span></span>
+                  <StatusBadge status={p.is_active ? p.health_status : 'DISABLED'} />
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      ) : !error && <p className="text-xs text-slate-400">Provider status, circuit breakers and Redis availability for the ingestion workers.</p>}
+    </Panel>
   );
 };
 
 // ---------------------------------------------------------------------------
 // NAMED EXPORT: CONTROL PANEL
 // ---------------------------------------------------------------------------
-export const ControlPanel = () => (
-  <motion.div
-    variants={GRID_VARIANTS}
-    initial="hidden"
-    animate="show"
-    className="grid grid-cols-1 lg:grid-cols-12 gap-6 w-full max-w-7xl mx-auto py-6"
-  >
-    <MasterConfigConsole />
-    <ExchangeIntegrations />
-    <GlobalOverrides />
-  </motion.div>
-);
+export const ControlPanel = () => {
+  const controls = useControls();
+  const halted = useSystemStore((s) => s.halted);
+  const s = controls.data;
+  const [resumeAt, setResumeAt] = useState('500');
+
+  return (
+    <Page>
+      <CommanderHero
+        commander="KAUTILYA"
+        headline={halted ? 'SYSTEM HALTED. Every order is refused until trading resumes.' : `SYSTEM CONTROL. Max bet ${formatINR(s?.max_bet_size)}, daily exposure ${formatINR(s?.max_daily_exposure)}, Kelly ×${s?.default_kelly_fraction ?? '—'}.`}
+        motif={MOTIFS.sliders}
+        detail={s ? <>{s.app_version} · {s.build_info} · operator {s.developer_name}{s.last_emergency_stop_at ? ` · last emergency stop ${formatAgo(s.last_emergency_stop_at)}` : ''}</> : undefined}
+        actions={
+          halted ? (
+            <div className="flex flex-wrap items-end gap-2">
+              <Field label="Resume with daily exposure ₹"><NumberInput value={resumeAt} min="1" onChange={(e) => setResumeAt(e.target.value)} className="w-40" /></Field>
+              <Button variant="primary" icon="play_circle" disabled={!(num(resumeAt) > 0)} onClick={() => void resumeTrading(num(resumeAt))}>Resume trading</Button>
+            </div>
+          ) : (
+            <ConfirmButton variant="danger" icon="emergency_home" confirmLabel="Halt all trading?" onConfirm={() => void emergencyStop()} className="px-6 py-3 text-base">
+              Global kill switch
+            </ConfirmButton>
+          )
+        }
+      />
+      <Async resource={controls} skeletonRows={4}>
+        {(settings) => (
+          <>
+            <GlobalOverrides settings={settings} />
+            <Credentials settings={settings} />
+          </>
+        )}
+      </Async>
+      <ExchangeAccounts />
+      <Bookmakers />
+      <SportsEngine />
+      <OmniAdmin />
+    </Page>
+  );
+};

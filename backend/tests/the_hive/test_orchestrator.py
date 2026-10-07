@@ -205,7 +205,7 @@ async def test_learning_ledger_is_immutable(session_factory, orch) -> None:
     async with session_factory() as session:
         entry = await orch.record_learning(
             session,
-            bot_name=LegendaryBot.VIKRAMADITYA,
+            bot_name=LegendaryBot.DEVRAYA,
             parameter_name="kelly_multiplier",
             old_value=0.25,
             new_value=0.2,

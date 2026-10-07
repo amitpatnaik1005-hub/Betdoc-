@@ -1,3 +1,4 @@
+import asyncio
 import time
 import uuid
 from datetime import UTC, datetime, timedelta
@@ -86,9 +87,14 @@ async def test_list_experiments_desc_with_pagination(db, session_factory) -> Non
         await manager.list_experiments(db, skip=-1)
 
 
+async def _fast_ok(url: str) -> int:
+    await asyncio.sleep(0.15)
+    return 200
+
+
 async def test_health_monitor_pings_concurrently() -> None:
     started = time.perf_counter()
-    statuses = await ApiHealthMonitor().check_all()
+    statuses = await ApiHealthMonitor(probe=_fast_ok).check_all()
     elapsed = time.perf_counter() - started
     assert [s.source_name for s in statuses] == list(MONITORED_SOURCES)
     assert all(s.status == "ONLINE" and 0 <= s.latency_ms < 1000 for s in statuses)
@@ -103,3 +109,13 @@ def test_schema_guards() -> None:
         ResearchCreate(category="X" * 51, topic="t")
     with pytest.raises(ValidationError):
         ResearchCreate(category="PRE_MATCH", topic="t", status="COMPLETED")  # extra="forbid"
+
+
+async def test_health_monitor_reports_real_failures() -> None:
+    async def probe(url: str) -> int:
+        if "transfermarkt" in url:
+            raise OSError("connection refused")
+        return 503 if "football-data" in url else 200
+
+    by_name = {s.source_name: s.status for s in await ApiHealthMonitor(probe=probe).check_all()}
+    assert by_name == {"FBref": "ONLINE", "Transfermarkt": "OFFLINE", "football-data.co.uk": "DEGRADED"}

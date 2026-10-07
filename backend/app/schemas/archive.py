@@ -14,7 +14,7 @@ class ArchiveSchema(BaseModel):
 class ArchiveOverviewResponse(ArchiveSchema):
     encryption_status: str
     algorithm: str
-    last_backup_at: datetime
+    last_backup_at: datetime | None  # None: no backup archive visible to the API
     total_tables: int = Field(ge=0)
     database_status: Literal["ONLINE", "DEGRADED"]
     probe_latency_ms: float | None

@@ -1,8 +1,17 @@
+from functools import lru_cache
 from typing import Literal, List
 
 from cryptography.fernet import Fernet
-from pydantic import SecretStr, field_validator
+from pydantic import AliasChoices, Field, SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+# Async drivers the engine accepts. SQLite is for the in-memory test databases only.
+_ASYNC_DB_PREFIXES = ("postgresql+asyncpg://", "sqlite+aiosqlite://")
+
+
+def _env(name: str) -> AliasChoices:
+    """Accept both UPPER_CASE (deployment convention) and the lowercase field name."""
+    return AliasChoices(name.upper(), name)
 
 
 class Settings(BaseSettings):
@@ -30,6 +39,13 @@ class Settings(BaseSettings):
     ODDS_SPORT_KEYS: str = "soccer_epl"
     ODDS_QUOTA_FLOOR: int = 10
 
+    # The Wire: public sports RSS feeds (no key needed)
+    WIRE_NEWS_FEEDS: List[str] = [
+        "https://feeds.bbci.co.uk/sport/rss.xml",
+        "https://feeds.bbci.co.uk/sport/football/rss.xml",
+        "https://feeds.bbci.co.uk/sport/cricket/rss.xml",
+    ]
+
     @property
     def odds_sport_keys(self) -> List[str]:
         return [s.strip() for s in self.ODDS_SPORT_KEYS.split(",") if s.strip()]
@@ -38,11 +54,94 @@ class Settings(BaseSettings):
     ALGORITHM: Literal["HS256"] = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 1440
 
+    # ---- Group 58: production hardening -------------------------------------
+    ENVIRONMENT: Literal["development", "test", "staging", "production"] = "development"
+    # SecretStr: production URLs carry the Redis password
+    REDIS_URL: SecretStr = SecretStr("redis://localhost:6379/0")
+    CELERY_BROKER_URL: SecretStr | None = None  # defaults to REDIS_URL
+    RATE_LIMIT_GLOBAL_RPM: int = Field(default=600, gt=0)
+    ARCHIVE_BACKUP_DIR: str | None = None  # where scripts/backup.sh writes *.sql.gz
+    HIVE_SUPERVISOR_INTERVAL_SECONDS: float = Field(default=30.0, ge=0)  # 0 disables commander heartbeats
+
+    # ---- Group 57: cross-section integration (orchestrator + risk) ----------
+    mask_visible_chars: int = Field(default=4, ge=0)
+    telemetry_timeout_seconds: float = Field(default=2.0, gt=0)
+    starting_bankroll: float = Field(default=10_000.0, gt=0)
+    kelly_fraction: float = Field(default=0.25, gt=0, le=1)
+    max_stake_fraction: float = Field(default=0.05, gt=0, le=1)
+    max_open_exposure_fraction: float = Field(default=0.25, gt=0, le=1)
+    min_edge: float = Field(default=0.02, ge=0)
+
+    # ---- Omni-Ingestion engine: vault + admin -------------------------------
+    # Optional so the API still boots without Omni; VaultCrypto / admin routes fail closed when unset.
+    master_vault_key: SecretStr | None = Field(default=None, validation_alias=_env("master_vault_key"))
+    master_vault_previous_keys: list[SecretStr] = Field(
+        default_factory=list, validation_alias=_env("master_vault_previous_keys")
+    )
+    omni_admin_token: SecretStr | None = Field(default=None, validation_alias=_env("omni_admin_token"))
+    omni_admin_header: str = "X-Omni-Admin-Token"
+
+    # ---- Omni-Ingestion engine: Redis, Celery, dispatch ---------------------
+    omni_redis_prefix: str = "omni"
+    omni_live_channel: str = "omni_live_stream"
+    omni_queues: tuple[str, ...] = ("omni_default",)
+    omni_default_queue: str = "omni_default"
+    omni_category_queue_map: dict[str, str] = Field(default_factory=dict)  # category code (A-H) -> queue
+    omni_broker_visibility_timeout_seconds: int = Field(default=3_600, gt=0)
+    omni_task_time_limit_seconds: int = Field(default=120, gt=0)
+    omni_task_soft_time_limit_seconds: int = Field(default=90, gt=0)
+    omni_task_min_expiry_seconds: float = Field(default=5.0, gt=0)
+    omni_dispatch_refresh_seconds: float = Field(default=30.0, gt=0)
+    omni_dispatch_tick_seconds: float = Field(default=1.0, gt=0)
+
+    # ---- Omni-Ingestion engine: outbound HTTP + circuit breaker -------------
+    omni_http_max_connections: int = Field(default=20, gt=0)
+    omni_http_timeout_seconds: float = Field(default=10.0, gt=0)
+    omni_http_max_response_bytes: int = Field(default=5_000_000, gt=0)
+    omni_publish_max_bytes: int = Field(default=256_000, gt=0)
+    omni_breaker_window_seconds: int = Field(default=60, gt=0)
+    omni_breaker_failure_threshold: int = Field(default=5, gt=0)
+    omni_breaker_cooldown_seconds: int = Field(default=120, gt=0)
+    omni_breaker_status_floor: int = Field(default=500, ge=400, le=599)
+    omni_allow_insecure_http: bool = False  # SSRF guard: https/wss only unless explicitly allowed
+    omni_allow_private_networks: bool = False  # SSRF guard: block private/loopback targets
+    omni_user_agent: str = "BetDoc-Omni/1.0"
+
+    # ---- Omni-Ingestion engine: quorum consensus ----------------------------
+    omni_quorum_variance_threshold: float = Field(default=0.05, ge=0)
+    omni_quorum_half_life_seconds: float = Field(default=10.0, gt=0)
+    omni_quorum_max_age_seconds: float = Field(default=30.0, gt=0)
+    omni_quorum_zero_tolerance: float = Field(default=1e-9, gt=0)
+
+    # ---- Omni-Ingestion engine: provider WebSocket client -------------------
+    omni_ws_queue_max: int = Field(default=10_000, gt=0)
+    omni_ws_refresh_seconds: float = Field(default=30.0, gt=0)
+    omni_ws_key_placeholder: str = "{{API_KEY}}"
+    omni_ws_open_timeout_seconds: float = Field(default=10.0, gt=0)
+    omni_ws_ping_interval_seconds: float = Field(default=20.0, gt=0)
+    omni_ws_max_message_bytes: int = Field(default=1_048_576, gt=0)
+    omni_ws_reconnect_base_seconds: float = Field(default=1.0, gt=0)
+    omni_ws_reconnect_max_seconds: float = Field(default=60.0, gt=0)
+    omni_ws_flush_interval_seconds: float = Field(default=1.0, gt=0)
+    omni_ws_batch_size: int = Field(default=500, gt=0)
+
+    @property
+    def celery_broker_url(self) -> SecretStr:
+        return self.CELERY_BROKER_URL or self.REDIS_URL
+
+    @property
+    def database_url(self) -> str:
+        return self.DATABASE_URL.get_secret_value()
+
+    @property
+    def encryption_key(self) -> SecretStr:
+        return self.ENCRYPTION_KEY
+
     @field_validator("DATABASE_URL")
     @classmethod
-    def validate_async_postgres(cls, v: SecretStr) -> SecretStr:
-        if not v.get_secret_value().startswith("postgresql+asyncpg://"):
-            raise ValueError("DATABASE_URL must use the async driver: postgresql+asyncpg://")
+    def validate_async_driver(cls, v: SecretStr) -> SecretStr:
+        if not v.get_secret_value().startswith(_ASYNC_DB_PREFIXES):
+            raise ValueError("DATABASE_URL must use an async driver: postgresql+asyncpg:// (or sqlite+aiosqlite:// in tests)")
         return v
 
     @field_validator("SECRET_KEY")
@@ -81,3 +180,9 @@ class Settings(BaseSettings):
 
 
 settings = Settings()  # type: ignore[call-arg]
+
+
+@lru_cache(maxsize=1)
+def get_settings() -> Settings:
+    """Process-wide settings for code that resolves config lazily (workers, Omni, health)."""
+    return settings

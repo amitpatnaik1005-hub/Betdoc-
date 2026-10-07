@@ -66,7 +66,7 @@ async def db_session(session_factory: async_sessionmaker[AsyncSession]) -> Async
 
 @pytest.fixture
 def manager() -> ArchiveManager:
-    return ArchiveManager(probe_latency_s=0.0)
+    return ArchiveManager()
 
 
 @pytest.fixture

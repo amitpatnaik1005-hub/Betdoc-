@@ -21,6 +21,7 @@ from enum import Enum
 from typing import Any, Protocol
 from uuid import UUID, uuid4
 
+import psutil
 from pydantic import BaseModel, ValidationError
 from sqlalchemy import func, insert, select, update
 from sqlalchemy.exc import IntegrityError
@@ -272,6 +273,10 @@ def _classify_stage(model_name: str) -> str:
     return "probability"
 
 
+_PROCESS = psutil.Process()
+_PROCESS.cpu_percent(interval=None)  # prime: the first reading is always 0.0
+_CPU_COUNT = psutil.cpu_count() or 1
+
 def _perturb(base: Mapping[str, float], rng: random.Random, scale: float) -> dict[str, float]:
     noisy = _normalize({o: base[o] * max(0.0, 1.0 + rng.gauss(0.0, scale)) for o in OUTCOMES})
     return noisy if noisy is not None else dict(base)
@@ -386,10 +391,9 @@ class CoreOrchestrator:
         ).scalars().all()
         active_models_count = sum(len(p) for p in pipelines if isinstance(p, list))
 
-        # Mocked telemetry (no psutil): baseline jitter + load-driven pressure.
-        cpu = random.uniform(4.0, 18.0) + min(queue_depth * 2.75, 65.0) + min(active_models_count * 0.35, 12.0)
-        cpu = round(min(max(cpu, 0.0), 100.0), 2)
-        memory = int(384 + active_models_count * 24 + queue_depth * 12 + random.randint(0, 96))
+        # Measured, not modelled: this API process's CPU share (normalised across cores) and resident memory.
+        cpu = round(min(max(_PROCESS.cpu_percent(interval=None) / _CPU_COUNT, 0.0), 100.0), 2)
+        memory = int(_PROCESS.memory_info().rss // (1024 * 1024))
 
         metric_id = uuid4()
         await db.execute(
