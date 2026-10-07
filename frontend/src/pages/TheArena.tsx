@@ -119,8 +119,9 @@ const LiveOddsMatrix = ({ odds, steam }: { odds: ReturnType<typeof useLiveOdds>;
                               <button
                                 type="button"
                                 onClick={() => setDraft({ matchId: m.id, selection: side, odds: price.price, trueProbability: fair[side], label, source: 'Arena · best price' })}
+                                aria-label={`Back ${side.toLowerCase()} in ${label} at ${formatOdds(price.price)}`}
                                 title={`${price.bookmaker} · fair ${(100 * (fair[side] ?? 0)).toFixed(1)}%`}
-                                className="rounded-lg px-2.5 py-1 font-mono text-sm font-semibold tabular-nums text-slate-800 ring-1 ring-inset ring-slate-900/10 transition-colors hover:bg-[var(--accent)] hover:text-white hover:ring-transparent dark:text-slate-100 dark:ring-white/10"
+                                className="rounded-lg px-2.5 py-1 font-mono text-sm font-semibold tabular-nums text-slate-800 ring-1 ring-inset ring-slate-900/10 transition-colors hover:bg-[var(--accent)] hover:text-[var(--accent-ink)] hover:ring-transparent dark:text-slate-100 dark:ring-white/10"
                               >
                                 {formatOdds(price.price)}
                               </button>

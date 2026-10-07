@@ -45,12 +45,12 @@ export const CommanderHero = ({ commander, headline, detail, motif, actions, sta
         </div>
       )}
 
-      <div className="relative z-10 flex flex-col gap-6 xl:flex-row xl:items-center xl:justify-between">
+      <div className="relative z-[1] flex flex-col gap-6 xl:flex-row xl:items-center xl:justify-between">
         <div className="flex min-w-0 flex-col gap-4">
           <div className="flex items-center gap-3">
             <BotAvatar botName={profile.name} status={avatarStatus(status)} size="md" customHexColor={profile.theme.primary} />
             <div className="min-w-0">
-              <p className="text-[11px] font-bold uppercase tracking-[0.2em]" style={{ color: profile.theme.primary }}>
+              <p className="text-[11px] font-bold uppercase tracking-[0.2em] text-[var(--accent-text)]">
                 {profile.domain}
               </p>
               <div className="mt-1 flex flex-wrap items-center gap-2">

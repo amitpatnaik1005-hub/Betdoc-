@@ -241,7 +241,7 @@ export const TheHive = () => {
       <Panel title="Task DAG board" icon="view_kanban" className="lg:col-span-8" updatedAt={tasks.updatedAt} bodyClassName="p-3">
         <Async resource={tasks} skeletonRows={4}>
           {() => (
-            <div className="grid grid-cols-1 gap-3 md:grid-cols-5">
+            <div className="grid grid-cols-[repeat(auto-fit,minmax(9.5rem,1fr))] gap-3">
               {COLUMNS.map((col, i) => (
                 <div key={col.title} className="flex min-w-0 flex-col gap-2 rounded-xl bg-slate-50 p-2 dark:bg-white/[0.02]">
                   <div className="flex items-center justify-between px-1">

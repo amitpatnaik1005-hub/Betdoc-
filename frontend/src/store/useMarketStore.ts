@@ -159,12 +159,15 @@ function teardownSocket(): void {
   activeSocket = null;
   if (ws === null) return;
   // Detach first so the old socket's async onclose can't trigger a reconnect loop.
-  ws.onopen = null;
   ws.onmessage = null;
   ws.onerror = null;
   ws.onclose = null;
-  if (ws.readyState === WebSocket.CONNECTING || ws.readyState === WebSocket.OPEN) {
-    ws.close(1000, "client teardown");
+  if (ws.readyState === WebSocket.CONNECTING) {
+    // Closing mid-handshake logs a browser error; finish the handshake, then close.
+    ws.onopen = (): void => ws.close(1000, "client teardown");
+  } else {
+    ws.onopen = null;
+    if (ws.readyState === WebSocket.OPEN) ws.close(1000, "client teardown");
   }
 }
 
@@ -253,6 +256,8 @@ export const useMarketStore = create<MarketState>()(() => ({
   connectionError: null,
 
   connect: (token: string): void => {
+    // Already live (or dialling) on this token: a repeat call is a no-op.
+    if (token && token === currentToken && !isIntentionallyDisconnected && activeSocket !== null) return;
     isIntentionallyDisconnected = false;
     currentToken = token;
     reconnectAttempts = 0;

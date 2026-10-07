@@ -70,7 +70,7 @@ const Toolkit = () => {
     <Panel title="Quant toolkit" icon="construction" className="lg:col-span-7" subtitle="every run is logged to the audit trail">
       <div className="mb-4 flex flex-wrap gap-1.5" role="tablist">
         {TOOLS.map((t) => (
-          <button key={t.key} type="button" role="tab" aria-selected={tool === t.key} onClick={() => { setTool(t.key); setResult(null); }} className={`inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-xs font-semibold transition-colors ${tool === t.key ? 'bg-[var(--accent)] text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200 dark:bg-white/[0.05] dark:text-slate-300'}`}>
+          <button key={t.key} type="button" role="tab" aria-selected={tool === t.key} onClick={() => { setTool(t.key); setResult(null); }} className={`inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-xs font-semibold transition-colors ${tool === t.key ? 'bg-[var(--accent)] text-[var(--accent-ink)]' : 'bg-slate-100 text-slate-600 hover:bg-slate-200 dark:bg-white/[0.05] dark:text-slate-300'}`}>
             <span className="material-symbols-outlined text-[14px]">{t.icon}</span>{t.label}
           </button>
         ))}
@@ -171,7 +171,7 @@ const OddsRouter = ({ fixtures }: { fixtures: MatchOdds[] }) => {
           </Field>
           <div className="grid grid-cols-3 gap-1.5">
             {(['HOME', 'DRAW', 'AWAY'] as const).map((s) => (
-              <button key={s} type="button" onClick={() => { setSide(s); setResult(null); }} className={`rounded-lg py-1.5 text-xs font-bold ${side === s ? 'bg-[var(--accent)] text-white' : 'bg-slate-100 text-slate-600 dark:bg-white/[0.05] dark:text-slate-300'}`}>{s}</button>
+              <button key={s} type="button" onClick={() => { setSide(s); setResult(null); }} className={`rounded-lg py-1.5 text-xs font-bold ${side === s ? 'bg-[var(--accent)] text-[var(--accent-ink)]' : 'bg-slate-100 text-slate-600 dark:bg-white/[0.05] dark:text-slate-300'}`}>{s}</button>
             ))}
           </div>
           <p className="text-[11px] text-slate-500 dark:text-slate-400">{Object.keys(prices).length} books quote this side. Bookmakers disabled in the Control Panel are ignored.</p>

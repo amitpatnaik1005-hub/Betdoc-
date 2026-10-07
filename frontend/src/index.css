@@ -5,12 +5,16 @@
 /*
  * Design tokens.
  * --accent / --accent-glow: the active commander's theme, set by the shell on every route change.
+ * --accent-ink: text ON an accent fill (white or near-black, whichever contrasts more; set by the shell).
+ * --accent-text: accent-coloured text; darkened in light mode so every theme clears 4.5:1 on white.
  * --viz-*: chart roles from the validated data-viz palette (checked against these card surfaces,
  *          #ffffff light and #161514 dark: all CVD, contrast and lightness gates pass).
  */
 :root {
   --accent: #c89b3c;
   --accent-glow: rgba(200, 155, 60, 0.45);
+  --accent-ink: #1c1917;
+  --accent-text: color-mix(in srgb, var(--accent) 62%, black);
   --viz-series-1: #2a78d6;
   --viz-series-2: #eb6834;
   --viz-positive: #2a78d6;
@@ -24,6 +28,7 @@
 }
 
 .dark {
+  --accent-text: var(--accent);
   --viz-series-1: #3987e5;
   --viz-series-2: #d95926;
   --viz-positive: #3987e5;
@@ -41,7 +46,7 @@
     display: none;
   }
   .text-accent {
-    color: var(--accent);
+    color: var(--accent-text);
   }
   .bg-accent {
     background-color: var(--accent);

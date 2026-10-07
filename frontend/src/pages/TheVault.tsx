@@ -256,7 +256,7 @@ const CfoPanel = ({ overview }: { overview: Overview | undefined }) => {
                 {rows.map((a) => (
                   <li key={a.id} className={`flex items-start justify-between gap-2 text-xs ${a.is_read ? 'opacity-50' : ''}`}>
                     <span className="flex items-start gap-1.5"><StatusBadge status={a.level} /><span className="text-slate-600 dark:text-slate-300">{a.message}</span></span>
-                    {!a.is_read && <button type="button" className="shrink-0 text-[10px] font-semibold text-[var(--accent)]" onClick={() => void runMutation(() => apiClient.patch(`/the-vault/cfo/alerts/${a.id}/read`), { invalidate: ['the-vault'] })}>Mark read</button>}
+                    {!a.is_read && <button type="button" className="shrink-0 text-[10px] font-semibold text-[var(--accent-text)]" onClick={() => void runMutation(() => apiClient.patch(`/the-vault/cfo/alerts/${a.id}/read`), { invalidate: ['the-vault'] })}>Mark read</button>}
                   </li>
                 ))}
               </ul>

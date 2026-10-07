@@ -32,7 +32,7 @@ export function Markdown({ source }: { source: string }) {
       blocks.push(<h2 key={i} className="text-lg font-semibold tracking-tight text-slate-900 dark:text-slate-50">{inline(line.slice(2))}</h2>);
       i += 1;
     } else if (line.startsWith("## ")) {
-      blocks.push(<h3 key={i} className="mt-2 text-sm font-bold uppercase tracking-[0.12em] text-[var(--accent)]">{inline(line.slice(3))}</h3>);
+      blocks.push(<h3 key={i} className="mt-2 text-sm font-bold uppercase tracking-[0.12em] text-[var(--accent-text)]">{inline(line.slice(3))}</h3>);
       i += 1;
     } else if (line.trim().startsWith("|")) {
       const rows: string[] = [];

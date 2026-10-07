@@ -82,7 +82,7 @@ type Variant = "primary" | "secondary" | "ghost" | "danger";
 
 const VARIANT: Record<Variant, string> = {
   primary:
-    "text-white bg-[var(--accent)] hover:brightness-110 shadow-[0_6px_18px_-8px_var(--accent-glow)] disabled:shadow-none",
+    "text-[var(--accent-ink)] bg-[var(--accent)] hover:brightness-110 shadow-[0_6px_18px_-8px_var(--accent-glow)] disabled:shadow-none",
   secondary:
     "text-slate-700 bg-white ring-1 ring-inset ring-slate-900/10 hover:bg-slate-50 dark:text-slate-200 dark:bg-white/[0.04] dark:ring-white/10 dark:hover:bg-white/[0.08]",
   ghost: "text-slate-600 hover:bg-slate-900/[0.04] dark:text-slate-300 dark:hover:bg-white/[0.06]",
@@ -155,7 +155,7 @@ export type Tone = "neutral" | "accent" | "good" | "warning" | "serious" | "crit
 
 const TONE: Record<Tone, string> = {
   neutral: "bg-slate-100 text-slate-600 ring-slate-900/10 dark:bg-white/[0.06] dark:text-slate-300 dark:ring-white/10",
-  accent: "bg-[color-mix(in_srgb,var(--accent)_12%,transparent)] text-[var(--accent)] ring-[color-mix(in_srgb,var(--accent)_30%,transparent)]",
+  accent: "bg-[color-mix(in_srgb,var(--accent)_12%,transparent)] text-[var(--accent-text)] ring-[color-mix(in_srgb,var(--accent)_30%,transparent)]",
   good: "bg-emerald-50 text-emerald-700 ring-emerald-600/20 dark:bg-emerald-500/10 dark:text-emerald-300 dark:ring-emerald-400/20",
   warning: "bg-amber-50 text-amber-700 ring-amber-600/25 dark:bg-amber-500/10 dark:text-amber-300 dark:ring-amber-400/20",
   serious: "bg-orange-50 text-orange-700 ring-orange-600/25 dark:bg-orange-500/10 dark:text-orange-300 dark:ring-orange-400/20",
@@ -456,11 +456,11 @@ export function DataTable<T>({ columns, rows, rowKey, onRowClick, rowTitle, dens
 
 /** Label / value list for detail panels. */
 export const KeyValues = ({ items }: { items: { label: string; value: ReactNode }[] }) => (
-  <dl className="grid grid-cols-1 gap-x-6 gap-y-2 sm:grid-cols-2">
+  <dl className="grid grid-cols-[repeat(auto-fill,minmax(15rem,1fr))] gap-x-6 gap-y-2">
     {items.map(({ label, value }) => (
       <div key={label} className="flex min-w-0 items-baseline justify-between gap-3 border-b border-dashed border-slate-900/[0.07] py-1.5 dark:border-white/[0.07]">
-        <dt className="truncate text-xs text-slate-500 dark:text-slate-400">{label}</dt>
-        <dd className="truncate text-right text-sm font-medium tabular-nums text-slate-800 dark:text-slate-100">{value}</dd>
+        <dt className="shrink-0 text-xs text-slate-500 dark:text-slate-400">{label}</dt>
+        <dd className="min-w-0 break-words text-right text-sm font-medium tabular-nums text-slate-800 dark:text-slate-100">{value}</dd>
       </div>
     ))}
   </dl>

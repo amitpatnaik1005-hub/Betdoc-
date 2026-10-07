@@ -50,6 +50,19 @@ const glide = { type: 'spring', stiffness: 380, damping: 34, mass: 0.8 } as cons
 type Theme = 'light' | 'dark';
 const THEME_KEY = 'betdoc:theme';
 
+// Text colour for an accent fill: white or near-black, whichever has the higher WCAG contrast.
+const INK_DARK = '#1c1917';
+const inkOn = (hex: string): string => {
+  const [r, g, b] = [1, 3, 5].map((i) => {
+    const c = parseInt(hex.slice(i, i + 2), 16) / 255;
+    return c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
+  });
+  const lum = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+  const vsWhite = 1.05 / (lum + 0.05);
+  const vsDark = (lum + 0.05) / 0.06; // relative luminance of #1c1917 ≈ 0.010
+  return vsDark > vsWhite ? INK_DARK : '#ffffff';
+};
+
 const readInitialTheme = (): Theme => {
   if (typeof window === 'undefined') return 'light';
   const stored = window.localStorage.getItem(THEME_KEY);
@@ -174,11 +187,11 @@ const StatTile = ({ label, value, icon, motionPreset, tone = 'neutral', changeKe
   const t = TONE_STYLE[tone];
 
   return (
-    <div className="flex min-w-[9.5rem] items-center gap-3 px-5 py-3">
+    <div className="flex min-w-0 flex-1 items-center gap-2 px-3 py-2.5 sm:min-w-[9.5rem] sm:flex-none sm:gap-3 sm:px-5 sm:py-3">
       <AnimatedGlyph
         icon={icon}
         motionPreset={motionPreset}
-        className={`shrink-0 text-[20px] transition-colors duration-300 ${t.icon}`}
+        className={`hidden shrink-0 text-[20px] transition-colors duration-300 sm:inline-block ${t.icon}`}
       />
       <div className="min-w-0">
         <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-400 dark:text-slate-500">
@@ -212,6 +225,8 @@ const StageHeader = (): ReactElement => {
   const busStatus = useSystemStore((s) => s.busStatus);
   const oddsLive = useMarketStore((s) => s.isConnected);
   const activeCommander = useCommanderStore((s) => s.activeCommander);
+  const isCompact = useUIStore((s) => s.isCompact);
+  const toggleLeft = useUIStore((s) => s.toggleLeft);
   // "Live" means the cross-section event bus is open; the odds feed is reported alongside it.
   const socketStatus: SocketStatus =
     MOCK_AUTH ? 'offline'
@@ -228,8 +243,13 @@ const StageHeader = (): ReactElement => {
   const pnlIcon = dayPnl > 0 ? 'trending_up' : dayPnl < 0 ? 'trending_down' : 'trending_flat';
 
   return (
-    <header className="sticky top-0 z-10 flex flex-wrap items-center justify-between gap-4 border-b border-slate-200/60 bg-[#F8F6F0]/80 px-8 py-4 backdrop-blur-md dark:border-white/[0.06] dark:bg-[#121110]/80">
+    <header className="sticky top-0 z-10 flex flex-wrap items-center justify-between gap-3 border-b border-slate-200/60 bg-[#F8F6F0]/80 px-4 py-3 backdrop-blur-md sm:gap-4 sm:px-8 sm:py-4 dark:border-white/[0.06] dark:bg-[#121110]/80">
       <div className="flex min-w-0 items-center gap-3.5">
+        {isCompact && (
+          <button type="button" onClick={toggleLeft} aria-label="Open navigation" className="-ml-1 grid size-10 shrink-0 place-items-center rounded-xl text-slate-600 hover:bg-slate-900/5 dark:text-slate-300 dark:hover:bg-white/5">
+            <span className="material-symbols-outlined text-2xl">menu</span>
+          </button>
+        )}
         <span className="relative grid size-10 shrink-0 place-items-center rounded-xl bg-white ring-1 ring-inset ring-slate-900/[0.06] dark:bg-white/[0.04] dark:ring-white/[0.08]">
           {socketStatus === 'live' && (
             <motion.span
@@ -287,7 +307,7 @@ const StageHeader = (): ReactElement => {
         </div>
       </div>
 
-      <div className="flex divide-x divide-slate-200/70 rounded-2xl bg-white ring-1 ring-slate-900/[0.06] dark:divide-white/[0.06] dark:bg-white/[0.04] dark:ring-white/[0.08]">
+      <div className="flex w-full divide-x divide-slate-200/70 rounded-2xl bg-white ring-1 sm:w-auto ring-slate-900/[0.06] dark:divide-white/[0.06] dark:bg-white/[0.04] dark:ring-white/[0.08]">
         <StatTile label="Bankroll" value={summary.data ? formatINR(bankroll) : '—'} icon="account_balance_wallet" motionPreset="breathe" tone="positive" changeKey={bankroll} />
         <StatTile label="Exposure" value={summary.data ? formatINR(exposure) : '—'} icon="inventory_2" motionPreset="sway" tone="caution" changeKey={exposure} />
         <StatTile label="Today" value={summary.data ? formatSignedINR(dayPnl) : '—'} icon={pnlIcon} motionPreset="drift" tone={pnlTone} changeKey={dayPnl} />
@@ -404,7 +424,7 @@ const SidebarNav = ({ collapsed }: { collapsed: boolean }) => {
                   [
                     'group relative flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-colors duration-150',
                     isActive
-                      ? 'text-white'
+                      ? 'text-stone-900'
                       : 'text-slate-500 hover:bg-slate-100 dark:hover:bg-white/5 hover:text-slate-900 dark:hover:text-white',
                   ].join(' ')
                 }
@@ -426,7 +446,7 @@ const SidebarNav = ({ collapsed }: { collapsed: boolean }) => {
                       className={[
                         'material-symbols-outlined relative shrink-0 text-xl transition-all',
                         collapsed ? 'mx-auto' : '',
-                        isActive ? 'text-white' : '',
+                        isActive ? 'text-stone-900' : '',
                       ].join(' ')}
                     >
                       {icon}
@@ -463,16 +483,36 @@ const SidebarNav = ({ collapsed }: { collapsed: boolean }) => {
 };
 
 const Sidebar = ({ theme, onToggleTheme }: { theme: string; onToggleTheme: () => void; }) => {
-  const { isLeftCollapsed, toggleLeft } = useUIStore();
+  const { isLeftCollapsed, toggleLeft, isCompact, closeLeftIfCompact } = useUIStore();
   const user = useAuthStore((s) => s.user);
   const logout = useAuthStore((s) => s.logout);
+  const { pathname } = useLocation();
+  // Phones: the drawer is fully hidden when collapsed and floats over content when open.
+  const hidden = isCompact && isLeftCollapsed;
+
+  useEffect(() => closeLeftIfCompact(), [pathname, closeLeftIfCompact]);
 
   return (
+    <>
+    <AnimatePresence>
+      {isCompact && !isLeftCollapsed && (
+        <motion.div
+          key="nav-backdrop"
+          aria-hidden="true"
+          onClick={toggleLeft}
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          className="fixed inset-0 z-40 bg-black/40 backdrop-blur-[2px]"
+        />
+      )}
+    </AnimatePresence>
     <motion.aside
       layout
-      animate={{ width: isLeftCollapsed ? 80 : 264 }}
+      animate={{ width: hidden ? 0 : isLeftCollapsed ? 80 : 264 }}
       transition={SPRING}
-      className="sticky top-0 z-40 flex h-screen shrink-0 flex-col border-r border-slate-200 dark:border-white/10 bg-[#FDFCFB] dark:bg-[#161514] overflow-hidden"
+      aria-hidden={hidden || undefined}
+      className={`${isCompact ? 'fixed left-0 top-0 z-50 shadow-2xl' : 'sticky top-0 z-40'} ${hidden ? 'invisible border-r-0' : 'border-r'} flex h-screen shrink-0 flex-col border-slate-200 dark:border-white/10 bg-[#FDFCFB] dark:bg-[#161514] overflow-hidden`}
     >
       <div className="flex items-center px-4 pb-6 pt-8 overflow-hidden">
         <AnimatePresence mode="wait">
@@ -518,11 +558,54 @@ const Sidebar = ({ theme, onToggleTheme }: { theme: string; onToggleTheme: () =>
         </button>
       </div>
     </motion.aside>
+    </>
   );
 };
 
 const ExecutionPanel = () => {
-  const { isRightCollapsed, toggleRight } = useUIStore();
+  const { isRightCollapsed, toggleRight, isCompact } = useUIStore();
+
+  if (isCompact) {
+    // Phones: a floating trigger, and a full-screen sheet when open.
+    return (
+      <AnimatePresence initial={false}>
+        {isRightCollapsed ? (
+          <motion.button
+            key="slip-fab"
+            type="button"
+            onClick={toggleRight}
+            initial={{ scale: 0.8, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            exit={{ scale: 0.8, opacity: 0 }}
+            className="fixed bottom-4 right-4 z-30 inline-flex items-center gap-2 rounded-full bg-[var(--accent)] px-4 py-3 text-sm font-semibold text-[var(--accent-ink)] shadow-[0_10px_28px_-8px_var(--accent-glow)]"
+          >
+            <span className="material-symbols-outlined text-xl">receipt_long</span>
+            Bet slip
+          </motion.button>
+        ) : (
+          <motion.aside
+            key="slip-sheet"
+            role="dialog"
+            aria-label="Execution panel"
+            initial={{ y: '100%' }}
+            animate={{ y: 0 }}
+            exit={{ y: '100%' }}
+            transition={SPRING}
+            className="fixed inset-0 z-50 flex flex-col bg-white dark:bg-[#161514]"
+          >
+            <div className="flex shrink-0 items-center justify-between border-b border-slate-200 px-4 py-3 dark:border-white/10">
+              <span className="text-xs font-bold uppercase tracking-widest text-[var(--accent-text)]">Execution Panel</span>
+              <button onClick={toggleRight} title="Close panel" className="flex h-9 w-9 items-center justify-center rounded-lg text-slate-500 hover:bg-slate-100 dark:hover:bg-white/5"><span className="material-symbols-outlined text-xl">close</span></button>
+            </div>
+            <div className="min-h-0 flex-1 overflow-y-auto">
+              <ExecutionTerminal />
+              <div className="flex h-[70vh] flex-col border-t border-slate-200 dark:border-white/10"><EmbeddedScout /></div>
+            </div>
+          </motion.aside>
+        )}
+      </AnimatePresence>
+    );
+  }
 
   return (
     <motion.aside
@@ -613,6 +696,7 @@ const SessionEffects = () => {
     const root = document.documentElement;
     root.style.setProperty('--accent', active.theme.primary);
     root.style.setProperty('--accent-glow', active.theme.glow);
+    root.style.setProperty('--accent-ink', inkOn(active.theme.primary));
   }, [active]);
 
   useEffect(() => {
@@ -666,7 +750,7 @@ const AppShell = () => {
       >
         <StageHeader />
         <HaltBanner />
-        <div className="flex-1 px-8 pb-10">
+        <div className="flex-1 px-4 pb-24 sm:px-8 sm:pb-10">
           <RouteErrorBoundary key={pathname}>
             <Suspense fallback={<RouteFallback />}>
               <Outlet />

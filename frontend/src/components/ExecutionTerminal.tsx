@@ -80,6 +80,15 @@ export default function ExecutionTerminal(): JSX.Element {
     parsedStake > 0 &&
     !overCap;
 
+  // Why Execute is disabled, so the button never fails silently.
+  const blocker: string | null = halted || overCap
+    ? null // each has its own message
+    : !draftMatchId.trim() ? "Click a price, or type a match ID."
+    : !(parsedOdds > 1) ? "Enter decimal odds above 1.00."
+    : !(parsedStake > 0) ? "Enter a stake, or pick a quick amount."
+    : !draftExchangeName.trim() ? "Link an exchange account to route the order."
+    : null;
+
   const handleExecute = async (): Promise<void> => {
     if (inFlightRef.current || isExecuting || !isValid) return;
     inFlightRef.current = true;
@@ -137,7 +146,7 @@ export default function ExecutionTerminal(): JSX.Element {
             onClick={() => updateDraftField("draftSelection", s)}
             className={`rounded-xl py-2 text-xs font-bold tracking-wider ring-1 ring-inset transition-colors ${
               draftSelection === s
-                ? "bg-[var(--accent)] text-white ring-transparent"
+                ? "bg-[var(--accent)] text-[var(--accent-ink)] ring-transparent"
                 : "bg-white text-slate-600 ring-slate-900/10 hover:bg-slate-50 dark:bg-white/[0.04] dark:text-slate-300 dark:ring-white/10"
             }`}
           >
@@ -194,7 +203,7 @@ export default function ExecutionTerminal(): JSX.Element {
                       <button
                         type="button"
                         onClick={() => updateDraftField("draftStake", String(Math.max(1, Math.floor(kellyStake))))}
-                        className="ml-2 rounded-md bg-[var(--accent)] px-1.5 py-0.5 text-[10px] font-bold text-white"
+                        className="ml-2 rounded-md bg-[var(--accent)] px-1.5 py-0.5 text-[10px] font-bold text-[var(--accent-ink)]"
                         title="Use the fractional-Kelly stake"
                       >
                         {formatINR(Math.floor(kellyStake))}
@@ -240,6 +249,7 @@ export default function ExecutionTerminal(): JSX.Element {
 
       <div className="min-h-[1.25rem] space-y-1" aria-live="polite">
         {overCap && <p className="text-xs text-rose-600 dark:text-rose-400">Stake is above the Control Panel max bet.</p>}
+        {blocker && !lastError && !lastSuccess && <p className="text-xs text-slate-500 dark:text-slate-400">{blocker}</p>}
         {lastError && <p className="break-words text-xs text-rose-600 dark:text-rose-400">{lastError}</p>}
         {lastSuccess && <p className="break-words text-xs text-emerald-600 dark:text-emerald-400">{lastSuccess}</p>}
       </div>
