@@ -3,22 +3,35 @@ import logging
 import json
 from typing import Any
 
-from fastapi import APIRouter, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, Query, WebSocket, WebSocketDisconnect, status
 from redis.asyncio import Redis
-from app.core.config import get_settings
+
+from app.api.v1.ws import _authenticate
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/omni", tags=["omni"])
 
 @router.websocket("/ws/stream")
-async def omni_ws_proxy(websocket: WebSocket):
+async def omni_ws_proxy(websocket: WebSocket, token: str | None = Query(default=None)):
     """
     Forward the omni_live_stream Redis channel to the frontend browser OmniSocket.
     """
-    await websocket.accept()
     settings = websocket.app.state.settings
-    redis: Redis = websocket.app.state.redis
+    # Same handshake rules as /ws/live-odds: browsers skip CORS for WebSockets, and the token rides in the query.
+    origin = websocket.headers.get("origin")
+    if origin and origin not in settings.BACKEND_CORS_ORIGINS:
+        await websocket.close(code=status.WS_1008_POLICY_VIOLATION, reason="Origin not allowed")
+        return
+    if await _authenticate(token) is None:
+        await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
+        return
+    redis: Redis | None = websocket.app.state.redis
+    if redis is None:
+        await websocket.close(code=status.WS_1011_INTERNAL_ERROR, reason="Live stream unavailable")
+        return
+
+    await websocket.accept()
     
     pubsub = redis.pubsub()
     await pubsub.subscribe(settings.omni_live_channel)

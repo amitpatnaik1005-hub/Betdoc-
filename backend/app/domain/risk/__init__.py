@@ -17,6 +17,22 @@ from app.domain.risk.mpt import optimize_portfolio
 from app.domain.risk.black_litterman import black_litterman_adjust
 from app.domain.risk.stop_loss import StopLossEngine
 
+# Group 55: advanced risk models
+from app.domain.risk.spectral import exponential_spectral_risk
+from app.domain.risk.parity import risk_parity_weights
+from app.domain.risk.concentration import calculate_hhi
+from app.domain.risk.correlation_risk import eigen_dispersion
+from app.domain.risk.liquidity_risk import liquidity_adjusted_var
+from app.domain.risk.credit_risk import expected_shortfall_counterparty
+from app.domain.risk.operational_risk import lda_percentile
+from app.domain.risk.model_risk import edge_decay_penalty
+from app.domain.risk.copula_clayton import clayton_lower_tail_dependence
+from app.domain.risk.copula_gumbel import gumbel_upper_tail_dependence
+from app.domain.risk.scenario_matrix import stress_test_portfolio
+from app.domain.risk.reverse_stress import implied_ruin_volatility
+from app.domain.risk.entropic_risk import entropic_risk_measure
+from app.domain.risk.component_var import component_var
+
 __all__ = [
     "ACTIVE_STATUSES",
     "SETTLED_STATUSES",
@@ -38,4 +54,18 @@ __all__ = [
     "optimize_portfolio",
     "black_litterman_adjust",
     "StopLossEngine",
+    "exponential_spectral_risk",
+    "risk_parity_weights",
+    "calculate_hhi",
+    "eigen_dispersion",
+    "liquidity_adjusted_var",
+    "expected_shortfall_counterparty",
+    "lda_percentile",
+    "edge_decay_penalty",
+    "clayton_lower_tail_dependence",
+    "gumbel_upper_tail_dependence",
+    "stress_test_portfolio",
+    "implied_ruin_volatility",
+    "entropic_risk_measure",
+    "component_var",
 ]

@@ -150,6 +150,8 @@ class ArchiveManager:
         materialized = await self._materialized_tables(db)
         summaries: list[dict[str, Any]] = []
         for name, table in sorted(Base.metadata.tables.items()):
+            if name in self._blocked_tables:
+                continue  # not browsable, so not listed either
             if name not in materialized:
                 logger.warning("ARCHIVE: table %s is registered but not present in the database; skipped.", name)
                 continue

@@ -15,7 +15,17 @@ logger = logging.getLogger("betdoc.archive")
 
 router = APIRouter(tags=["The Archive"])
 
-_manager = ArchiveManager()
+# Tables holding credentials or password hashes are never browsable, encrypted or not.
+SENSITIVE_TABLES: frozenset[str] = frozenset({
+    "users",
+    "exchange_accounts",
+    "api_credentials",
+    "bookmaker_configs",
+    "omni_provider_configs",
+    "system_settings",
+})
+
+_manager = ArchiveManager(blocked_tables=SENSITIVE_TABLES)
 
 
 def get_archive_manager() -> ArchiveManager:

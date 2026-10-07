@@ -1,10 +1,13 @@
+import logging
 import time
 from typing import Optional
 from redis.asyncio import Redis
+from redis.exceptions import RedisError
 from fastapi import Request
 from fastapi.responses import JSONResponse
 from app.core.config import get_settings
 
+logger = logging.getLogger(__name__)
 settings = get_settings()
 
 LUA_TOKEN_BUCKET = """
@@ -53,10 +56,15 @@ class RateLimiter:
             self._script = self._redis.register_script(LUA_TOKEN_BUCKET)
 
         now = time.time()
-        result = await self._script(
-            keys=[f"rate_limit:{key}"],
-            args=[capacity, refill_rate, now]
-        )
+        try:
+            result = await self._script(
+                keys=[f"rate_limit:{key}"],
+                args=[capacity, refill_rate, now]
+            )
+        except (RedisError, OSError):
+            # Same policy as "Redis missing": fail open rather than 500 every request
+            logger.warning("Rate limiter unavailable; allowing request", exc_info=True)
+            return True
         return result == 1
 
 limiter = RateLimiter()

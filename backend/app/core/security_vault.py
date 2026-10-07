@@ -57,6 +57,8 @@ class VaultCrypto:
 
     @classmethod
     def from_settings(cls, settings: Settings) -> VaultCrypto:
+        if settings.master_vault_key is None:
+            raise VaultConfigurationError("MASTER_VAULT_KEY is not set.")
         return cls(
             settings.master_vault_key.get_secret_value(),
             [k.get_secret_value() for k in settings.master_vault_previous_keys],

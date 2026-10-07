@@ -16,7 +16,15 @@ from sqlalchemy.pool import StaticPool
 from app.api.deps import build_orchestrator
 from app.core.config import Settings
 from app.core.encryption import EncryptionService
-from app.domain.integration.models import ApiCredential, Base, BetStatus, EventResearch
+from app.domain.integration.models import (
+    ApiCredential,
+    Base,
+    BetRecord,
+    BetStatus,
+    EventResearch,
+    PredictionRecord,
+    SubsystemConstraint,
+)
 from app.domain.integration.orchestrator import BettingHaltedError, OrchestratorService
 from app.domain.integration.repositories import LabRepository
 from app.domain.integration.schemas import ArenaMetrics, LabMetrics, OracleMetrics, SubsystemStatus, TelemetryResponse
@@ -24,6 +32,11 @@ from app.domain.integration.schemas import ArenaMetrics, LabMetrics, OracleMetri
 PLAIN_API_KEY = "sk-live-1234567890abcdef"
 EXPECTED_MASK = "sk-live-************cdef"
 EVENT_ID = "evt-e2e-001"
+
+# Only the integration tables: the shared Base also holds Postgres-only DDL that SQLite rejects.
+INTEGRATION_TABLES = [
+    model.__table__ for model in (ApiCredential, EventResearch, PredictionRecord, BetRecord, SubsystemConstraint)
+]
 
 
 # --------------------------------------------------------------------------- fixtures
@@ -49,7 +62,7 @@ async def engine(settings: Settings) -> AsyncIterator[AsyncEngine]:
     # StaticPool: every session shares the single in-memory connection (otherwise each sees an empty DB).
     eng = create_async_engine(settings.database_url, poolclass=StaticPool, connect_args={"check_same_thread": False})
     async with eng.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
+        await conn.run_sync(Base.metadata.create_all, tables=INTEGRATION_TABLES)
     try:
         yield eng
     finally:

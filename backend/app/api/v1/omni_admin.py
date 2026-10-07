@@ -28,6 +28,8 @@ logger = logging.getLogger(__name__)
 
 async def require_omni_admin(request: Request) -> None:
     settings: Settings = request.app.state.settings
+    if settings.omni_admin_token is None:
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Omni admin is not configured")
     supplied = request.headers.get(settings.omni_admin_header, "")
     expected = settings.omni_admin_token.get_secret_value()
     if not supplied or not hmac.compare_digest(supplied.encode("utf-8"), expected.encode("utf-8")):
@@ -178,7 +180,9 @@ def _settings(request: Request) -> Settings:
 
 
 def _vault(request: Request) -> VaultCrypto:
-    vault: VaultCrypto = request.app.state.vault
+    vault: VaultCrypto | None = request.app.state.vault
+    if vault is None:
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="MASTER_VAULT_KEY is not configured")
     return vault
 
 
