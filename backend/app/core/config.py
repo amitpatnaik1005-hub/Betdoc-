@@ -53,6 +53,8 @@ class Settings(BaseSettings):
     REDIS_URL: SecretStr = SecretStr("redis://localhost:6379/0")
     CELERY_BROKER_URL: SecretStr | None = None  # defaults to REDIS_URL
     RATE_LIMIT_GLOBAL_RPM: int = Field(default=600, gt=0)
+    ARCHIVE_BACKUP_DIR: str | None = None  # where scripts/backup.sh writes *.sql.gz
+    HIVE_SUPERVISOR_INTERVAL_SECONDS: float = Field(default=30.0, ge=0)  # 0 disables commander heartbeats
 
     # ---- Group 57: cross-section integration (orchestrator + risk) ----------
     mask_visible_chars: int = Field(default=4, ge=0)

@@ -17,11 +17,11 @@ async def test_overview_returns_200(client):
     response = await client.get(f"{BASE}/overview")
     assert response.status_code == 200
     body = response.json()
-    assert body["encryption_status"] == "E2E Active"
-    assert body["algorithm"] == "AES-256-GCM"
+    assert body["encryption_status"] == "Field-level (credentials)"
+    assert body["algorithm"] == "Fernet (AES-128-CBC + HMAC-SHA256)"
     assert body["database_status"] == "ONLINE"
     assert body["total_tables"] >= 1
-    assert body["last_backup_at"]
+    assert body["last_backup_at"] is None
 
 
 async def test_tables_returns_200_with_archive_logs(client, seed_logs):

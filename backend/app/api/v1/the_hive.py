@@ -16,9 +16,10 @@ from fastapi import (
     WebSocketDisconnect,
     status,
 )
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from app.api.deps import CurrentUser, get_db
+from app.api.deps import CurrentUser, WsUser, get_db
 from app.domain.the_hive import (
     DependencyCycleDetectedError,
     HiveDomainError,
@@ -29,7 +30,7 @@ from app.domain.the_hive import (
     TaskExpiredError,
     TaskNotFoundError,
 )
-from app.models.the_hive import HiveTaskModel, LegendaryBot, TaskStatus
+from app.models.the_hive import BotProfileModel, HiveTaskModel, LegendaryBot, TaskStatus
 from app.schemas.the_hive import (
     BotProfileRead,
     ClaimRequest,
@@ -159,8 +160,7 @@ async def run_hive_sweeper(
 
 # ================================================================ websocket
 @router.websocket("/board/live")
-async def board_live(websocket: WebSocket) -> None:
-    # SECURITY: add token verification here before production exposure.
+async def board_live(websocket: WebSocket, user: WsUser) -> None:  # noqa: ARG001 - auth gate
     if not await manager.connect(websocket):
         return
     try:
@@ -175,6 +175,13 @@ async def board_live(websocket: WebSocket) -> None:
 
 
 # ===================================================================== bots
+@router.get("/bots", response_model=list[BotProfileRead])
+async def list_bots(current_user: CurrentUser, db: DbSession) -> list[BotProfileRead]:  # noqa: ARG001
+    """Every commander that has ever reported a heartbeat, with its latest status."""
+    rows = (await db.execute(select(BotProfileModel).order_by(BotProfileModel.bot_name))).scalars().all()
+    return [BotProfileRead.model_validate(row) for row in rows]
+
+
 @router.post("/bots/{name}/heartbeat", response_model=BotProfileRead)
 async def bot_heartbeat(
     name: LegendaryBot, payload: HeartbeatRequest, current_user: CurrentUser, db: DbSession  # noqa: ARG001

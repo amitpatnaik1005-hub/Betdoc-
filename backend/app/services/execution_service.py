@@ -12,6 +12,7 @@ from app.core.security import decrypt_api_key
 from app.exchanges.base import ExchangeRejectionError
 from app.exchanges.factory import get_exchange_adapter
 from app.models import BetLedger, ExchangeAccount, RiskMandate
+from app.models.control_panel import SETTINGS_SINGLETON_ID, SystemSettingsModel
 from app.schemas.execution import PlaceBetRequest
 
 logger = logging.getLogger(__name__)
@@ -92,6 +93,24 @@ async def _finalize(
         raise
 
 
+async def _enforce_trading_gate(db: AsyncSession, stake: Decimal) -> None:
+    """Control Panel limits apply to every order: the kill switch zeroes daily exposure, and
+    max_bet_size caps any single stake. No settings row yet means the defaults were never edited."""
+    controls = await db.get(SystemSettingsModel, SETTINGS_SINGLETON_ID)
+    if controls is None:
+        return
+    if controls.max_daily_exposure <= 0:
+        raise HTTPException(
+            status.HTTP_423_LOCKED,
+            "Trading is halted by the emergency stop. Resume it from the Control Panel.",
+        )
+    if stake > Decimal(str(controls.max_bet_size)):
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            f"Stake exceeds the Control Panel max bet size of {controls.max_bet_size:,.2f}",
+        )
+
+
 async def execute_bet(db: AsyncSession, user_id: UUID, req: PlaceBetRequest) -> BetLedger:
     # ------------------------------------------------------------------ #
     # Pre-flight (no lock held)
@@ -129,6 +148,8 @@ async def execute_bet(db: AsyncSession, user_id: UUID, req: PlaceBetRequest) -> 
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Stake rounds to zero at 4dp scale")
     if odds <= 1:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Odds must be greater than 1")
+
+    await _enforce_trading_gate(db, stake)
 
     # ------------------------------------------------------------------ #
     # Phase 1: Lock, validate risk, reserve exposure

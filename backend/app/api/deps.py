@@ -3,7 +3,7 @@ from collections.abc import AsyncGenerator
 from typing import Annotated
 
 import jwt
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, HTTPException, Query, WebSocket, WebSocketException, status
 from fastapi.security import OAuth2PasswordBearer
 from pydantic import BaseModel, ValidationError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
@@ -57,10 +57,8 @@ def _credentials_exception(detail: str = "Could not validate credentials") -> HT
     )
 
 
-async def get_current_user(
-    token: Annotated[str, Depends(oauth2_scheme)],
-    db: Annotated[AsyncSession, Depends(get_db)],
-) -> User:
+def _decode_user_id(token: str) -> uuid.UUID:
+    """Verified subject of a bearer token; raises the standard 401 otherwise."""
     try:
         payload = jwt.decode(
             token,
@@ -76,9 +74,16 @@ async def get_current_user(
 
     try:
         token_data = TokenPayload.model_validate(payload)
-        user_id = uuid.UUID(token_data.sub)
+        return uuid.UUID(token_data.sub)
     except (ValidationError, ValueError):
         raise _credentials_exception()
+
+
+async def get_current_user(
+    token: Annotated[str, Depends(oauth2_scheme)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> User:
+    user_id = _decode_user_id(token)
 
     user = await db.get(User, user_id)
     if user is None:
@@ -93,6 +98,29 @@ async def get_current_user(
 
 CurrentUser = Annotated[User, Depends(get_current_user)]
 DbSession = Annotated[AsyncSession, Depends(get_db)]
+
+
+async def get_ws_user(websocket: WebSocket, token: Annotated[str | None, Query()] = None) -> User:
+    """WebSocket twin of get_current_user. Browsers can't set headers on a WS handshake, so the
+    JWT rides in ?token=, and since WebSockets bypass CORS the Origin is checked explicitly.
+    Failing before accept() rejects the handshake (the client sees HTTP 403)."""
+    origin = websocket.headers.get("origin")
+    if origin and origin not in settings.BACKEND_CORS_ORIGINS:
+        raise WebSocketException(code=status.WS_1008_POLICY_VIOLATION, reason="Origin not allowed")
+    if not token:
+        raise WebSocketException(code=status.WS_1008_POLICY_VIOLATION, reason="Missing token")
+    try:
+        user_id = _decode_user_id(token)
+    except HTTPException:
+        raise WebSocketException(code=status.WS_1008_POLICY_VIOLATION, reason="Invalid token") from None
+    async with AsyncSessionLocal() as db:
+        user = await db.get(User, user_id)
+    if user is None or not user.is_active:
+        raise WebSocketException(code=status.WS_1008_POLICY_VIOLATION, reason="Invalid token")
+    return user
+
+
+WsUser = Annotated[User, Depends(get_ws_user)]
 
 
 ADMIN_ROLE = "ADMIN"

@@ -40,19 +40,18 @@ async def _log_count(session, target: str | None = None) -> int:
 # ---------------------------------------------------------------- overview
 
 
-async def test_get_overview_returns_mock_security_payload(manager, db_session, seed_logs):
+async def test_get_overview_reports_real_security_posture(manager, db_session, seed_logs):
     await seed_logs(2)
     overview = await manager.get_overview(db_session)
 
-    assert overview["encryption_status"] == "E2E Active"
-    assert overview["algorithm"] == "AES-256-GCM"
+    assert overview["encryption_status"] == "Field-level (credentials)"
+    assert overview["algorithm"] == "Fernet (AES-128-CBC + HMAC-SHA256)"
     assert overview["total_tables"] == len(Base.metadata.tables)
     assert overview["database_status"] == "ONLINE"
     assert overview["probe_latency_ms"] is not None and overview["probe_latency_ms"] >= 0
     assert overview["total_records"] >= 2
 
-    expected_backup = datetime.now(UTC) - timedelta(hours=2)
-    assert abs((overview["last_backup_at"] - expected_backup).total_seconds()) < 60
+    assert overview["last_backup_at"] is None  # no backup directory configured
 
     ArchiveOverviewResponse.model_validate(overview)
 
@@ -163,7 +162,7 @@ async def test_query_table_unmaterialized_raises_not_found(manager, db_session, 
 
 
 async def test_query_table_blocked_raises_not_found(db_session, probe_table):
-    guarded = ArchiveManager(probe_latency_s=0.0, blocked_tables={probe_table["name"]})
+    guarded = ArchiveManager(blocked_tables={probe_table["name"]})
     with pytest.raises(TableNotFoundError):
         await guarded.query_table(db_session, probe_table["name"])
 
@@ -218,3 +217,15 @@ async def test_serialize_row_casts_non_json_types_to_strings():
 async def test_serialize_row_redacts_requested_columns():
     serialized = _serialize_row({"username": "pratap", "hashed_password": "x"}, {"hashed_password"})
     assert serialized == {"username": "pratap", "hashed_password": REDACTED}
+
+
+async def test_overview_reports_newest_backup_archive(db_session, tmp_path):
+    import os
+
+    older, newer = tmp_path / "betdoc_prod_a.sql.gz", tmp_path / "betdoc_prod_b.sql.gz"
+    older.write_bytes(b"x")
+    newer.write_bytes(b"x")
+    os.utime(older, (1_700_000_000, 1_700_000_000))
+    os.utime(newer, (1_800_000_000, 1_800_000_000))
+    overview = await ArchiveManager(backup_dir=tmp_path).get_overview(db_session)
+    assert overview["last_backup_at"] == datetime.fromtimestamp(1_800_000_000, UTC)

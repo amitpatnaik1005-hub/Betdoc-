@@ -6,7 +6,9 @@ from datetime import datetime, timezone
 import jwt
 from fastapi import APIRouter, Query, WebSocket, WebSocketDisconnect, status
 
+from app.api.deps import WsUser
 from app.core.config import settings
+from app.core.events import EVENTS_CHANNEL, relay_channel
 from app.core.database import AsyncSessionLocal
 from app.core.websockets import manager
 from app.models import User
@@ -111,3 +113,9 @@ async def live_odds(
     finally:
         # Runs on every exit path, so dead sockets never stay in the broadcast set
         manager.disconnect(websocket)
+
+
+@router.websocket("/events")
+async def events_stream(websocket: WebSocket, user: WsUser) -> None:  # noqa: ARG001 - auth gate
+    """Cross-section event bus: every section's writes, commander heartbeats, system halts."""
+    await relay_channel(websocket, getattr(websocket.app.state, "redis", None), EVENTS_CHANNEL)

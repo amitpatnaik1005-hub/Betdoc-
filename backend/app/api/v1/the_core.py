@@ -18,11 +18,12 @@ from uuid import UUID
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, WebSocket, WebSocketDisconnect, status
 
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 
 
-from app.api.deps import get_db
+from app.api.deps import WsUser, get_db
 
 from app.core.database import AsyncSessionLocal
 
@@ -40,7 +41,7 @@ from app.domain.the_core.errors import (
 
 from app.domain.the_core.orchestrator import CoreOrchestrator
 
-from app.models.the_core import SmallcaseStatus
+from app.models.the_core import BacktestJobModel, SmallcaseStatus
 
 from app.schemas.the_core import (
 
@@ -526,7 +527,7 @@ async def run_backtest(
 
 @router.websocket("/live")
 
-async def engine_room_live(websocket: WebSocket, manager: WsManager) -> None:
+async def engine_room_live(websocket: WebSocket, manager: WsManager, user: WsUser) -> None:  # noqa: ARG001 - auth gate
 
     await manager.connect(websocket)
 
@@ -580,3 +581,12 @@ async def engine_room_live(websocket: WebSocket, manager: WsManager) -> None:
 
         manager.disconnect(websocket)
 
+
+@router.get("/backtests", response_model=list[BacktestJobRead])
+async def list_backtests(
+    db: DbSession,
+    limit: Annotated[int, Query(ge=1, le=200)] = 25,
+) -> list[BacktestJobRead]:
+    """Backtest jobs, newest first: queued, running and completed with their ROI / accuracy / drawdown."""
+    stmt = select(BacktestJobModel).order_by(BacktestJobModel.created_at.desc()).limit(limit)
+    return [BacktestJobRead.model_validate(row) for row in (await db.execute(stmt)).scalars().all()]

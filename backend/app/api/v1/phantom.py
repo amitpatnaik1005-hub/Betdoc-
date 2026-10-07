@@ -3,12 +3,14 @@
 import logging
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_db
 from app.domain.phantom.errors import PhantomDomainError
 from app.domain.phantom.manager import PhantomManager
+from app.models.phantom import ArbitrageOpportunityModel, PhantomCalculationLogModel
 from app.schemas.phantom import (
     ArbitrageOpportunityRead,
     ArbitrageRequest,
@@ -125,3 +127,28 @@ async def evaluate_cointegration(
     except PhantomDomainError as exc:
         raise _bad_request(exc) from exc
     return CointegrationResponse(**outcome["result"], log=PhantomCalculationLogRead.model_validate(outcome["log"]))
+
+
+@router.get("/opportunities", response_model=list[ArbitrageOpportunityRead])
+async def list_opportunities(
+    db: Annotated[AsyncSession, Depends(get_db)],
+    limit: Annotated[int, Query(ge=1, le=200)] = 25,
+    active_only: bool = False,
+) -> list[ArbitrageOpportunityRead]:
+    """Persisted arbitrage hits, newest first (the shadow execution ledger)."""
+    stmt = select(ArbitrageOpportunityModel).order_by(ArbitrageOpportunityModel.created_at.desc()).limit(limit)
+    if active_only:
+        stmt = stmt.where(ArbitrageOpportunityModel.is_active.is_(True))
+    rows = (await db.execute(stmt)).scalars().all()
+    return [ArbitrageOpportunityRead.model_validate(row) for row in rows]
+
+
+@router.get("/calculations", response_model=list[PhantomCalculationLogRead])
+async def list_calculations(
+    db: Annotated[AsyncSession, Depends(get_db)],
+    limit: Annotated[int, Query(ge=1, le=200)] = 25,
+) -> list[PhantomCalculationLogRead]:
+    """Audit log of every Phantom calculation (dutching, matched betting, market making, cointegration)."""
+    stmt = select(PhantomCalculationLogModel).order_by(PhantomCalculationLogModel.created_at.desc()).limit(limit)
+    rows = (await db.execute(stmt)).scalars().all()
+    return [PhantomCalculationLogRead.model_validate(row) for row in rows]

@@ -9,6 +9,7 @@ from fastapi import FastAPI, WebSocket
 from fastapi.testclient import TestClient
 from starlette.websockets import WebSocketDisconnect
 
+from app.api.deps import get_ws_user
 from app.api.v1 import the_hive as hive_api
 from app.api.v1.the_hive import ConnectionManager
 from app.models.the_hive import LegendaryBot, TaskStatus
@@ -94,6 +95,7 @@ def _ws_app(monkeypatch: pytest.MonkeyPatch, manager: ConnectionManager) -> Fast
     monkeypatch.setattr(hive_api, "manager", manager)
     app = FastAPI()
     app.include_router(hive_api.router)
+    app.dependency_overrides[get_ws_user] = lambda: None  # authenticated user stand-in
     return app
 
 
@@ -113,3 +115,13 @@ def test_live_board_rejects_over_capacity(monkeypatch: pytest.MonkeyPatch) -> No
             with test_client.websocket_connect("/hive/board/live"):
                 pass
     assert exc_info.value.code == 1013
+
+
+def test_live_board_rejects_unauthenticated_handshake(monkeypatch: pytest.MonkeyPatch) -> None:
+    app = _ws_app(monkeypatch, ConnectionManager())
+    app.dependency_overrides.clear()
+    with TestClient(app) as test_client:
+        with pytest.raises(WebSocketDisconnect) as exc_info:
+            with test_client.websocket_connect("/hive/board/live"):
+                pass
+    assert exc_info.value.code == 1008
