@@ -1,4 +1,4 @@
-import { lazy, Suspense, useCallback, useEffect, useId, useState, type ReactElement } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useId, useMemo, useState, type ReactElement } from 'react';
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
 import {
   BrowserRouter,
@@ -11,15 +11,24 @@ import {
 } from 'react-router-dom';
 
 import { BRAND, AnimatedGlyph, type GlyphMotion, BetdocLogo as BrandLogo } from './ui/brand';
-import { useBetStore as useBankrollStore } from './store/useBetStore';
 import { useUIStore } from './store/useUIStore';
-import { formatINR, formatSignedINR, paiseToRupees } from './pages/BetHistory';
+import { formatINR, formatSignedINR } from './lib/format';
 import ExecutionTerminal from './components/ExecutionTerminal';
 import { ScoutDrawer as EmbeddedScout } from './components/oracle/ScoutDrawer';
 import LoginForm from './components/LoginForm';
 import { RouteErrorBoundary } from './components/RouteErrorBoundary';
-import { useAuthStore } from './store/useAuthStore';
+import { Toaster } from './components/Toaster';
+import { CommandPalette, type PaletteCommand, useNavigateCommands } from './components/CommandPalette';
+import { MOCK_AUTH, useAuthStore } from './store/useAuthStore';
 import { useMarketStore } from './store/useMarketStore';
+import { useSystemStore } from './store/useSystemStore';
+import { useCommanderStore } from './store/useCommanderStore';
+import { COMMANDER_REGISTRY, type CommanderId } from './config/commanders.config';
+import { useCommanders } from './lib/commanders';
+import { emergencyStop, resumeTrading, useControls, useDashboardSummary } from './lib/api';
+import { invalidate } from './lib/resource';
+import { startRealtime } from './services/realtime';
+import { toast } from './store/useToastStore';
 
 const CommandCenter = lazy(() => import('./pages/CommandCenter').then(m => ({ default: m.CommandCenter })));
 const TheArena = lazy(() => import('./pages/TheArena').then(m => ({ default: m.TheArena })));
@@ -198,15 +207,22 @@ const SOCKET_STYLE = {
 } as const satisfies Record<SocketStatus, { readonly dot: string; readonly halo: string; readonly text: string; readonly label: string }>;
 
 const StageHeader = (): ReactElement => {
-  const balancePaise = useBankrollStore((s: any) => s.bankroll * 100);
-  const exposurePaise = useBankrollStore((s: any) => s.exposure * 100);
-  const dayPnlPaise = useBankrollStore((s: any) => s.sessionPnl * 100);
-  const socketStatus: SocketStatus = useMarketStore((s) =>
-    s.isConnected ? 'live' : s.isReconnecting ? 'connecting' : s.connectionError ? 'stalled' : 'offline',
-  );
+  const summary = useDashboardSummary();
+  const halted = useSystemStore((s) => s.halted);
+  const busStatus = useSystemStore((s) => s.busStatus);
+  const oddsLive = useMarketStore((s) => s.isConnected);
+  const activeCommander = useCommanderStore((s) => s.activeCommander);
+  // "Live" means the cross-section event bus is open; the odds feed is reported alongside it.
+  const socketStatus: SocketStatus =
+    MOCK_AUTH ? 'offline'
+      : busStatus === 'open' ? 'live'
+      : busStatus === 'connecting' || busStatus === 'reconnecting' || busStatus === 'idle' ? 'connecting'
+      : busStatus === 'error' ? 'stalled' : 'offline';
 
-  const dayPnl = paiseToRupees(dayPnlPaise);
-  const socket = SOCKET_STYLE[socketStatus as keyof typeof SOCKET_STYLE];
+  const bankroll = summary.data?.total_bankroll ?? 0;
+  const exposure = summary.data?.current_exposure ?? 0;
+  const dayPnl = summary.data?.daily_pnl ?? 0;
+  const socket = SOCKET_STYLE[socketStatus];
 
   const pnlTone: Tone = dayPnl > 0 ? 'positive' : dayPnl < 0 ? 'negative' : 'neutral';
   const pnlIcon = dayPnl > 0 ? 'trending_up' : dayPnl < 0 ? 'trending_down' : 'trending_flat';
@@ -232,16 +248,38 @@ const StageHeader = (): ReactElement => {
         </span>
 
         <div className="min-w-0">
-          <h1 className="truncate text-xl font-semibold tracking-tight text-slate-900 dark:text-slate-50">
-            Quantitative Desk
-          </h1>
+          <div className="flex items-center gap-2.5">
+            <h1 className="truncate text-xl font-semibold tracking-tight text-slate-900 dark:text-slate-50">
+              Quantitative Desk
+            </h1>
+            <span
+              className="hidden items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-[0.14em] ring-1 ring-inset sm:inline-flex"
+              style={{ color: activeCommander.theme.primary, background: `${activeCommander.theme.primary}14`, boxShadow: `inset 0 0 0 1px ${activeCommander.theme.primary}40` }}
+              title={activeCommander.domain}
+            >
+              {activeCommander.name}
+            </span>
+            {halted && (
+              <button
+                type="button"
+                onClick={() => window.dispatchEvent(new CustomEvent('betdoc:palette'))}
+                className="inline-flex animate-pulse items-center gap-1 rounded-full bg-rose-600 px-2 py-0.5 text-[10px] font-bold uppercase tracking-[0.14em] text-white"
+                title="Trading halted by the emergency stop. Open the command palette to resume."
+              >
+                <span className="material-symbols-outlined text-[12px]">front_hand</span>
+                Halted
+              </button>
+            )}
+          </div>
           <div className="mt-1 flex items-center gap-2" role="status" aria-live="polite">
             <span className="relative flex size-2 shrink-0" aria-hidden="true">
               {socket.halo && <span className={`absolute inline-flex size-full rounded-full ${socket.halo}`} />}
               <span className={`relative inline-flex size-2 rounded-full ${socket.dot}`} />
             </span>
             <p className={`text-[11px] font-medium tracking-wide ${socket.text}`}>
-              {socket.label}
+              {MOCK_AUTH ? 'Mock session' : socket.label}
+              <span className="text-slate-300 dark:text-slate-700"> · </span>
+              <span className="text-slate-400 dark:text-slate-500">Odds feed {oddsLive ? 'streaming' : 'idle'}</span>
               <span className="text-slate-300 dark:text-slate-700"> · </span>
               <span className="text-slate-400 dark:text-slate-500">INR book</span>
             </p>
@@ -250,9 +288,9 @@ const StageHeader = (): ReactElement => {
       </div>
 
       <div className="flex divide-x divide-slate-200/70 rounded-2xl bg-white ring-1 ring-slate-900/[0.06] dark:divide-white/[0.06] dark:bg-white/[0.04] dark:ring-white/[0.08]">
-        <StatTile label="Bankroll" value={formatINR(paiseToRupees(balancePaise))} icon="account_balance_wallet" motionPreset="breathe" tone="positive" changeKey={balancePaise} />
-        <StatTile label="Exposure" value={formatINR(paiseToRupees(exposurePaise))} icon="inventory_2" motionPreset="sway" tone="caution" changeKey={exposurePaise} />
-        <StatTile label="Session" value={formatSignedINR(dayPnl)} icon={pnlIcon} motionPreset="drift" tone={pnlTone} changeKey={dayPnlPaise} />
+        <StatTile label="Bankroll" value={summary.data ? formatINR(bankroll) : '—'} icon="account_balance_wallet" motionPreset="breathe" tone="positive" changeKey={bankroll} />
+        <StatTile label="Exposure" value={summary.data ? formatINR(exposure) : '—'} icon="inventory_2" motionPreset="sway" tone="caution" changeKey={exposure} />
+        <StatTile label="Today" value={summary.data ? formatSignedINR(dayPnl) : '—'} icon={pnlIcon} motionPreset="drift" tone={pnlTone} changeKey={dayPnl} />
       </div>
     </header>
   );
@@ -331,7 +369,7 @@ const RouteFallback = (): ReactElement => {
 // ---------------------------------------------------------------------------
 const SPRING = { type: 'spring', stiffness: 350, damping: 30 } as const;
 
-const NAV_ITEMS = [
+const NAV_ITEMS: readonly { to: string; label: string; icon: string; bot: CommanderId }[] = [
   { to: '/command-center', label: 'Command Center', icon: 'dashboard',       bot: 'KAUTILYA' },
   { to: '/arena',          label: 'The Arena',      icon: 'sports_esports',  bot: 'BAJIRAO'  },
   { to: '/oracle',         label: 'Oracle',         icon: 'auto_awesome',    bot: 'ASHOKA'   },
@@ -343,65 +381,91 @@ const NAV_ITEMS = [
   { to: '/archive',        label: 'Archive',        icon: 'inventory_2',     bot: 'TODAR MAL'},
   { to: '/core',           label: 'Core',           icon: 'memory',          bot: 'PRATAP'   },
   { to: '/control-panel',  label: 'Control Panel',  icon: 'settings',        bot: 'KAUTILYA' },
-] as const;
+];
 
-const SidebarNav = ({ collapsed }: { collapsed: boolean }) => (
-  <nav className="flex-1 overflow-y-auto px-3 py-2 scrollbar-hide">
-    <ul className="flex flex-col gap-1">
-      {NAV_ITEMS.map(({ to, label, icon }) => (
-        <li key={to}>
-          <NavLink
-            to={to}
-            className={({ isActive }) =>
-              [
-                'group flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-colors duration-150',
-                isActive
-                  ? 'text-white'
-                  : 'text-slate-500 hover:bg-slate-100 dark:hover:bg-white/5 hover:text-slate-900 dark:hover:text-white',
-              ].join(' ')
-            }
-            style={({ isActive }) =>
-              isActive
-                ? {
-                    background: `linear-gradient(135deg, ${BRAND.dominant}, ${BRAND.azure})`,
-                    boxShadow: `0 2px 12px ${BRAND.azure}55`,
-                  }
-                : {}
-            }
-          >
-            {({ isActive }) => (
-              <>
-                <span
-                  className={[
-                    'material-symbols-outlined shrink-0 text-xl transition-all',
-                    collapsed ? 'mx-auto' : '',
-                    isActive ? 'text-white' : '',
-                  ].join(' ')}
-                >
-                  {icon}
-                </span>
-                <motion.span
-                  className="whitespace-nowrap overflow-hidden leading-none"
-                  animate={{
-                    opacity: collapsed ? 0 : 1,
-                    width: collapsed ? 0 : 'auto',
-                    marginLeft: collapsed ? 0 : undefined,
-                  }}
-                  transition={SPRING}
-                >
-                  {label}
-                </motion.span>
-              </>
-            )}
-          </NavLink>
-        </li>
-      ))}
-    </ul>
-  </nav>
-);
+const STATUS_DOT: Record<string, string> = {
+  WORKING: 'bg-sky-500', ONLINE: 'bg-emerald-500', DEGRADED: 'bg-amber-500', FATAL: 'bg-rose-500', SLEEPING: 'bg-amber-500',
+};
+
+const SidebarNav = ({ collapsed }: { collapsed: boolean }) => {
+  const { byId } = useCommanders();
+  return (
+    <nav className="flex-1 overflow-y-auto px-3 py-2 scrollbar-hide" aria-label="Sections">
+      <ul className="flex flex-col gap-1">
+        {NAV_ITEMS.map(({ to, label, icon, bot }) => {
+          const commander = byId.get(bot);
+          const status = commander?.status ?? 'NO SIGNAL';
+          return (
+            <li key={to}>
+              <NavLink
+                to={to}
+                title={`${label} · ${COMMANDER_REGISTRY[bot].name} · ${status}`}
+                className={({ isActive }) =>
+                  [
+                    'group relative flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-colors duration-150',
+                    isActive
+                      ? 'text-white'
+                      : 'text-slate-500 hover:bg-slate-100 dark:hover:bg-white/5 hover:text-slate-900 dark:hover:text-white',
+                  ].join(' ')
+                }
+              >
+                {({ isActive }) => (
+                  <>
+                    {isActive && (
+                      <motion.span
+                        layoutId="nav-active-pill"
+                        className="absolute inset-0 rounded-xl"
+                        style={{
+                          background: `linear-gradient(135deg, ${BRAND.dominant}, ${BRAND.azure})`,
+                          boxShadow: `0 2px 12px ${BRAND.azure}55`,
+                        }}
+                        transition={SPRING}
+                      />
+                    )}
+                    <span
+                      className={[
+                        'material-symbols-outlined relative shrink-0 text-xl transition-all',
+                        collapsed ? 'mx-auto' : '',
+                        isActive ? 'text-white' : '',
+                      ].join(' ')}
+                    >
+                      {icon}
+                    </span>
+                    <motion.span
+                      className="relative flex-1 whitespace-nowrap overflow-hidden leading-none"
+                      animate={{
+                        opacity: collapsed ? 0 : 1,
+                        width: collapsed ? 0 : 'auto',
+                        marginLeft: collapsed ? 0 : undefined,
+                      }}
+                      transition={SPRING}
+                    >
+                      {label}
+                    </motion.span>
+                    <span
+                      aria-label={`${COMMANDER_REGISTRY[bot].name} ${status}`}
+                      className={[
+                        'relative size-1.5 shrink-0 rounded-full',
+                        collapsed ? 'absolute right-2 top-2' : '',
+                        STATUS_DOT[status] ?? 'bg-slate-300 dark:bg-slate-600',
+                        isActive ? 'ring-2 ring-white/70' : '',
+                      ].join(' ')}
+                    />
+                  </>
+                )}
+              </NavLink>
+            </li>
+          );
+        })}
+      </ul>
+    </nav>
+  );
+};
 
 const Sidebar = ({ theme, onToggleTheme }: { theme: string; onToggleTheme: () => void; }) => {
   const { isLeftCollapsed, toggleLeft } = useUIStore();
+  const user = useAuthStore((s) => s.user);
+  const logout = useAuthStore((s) => s.logout);
 
   return (
     <motion.aside
@@ -427,6 +491,13 @@ const Sidebar = ({ theme, onToggleTheme }: { theme: string; onToggleTheme: () =>
       <SidebarNav collapsed={isLeftCollapsed} />
 
       <div className="flex flex-col gap-1 border-t border-slate-200 dark:border-white/10 p-3">
+        <button onClick={() => window.dispatchEvent(new CustomEvent('betdoc:palette'))} className="flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm text-slate-500 hover:bg-slate-100 dark:hover:bg-white/5 transition-colors" title="Command palette (Ctrl/⌘ K)">
+          <span className="material-symbols-outlined shrink-0 text-xl">keyboard_command_key</span>
+          <motion.span className="flex flex-1 items-center justify-between whitespace-nowrap overflow-hidden" animate={{ opacity: isLeftCollapsed ? 0 : 1, width: isLeftCollapsed ? 0 : 'auto' }} transition={SPRING}>
+            Commands
+            <kbd className="rounded-md bg-slate-100 px-1.5 py-0.5 text-[10px] font-semibold text-slate-500 dark:bg-white/10 dark:text-slate-400">Ctrl K</kbd>
+          </motion.span>
+        </button>
         <button onClick={onToggleTheme} className="flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm text-slate-500 hover:bg-slate-100 dark:hover:bg-white/5 transition-colors" title="Toggle theme">
           <span className="material-symbols-outlined shrink-0 text-xl">{theme === 'dark' ? 'light_mode' : 'dark_mode'}</span>
           <motion.span className="whitespace-nowrap overflow-hidden" animate={{ opacity: isLeftCollapsed ? 0 : 1, width: isLeftCollapsed ? 0 : 'auto' }} transition={SPRING}>
@@ -437,6 +508,12 @@ const Sidebar = ({ theme, onToggleTheme }: { theme: string; onToggleTheme: () =>
           <motion.span className="material-symbols-outlined shrink-0 text-xl" animate={{ rotate: isLeftCollapsed ? 180 : 0 }} transition={SPRING}>chevron_left</motion.span>
           <motion.span className="whitespace-nowrap overflow-hidden" animate={{ opacity: isLeftCollapsed ? 0 : 1, width: isLeftCollapsed ? 0 : 'auto' }} transition={SPRING}>
             Collapse
+          </motion.span>
+        </button>
+        <button onClick={logout} className="flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm text-slate-500 hover:bg-rose-50 hover:text-rose-600 dark:hover:bg-rose-500/10 dark:hover:text-rose-300 transition-colors" title="Sign out">
+          <span className="material-symbols-outlined shrink-0 text-xl">logout</span>
+          <motion.span className="min-w-0 whitespace-nowrap overflow-hidden text-left" animate={{ opacity: isLeftCollapsed ? 0 : 1, width: isLeftCollapsed ? 0 : 'auto' }} transition={SPRING}>
+            Sign out{user ? <span className="text-slate-400 dark:text-slate-500"> · {user.username}</span> : null}
           </motion.span>
         </button>
       </div>
@@ -474,16 +551,113 @@ const ExecutionPanel = () => {
   );
 };
 
+const HaltBanner = () => {
+  const halted = useSystemStore((s) => s.halted);
+  const [busy, setBusy] = useState(false);
+  return (
+    <AnimatePresence>
+      {halted && (
+        <motion.div
+          initial={{ height: 0, opacity: 0 }}
+          animate={{ height: 'auto', opacity: 1 }}
+          exit={{ height: 0, opacity: 0 }}
+          className="overflow-hidden"
+        >
+          <div role="alert" className="flex flex-wrap items-center justify-between gap-3 border-b border-rose-600/20 bg-rose-50 px-8 py-2.5 text-sm text-rose-800 dark:bg-rose-500/10 dark:text-rose-200">
+            <span className="flex items-center gap-2 font-medium">
+              <span className="material-symbols-outlined text-[18px]">front_hand</span>
+              Emergency stop is active. Every order is refused until trading is resumed.
+            </span>
+            <button
+              type="button"
+              disabled={busy}
+              onClick={async () => {
+                setBusy(true);
+                await resumeTrading(500);
+                setBusy(false);
+              }}
+              className="rounded-lg bg-rose-600 px-3 py-1 text-xs font-bold text-white hover:bg-rose-500 disabled:opacity-60"
+            >
+              {busy ? 'Resuming…' : 'Resume trading (₹500 daily exposure)'}
+            </button>
+          </div>
+        </motion.div>
+      )}
+    </AnimatePresence>
+  );
+};
+
+/** Session-wide realtime channels, commander sync and accent theming. Renders nothing. */
+const SessionEffects = () => {
+  const token = useAuthStore((s) => s.token);
+  const loadProfile = useAuthStore((s) => s.loadProfile);
+  const { pathname } = useLocation();
+  const syncCommander = useCommanderStore((s) => s.syncCommander);
+  const active = useCommanderStore((s) => s.activeCommander);
+  const setCommanderStatus = useCommanderStore((s) => s.setCommanderStatus);
+  const { commanders } = useCommanders();
+  useControls(); // keeps the kill-switch state current for every section
+
+  useEffect(() => {
+    void loadProfile();
+  }, [loadProfile]);
+
+  useEffect(() => {
+    if (!token || MOCK_AUTH) return;
+    return startRealtime(token);
+  }, [token]);
+
+  useEffect(() => syncCommander(pathname), [pathname, syncCommander]);
+
+  useEffect(() => {
+    const root = document.documentElement;
+    root.style.setProperty('--accent', active.theme.primary);
+    root.style.setProperty('--accent-glow', active.theme.glow);
+  }, [active]);
+
+  useEffect(() => {
+    for (const c of commanders) {
+      setCommanderStatus(c.profile.id, c.status === 'WORKING' ? 'ENGAGED' : c.status === 'ONLINE' ? 'ACTIVE' : 'STANDBY');
+    }
+  }, [commanders, setCommanderStatus]);
+
+  return null;
+};
+
+const usePaletteCommands = (): PaletteCommand[] => {
+  const nav = useNavigateCommands(NAV_ITEMS);
+  const toggleRight = useUIStore((s) => s.toggleRight);
+  const halted = useSystemStore((s) => s.halted);
+  return useMemo(
+    () => [
+      ...nav,
+      { id: 'act:betslip', label: 'Toggle execution panel', icon: 'receipt_long', group: 'Actions', run: toggleRight },
+      {
+        id: 'act:refresh',
+        label: 'Refresh every section',
+        icon: 'refresh',
+        group: 'Actions',
+        run: () => {
+          invalidate('dashboard', 'vault', 'arena', 'capital', 'hive', 'lab', 'core', 'commanders', 'system', 'signals', 'archive', 'the-wire', 'phantom', 'oracle');
+          toast.info('Refreshing all sections');
+        },
+      },
+      halted
+        ? { id: 'act:resume', label: 'Resume trading', icon: 'play_circle', group: 'Actions', hint: '₹500 daily exposure', run: () => void resumeTrading(500) }
+        : { id: 'act:halt', label: 'Emergency stop: halt all trading', icon: 'front_hand', group: 'Actions', run: () => void emergencyStop() },
+    ],
+    [nav, toggleRight, halted],
+  );
+};
+
 const AppShell = () => {
   const { theme, toggle } = useTheme();
   const { pathname } = useLocation();
-
-  useEffect(() => {
-    useBankrollStore.getState().fetchWallet();
-  }, []);
+  const commands = usePaletteCommands();
 
   return (
     <div className="flex h-screen w-full overflow-hidden bg-[#F8F6F0] text-slate-900 antialiased selection:bg-[#C89B3C]/30 dark:bg-[#121110] dark:text-[#E8E6E3]">
+      <SessionEffects />
       <Sidebar theme={theme} onToggleTheme={toggle} />
       <motion.main
         layout
@@ -491,6 +665,7 @@ const AppShell = () => {
         className="relative flex min-w-0 flex-1 flex-col overflow-y-auto overflow-x-hidden"
       >
         <StageHeader />
+        <HaltBanner />
         <div className="flex-1 px-8 pb-10">
           <RouteErrorBoundary key={pathname}>
             <Suspense fallback={<RouteFallback />}>
@@ -500,6 +675,8 @@ const AppShell = () => {
         </div>
       </motion.main>
       <ExecutionPanel />
+      <CommandPalette commands={commands} />
+      <Toaster />
     </div>
   );
 };

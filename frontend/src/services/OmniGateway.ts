@@ -1,45 +1,17 @@
 /**
- * Dual-layer Omni-Gateway: REST (Axios singleton) + WebSocket (pub/sub manager).
+ * Omni-Gateway: the single WebSocket layer for every live BetDoc channel.
  *
- * SECURITY: every VITE_* value is compiled into the public JS bundle. Keys placed in
- * VITE_OMNI_REST_KEY / VITE_OMNI_WS_KEY are readable by anyone. Prefer pointing the URLs
- * at a backend proxy that holds the real keys server-side, and leave the key variables empty.
+ * One `OmniSocket` per backend channel (`OmniSocket.channel("/ws/events")`), all on the page's own
+ * origin and authenticated with the signed-in user's JWT (`?token=`), which the backend checks before
+ * the handshake completes. Ref-counted: the first subscriber opens the socket, the last one closes it.
+ * Reconnects with jittered exponential backoff and pauses while the tab is hidden or offline.
+ *
+ * Provider credentials never reach the browser: third-party feeds are ingested server-side by the
+ * Omni workers and arrive here over `/omni/ws/stream`.
  */
-import axios from "axios";
-import type { AxiosError, AxiosInstance, AxiosRequestConfig, InternalAxiosRequestConfig } from "axios";
-
-declare module "axios" {
-  interface InternalAxiosRequestConfig {
-    omniRetryCount?: number;
-  }
-}
+import { readToken, wsUrl } from "../api/client";
 
 // ---------------------------------------------------------------- config
-type RestAuthMode = "header" | "bearer" | "query";
-type WsAuthMode = "query" | "message" | "protocol";
-
-const DEFAULTS = {
-  restTimeoutMs: 15_000,
-  restMaxRetries: 2,
-  restRetryBaseMs: 500,
-  restRetryMaxMs: 8_000,
-  restAuthMode: "header" as RestAuthMode,
-  restAuthParam: "X-API-Key",
-  wsAuthMode: "query" as WsAuthMode,
-  wsAuthParam: "apiKey",
-  wsTopicField: "topic",
-  wsMaxReconnectAttempts: 12,
-  wsReconnectBaseMs: 1_000,
-  wsReconnectMaxMs: 30_000,
-} as const;
-
-export class OmniConfigError extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = "OmniConfigError";
-  }
-}
-
 const readEnv = (key: string): string | undefined => {
   const value: unknown = (import.meta.env as Record<string, unknown>)[key];
   return typeof value === "string" && value.trim() !== "" ? value.trim() : undefined;
@@ -50,59 +22,10 @@ const readNumber = (key: string, fallback: number): number => {
   return Number.isFinite(parsed) && parsed >= 0 ? parsed : fallback;
 };
 
-const readEnum = <T extends string>(key: string, allowed: readonly T[], fallback: T): T => {
-  const value = readEnv(key);
-  return value !== undefined && (allowed as readonly string[]).includes(value) ? (value as T) : fallback;
-};
-
 const isBrowser = (): boolean => typeof window !== "undefined" && typeof window.location !== "undefined";
-const isSecurePage = (): boolean => isBrowser() && window.location.protocol === "https:";
-
-const resolveHttpUrl = (raw: string): string => {
-  const url = isBrowser() ? new URL(raw, window.location.origin) : new URL(raw);
-  if (isSecurePage() && url.protocol === "http:") url.protocol = "https:";
-  return url.toString().replace(/\/+$/, "");
-};
-
-const resolveWsUrl = (raw: string): URL => {
-  const url = isBrowser() ? new URL(raw, window.location.origin) : new URL(raw);
-  if (url.protocol === "https:" || url.protocol === "wss:") url.protocol = "wss:";
-  else if (url.protocol === "http:" || url.protocol === "ws:") url.protocol = isSecurePage() ? "wss:" : "ws:";
-  else throw new OmniConfigError(`Unsupported WebSocket protocol: ${url.protocol}`);
-  return url;
-};
-
-interface RestConfig {
-  baseURL: string;
-  apiKey: string | undefined;
-  authMode: RestAuthMode;
-  authParam: string;
-  timeoutMs: number;
-  maxRetries: number;
-  retryBaseMs: number;
-  retryMaxMs: number;
-}
-
-const loadRestConfig = (): RestConfig => {
-  const raw = readEnv("VITE_OMNI_REST_URL");
-  if (!raw) throw new OmniConfigError("VITE_OMNI_REST_URL is not configured.");
-  return {
-    baseURL: resolveHttpUrl(raw),
-    apiKey: readEnv("VITE_OMNI_REST_KEY"),
-    authMode: readEnum("VITE_OMNI_REST_AUTH_MODE", ["header", "bearer", "query"], DEFAULTS.restAuthMode),
-    authParam: readEnv("VITE_OMNI_REST_AUTH_PARAM") ?? DEFAULTS.restAuthParam,
-    timeoutMs: readNumber("VITE_OMNI_REST_TIMEOUT_MS", DEFAULTS.restTimeoutMs),
-    maxRetries: readNumber("VITE_OMNI_REST_MAX_RETRIES", DEFAULTS.restMaxRetries),
-    retryBaseMs: readNumber("VITE_OMNI_REST_RETRY_BASE_MS", DEFAULTS.restRetryBaseMs),
-    retryMaxMs: readNumber("VITE_OMNI_REST_RETRY_MAX_MS", DEFAULTS.restRetryMaxMs),
-  };
-};
 
 interface WsConfig {
   url: string;
-  apiKey: string | undefined;
-  authMode: WsAuthMode;
-  authParam: string;
   topicField: string;
   heartbeatMs: number;
   heartbeatPayload: string | undefined;
@@ -111,150 +34,22 @@ interface WsConfig {
   reconnectMaxMs: number;
 }
 
-const loadWsConfig = (): WsConfig => {
-  const raw = readEnv("VITE_OMNI_WS_URL");
-  if (!raw) throw new OmniConfigError("VITE_OMNI_WS_URL is not configured.");
-  return {
-    url: resolveWsUrl(raw).toString(),
-    apiKey: readEnv("VITE_OMNI_WS_KEY"),
-    authMode: readEnum("VITE_OMNI_WS_AUTH_MODE", ["query", "message", "protocol"], DEFAULTS.wsAuthMode),
-    authParam: readEnv("VITE_OMNI_WS_AUTH_PARAM") ?? DEFAULTS.wsAuthParam,
-    topicField: readEnv("VITE_OMNI_WS_TOPIC_FIELD") ?? DEFAULTS.wsTopicField,
-    heartbeatMs: readNumber("VITE_OMNI_WS_HEARTBEAT_MS", 0),
-    heartbeatPayload: readEnv("VITE_OMNI_WS_HEARTBEAT_PAYLOAD"),
-    maxReconnectAttempts: readNumber("VITE_OMNI_WS_MAX_RECONNECT_ATTEMPTS", DEFAULTS.wsMaxReconnectAttempts),
-    reconnectBaseMs: readNumber("VITE_OMNI_WS_RECONNECT_BASE_MS", DEFAULTS.wsReconnectBaseMs),
-    reconnectMaxMs: readNumber("VITE_OMNI_WS_RECONNECT_MAX_MS", DEFAULTS.wsReconnectMaxMs),
-  };
-};
+const channelConfig = (path: string, topicField: string): WsConfig => ({
+  url: wsUrl(path),
+  topicField,
+  // Server-side relays answer "ping"; keeps proxies from reaping idle sockets.
+  heartbeatMs: readNumber("VITE_OMNI_WS_HEARTBEAT_MS", 25_000),
+  heartbeatPayload: readEnv("VITE_OMNI_WS_HEARTBEAT_PAYLOAD") ?? "ping",
+  // Never give up on first-party channels; backoff is capped instead.
+  maxReconnectAttempts: readNumber("VITE_OMNI_WS_MAX_RECONNECT_ATTEMPTS", Number.POSITIVE_INFINITY),
+  reconnectBaseMs: readNumber("VITE_OMNI_WS_RECONNECT_BASE_MS", 1_000),
+  reconnectMaxMs: readNumber("VITE_OMNI_WS_RECONNECT_MAX_MS", 30_000),
+});
 
 const backoffDelay = (attempt: number, baseMs: number, maxMs: number): number => {
   const ceiling = Math.min(maxMs, baseMs * 2 ** attempt);
   return ceiling / 2 + Math.random() * (ceiling / 2);
 };
-
-const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
-
-// ---------------------------------------------------------------- REST layer
-export class OmniGatewayError extends Error {
-  readonly status: number | null;
-  readonly code: string | null;
-  readonly path: string | null;
-  readonly body: unknown;
-
-  constructor(message: string, status: number | null, code: string | null, path: string | null, body: unknown) {
-    super(message);
-    this.name = "OmniGatewayError";
-    this.status = status;
-    this.code = code;
-    this.path = path;
-    this.body = body;
-  }
-
-  /** Never copies request config/headers/params, so credentials cannot leak into logs. */
-  static fromAxios(error: AxiosError): OmniGatewayError {
-    const status = error.response?.status ?? null;
-    const path = error.config?.url ?? null;
-    const message = status ? `Omni REST ${status} on ${path ?? "request"}` : `Omni REST network error (${error.code ?? "unknown"})`;
-    return new OmniGatewayError(message, status, error.code ?? null, path, error.response?.data);
-  }
-}
-
-const IDEMPOTENT_METHODS = new Set(["get", "head", "options", "put", "delete"]);
-
-const retryAfterMs = (error: AxiosError): number | null => {
-  const header: unknown = error.response?.headers?.["retry-after"];
-  if (typeof header !== "string") return null;
-  const seconds = Number(header);
-  if (Number.isFinite(seconds)) return Math.max(seconds * 1000, 0);
-  const date = Date.parse(header);
-  return Number.isFinite(date) ? Math.max(date - Date.now(), 0) : null;
-};
-
-export class OmniRest {
-  private static instance: OmniRest | null = null;
-  readonly http: AxiosInstance;
-  private readonly config: RestConfig;
-
-  private constructor(config: RestConfig) {
-    this.config = config;
-    this.http = axios.create({
-      baseURL: config.baseURL,
-      timeout: config.timeoutMs,
-      headers: { Accept: "application/json" },
-    });
-    this.http.interceptors.request.use((request) => this.injectAuth(request));
-    this.http.interceptors.response.use(undefined, (error: unknown) => this.handleError(error));
-  }
-
-  /** Lazily created: an unconfigured gateway never crashes app start-up. */
-  static getInstance(): OmniRest {
-    OmniRest.instance ??= new OmniRest(loadRestConfig());
-    return OmniRest.instance;
-  }
-
-  static isConfigured(): boolean {
-    return readEnv("VITE_OMNI_REST_URL") !== undefined;
-  }
-
-  get<T>(path: string, config?: AxiosRequestConfig): Promise<T> {
-    return this.http.get<T>(path, config).then((r) => r.data);
-  }
-
-  post<T>(path: string, body?: unknown, config?: AxiosRequestConfig): Promise<T> {
-    return this.http.post<T>(path, body, config).then((r) => r.data);
-  }
-
-  put<T>(path: string, body?: unknown, config?: AxiosRequestConfig): Promise<T> {
-    return this.http.put<T>(path, body, config).then((r) => r.data);
-  }
-
-  patch<T>(path: string, body?: unknown, config?: AxiosRequestConfig): Promise<T> {
-    return this.http.patch<T>(path, body, config).then((r) => r.data);
-  }
-
-  delete<T>(path: string, config?: AxiosRequestConfig): Promise<T> {
-    return this.http.delete<T>(path, config).then((r) => r.data);
-  }
-
-  private injectAuth(request: InternalAxiosRequestConfig): InternalAxiosRequestConfig {
-    const { apiKey, authMode, authParam } = this.config;
-    if (!apiKey) return request;
-    switch (authMode) {
-      case "bearer":
-        request.headers.set("Authorization", `Bearer ${apiKey}`);
-        break;
-      case "header":
-        request.headers.set(authParam, apiKey);
-        break;
-      case "query": {
-        const existing = (request.params ?? {}) as Record<string, unknown>;
-        request.params = { ...existing, [authParam]: apiKey };
-        break;
-      }
-    }
-    return request;
-  }
-
-  private async handleError(error: unknown): Promise<never> {
-    if (!axios.isAxiosError(error)) throw error;
-    if (axios.isCancel(error) || error.code === "ERR_CANCELED") throw error;
-    const request = error.config;
-    const status = error.response?.status;
-    const retriable =
-      request !== undefined &&
-      IDEMPOTENT_METHODS.has((request.method ?? "get").toLowerCase()) &&
-      (status === undefined || status === 429 || status >= 500);
-    const attempt = request?.omniRetryCount ?? 0;
-
-    if (retriable && request && attempt < this.config.maxRetries) {
-      request.omniRetryCount = attempt + 1;
-      await sleep(retryAfterMs(error) ?? backoffDelay(attempt, this.config.retryBaseMs, this.config.retryMaxMs));
-      return this.http.request(request);
-    }
-    throw OmniGatewayError.fromAxios(error);
-  }
-}
 
 // ---------------------------------------------------------------- WebSocket layer
 export type OmniSocketStatus = "idle" | "connecting" | "open" | "reconnecting" | "paused" | "closed" | "error";
@@ -273,7 +68,7 @@ export interface OmniSocketOptions {
 }
 
 export class OmniSocket {
-  private static instance: OmniSocket | null = null;
+  private static readonly channels = new Map<string, OmniSocket>();
 
   private socket: WebSocket | null = null;
   private status: OmniSocketStatus = "idle";
@@ -291,13 +86,24 @@ export class OmniSocket {
     this.options = options;
   }
 
-  static getInstance(options: OmniSocketOptions = {}): OmniSocket {
-    OmniSocket.instance ??= new OmniSocket(loadWsConfig(), { pauseWhenHidden: true, ...options });
-    return OmniSocket.instance;
+  /** Shared socket for an API WebSocket path (e.g. `/ws/events`), created on first use. */
+  static channel(path: string, options: OmniSocketOptions & { topicField?: string } = {}): OmniSocket {
+    let socket = OmniSocket.channels.get(path);
+    if (!socket) {
+      const { topicField = "type", ...rest } = options;
+      socket = new OmniSocket(channelConfig(path, topicField), { pauseWhenHidden: true, ...rest });
+      OmniSocket.channels.set(path, socket);
+    }
+    return socket;
   }
 
-  static isConfigured(): boolean {
-    return readEnv("VITE_OMNI_WS_URL") !== undefined;
+  /** Drop every channel (sign-out): sockets close and nothing reconnects with the old token. */
+  static closeAll(): void {
+    for (const socket of OmniSocket.channels.values()) {
+      socket.handlers.clear();
+      socket.disconnect();
+    }
+    OmniSocket.channels.clear();
   }
 
   getStatus(): OmniSocketStatus {
@@ -365,15 +171,18 @@ export class OmniSocket {
       return;
     }
 
-    const { apiKey, authMode, authParam } = this.config;
+    const token = readToken();
+    if (!token) {
+      this.setStatus("closed");
+      return;
+    }
     const url = new URL(this.config.url);
-    if (apiKey && authMode === "query") url.searchParams.set(authParam, apiKey);
-    const protocols = apiKey && authMode === "protocol" ? [apiKey] : undefined;
+    url.searchParams.set("token", token);
 
     this.setStatus(this.attempts > 0 ? "reconnecting" : "connecting");
     let ws: WebSocket;
     try {
-      ws = protocols ? new WebSocket(url, protocols) : new WebSocket(url);
+      ws = new WebSocket(url);
     } catch (error) {
       console.error("OmniSocket construction failed", error instanceof Error ? error.message : error);
       this.scheduleReconnect();
@@ -384,7 +193,6 @@ export class OmniSocket {
     ws.onopen = () => {
       this.attempts = 0;
       this.setStatus("open");
-      if (apiKey && authMode === "message") this.sendFrame({ [authParam]: apiKey });
       const topics = [...this.handlers.keys()].filter((t) => t !== OMNI_WILDCARD_TOPIC);
       if (topics.length > 0) this.sendSubscribe(topics);
       this.startHeartbeat();
@@ -394,11 +202,12 @@ export class OmniSocket {
       // The browser hides error details; onclose follows and drives reconnection.
       this.setStatus("error");
     };
-    ws.onclose = () => {
+    ws.onclose = (event: CloseEvent) => {
       if (this.socket === ws) this.socket = null;
       this.stopHeartbeat();
-      if (this.handlers.size === 0) {
-        this.setStatus("closed");
+      // 1008: the server rejected our credentials; retrying with the same token is pointless.
+      if (this.handlers.size === 0 || event.code === 1008) {
+        this.setStatus(event.code === 1008 ? "error" : "closed");
         return;
       }
       this.scheduleReconnect();

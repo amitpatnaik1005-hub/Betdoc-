@@ -1,3 +1,59 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+/*
+ * Design tokens.
+ * --accent / --accent-glow: the active commander's theme, set by the shell on every route change.
+ * --viz-*: chart roles from the validated data-viz palette (checked against these card surfaces,
+ *          #ffffff light and #161514 dark: all CVD, contrast and lightness gates pass).
+ */
+:root {
+  --accent: #c89b3c;
+  --accent-glow: rgba(200, 155, 60, 0.45);
+  --viz-series-1: #2a78d6;
+  --viz-series-2: #eb6834;
+  --viz-positive: #2a78d6;
+  --viz-negative: #e34948;
+  --viz-grid: rgba(15, 23, 42, 0.07);
+  --viz-axis: #94a3b8;
+  --status-good: #0ca30c;
+  --status-warning: #fab219;
+  --status-serious: #ec835a;
+  --status-critical: #d03b3b;
+}
+
+.dark {
+  --viz-series-1: #3987e5;
+  --viz-series-2: #d95926;
+  --viz-positive: #3987e5;
+  --viz-negative: #e66767;
+  --viz-grid: rgba(255, 255, 255, 0.06);
+  --viz-axis: #73706c;
+}
+
+@layer utilities {
+  .scrollbar-hide {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+  .scrollbar-hide::-webkit-scrollbar {
+    display: none;
+  }
+  .text-accent {
+    color: var(--accent);
+  }
+  .bg-accent {
+    background-color: var(--accent);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

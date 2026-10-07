@@ -1,6 +1,10 @@
 import { useState, useRef, useEffect, useId, type ReactElement } from 'react';
-import { useBetStore, useOddsMarket } from '../../store/useBetStore';
+import { useLocation } from 'react-router-dom';
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
+import { apiClient } from '../../api/client';
+import { useScoutStore } from '../../store/useScoutStore';
+import { useExecutionStore } from '../../store/useExecutionStore';
+import { useCommanderStore } from '../../store/useCommanderStore';
 import { BRAND, SURFACE } from '../../ui/brand';
 
 const SCOUT_FEED_CARD = `w-full rounded-2xl px-4 py-3 text-slate-700 dark:text-slate-200 ${SURFACE.card}`;
@@ -60,94 +64,56 @@ const OracleMark = ({ thinking, size = 22 }: { readonly thinking: boolean; reado
   );
 };
 
+interface ScoutChatResponse {
+  response_text: string;
+  history_id: string;
+}
+
+const newId = (): string => (typeof crypto.randomUUID === 'function' ? crypto.randomUUID() : String(Date.now() + Math.random()));
+
 export const ScoutDrawer = () => {
-  const { contextMarketId, oracleHistory, appendMessage, setOracleLoading } = useBetStore();
-  const selection = useOddsMarket(contextMarketId ?? "");
+  const messages = useScoutStore((s) => s.messages);
+  const append = useScoutStore((s) => s.append);
+  const { pathname } = useLocation();
+  const commander = useCommanderStore((s) => s.activeCommander);
+  const draftMatchId = useExecutionStore((s) => s.draftMatchId);
+  const draftSelection = useExecutionStore((s) => s.draftSelection);
+  const draftOdds = useExecutionStore((s) => s.draftOdds);
   const [draft, setDraft] = useState("");
   const [thinking, setThinking] = useState(false);
+  const [error, setError] = useState("");
   const scrollRef = useRef<HTMLDivElement>(null);
-  
-  const contextLabel = selection 
-    ? `${selection.team_away} @ ${selection.team_home} ${selection.market_type}` 
-    : "General Intel";
-    
+
+  const section = pathname.replace(/^\//, '') || 'command-center';
+  const betslipContext = draftMatchId ? `${draftSelection} ${draftMatchId}${draftOdds ? ` @ ${draftOdds}` : ''}` : '';
+  const contextLabel = betslipContext ? `${commander.name} · ${betslipContext}` : `${commander.name} · ${commander.domain}`;
+
   const SPRING = { type: 'spring', bounce: 0, duration: 0.4 } as const;
-  const PROMPTS = ['Implied probability?', 'Pricing edge?', 'Key factors?'];
-  const messages = oracleHistory;
-  const error = "";
+  const PROMPTS = draftOdds ? [`Is ${draftOdds} value?`, 'How much should I stake?', 'Key factors?'] : ['How much should I stake?', 'Pricing edge?', 'Key factors?'];
 
   useEffect(() => {
     if (scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
-  }, [oracleHistory, thinking]);
+  }, [messages, thinking]);
 
   const send = async (msgText: string) => {
     if (!msgText.trim() || thinking) return;
     const submitted = msgText.trim();
     setDraft("");
+    setError("");
     setThinking(true);
-    setOracleLoading(true);
-
-    const userMessageId = crypto.randomUUID();
-    const scoutMessageId = crypto.randomUUID();
-
-    appendMessage({
-      id: userMessageId,
-      role: 'user',
-      content: submitted,
-      context_market_id: contextMarketId ?? undefined
-    });
+    append({ id: newId(), role: 'user', content: submitted, context: contextLabel });
 
     try {
-      const response = await fetch('/api/v1/oracle/chat', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: submitted, context_market_id: contextMarketId })
-      });
-
-      if (!response.ok) throw new Error("API failed");
-
-      const reader = response.body?.getReader();
-      const decoder = new TextDecoder();
-      
-      let aiText = "";
-      appendMessage({
-        id: scoutMessageId,
-        role: 'scout',
-        content: '',
-        context_market_id: contextMarketId ?? undefined
-      });
-
-      if (reader) {
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-          aiText += decoder.decode(value, { stream: true });
-        }
-      }
-      
-      useBetStore.setState((state) => ({
-        oracleHistory: state.oracleHistory.filter(m => m.id !== scoutMessageId)
-      }));
-
-      appendMessage({
-        id: scoutMessageId,
-        role: 'scout',
-        content: aiText || "Error communicating with Oracle.",
-        context_market_id: contextMarketId ?? undefined
-      });
-
-    } catch (err) {
-      appendMessage({
-        id: scoutMessageId,
-        role: 'scout',
-        content: "Error communicating with Oracle.",
-        context_market_id: contextMarketId ?? undefined
-      });
+      // The backend grounds the briefing in the caller's own book (exposure, P&L, stake sizing).
+      const pageContext = `${section} ${betslipContext}`.trim().slice(0, 120);
+      const res = await apiClient.post<ScoutChatResponse>('/oracle-scout/chat', { page_context: pageContext, user_message: submitted });
+      append({ id: res.history_id, role: 'scout', content: res.response_text, context: contextLabel });
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'The Scout could not answer right now.');
     } finally {
       setThinking(false);
-      setOracleLoading(false);
     }
   };
 
@@ -188,9 +154,9 @@ export const ScoutDrawer = () => {
             <span className={`mx-auto grid size-11 place-items-center rounded-xl ${SURFACE.card}`}>
               <OracleMark thinking={false} size={24} />
             </span>
-            <p className={`mt-4 text-[13px] font-semibold tracking-tight ${SURFACE.secondary}`}>Deterministic feed explainer</p>
+            <p className={`mt-4 text-[13px] font-semibold tracking-tight ${SURFACE.secondary}`}>Ask the Scout</p>
             <p className={`mt-1 text-[11.5px] leading-relaxed ${SURFACE.muted}`}>
-              Select a market, then ask about its probability, implied price, or edge.
+              Briefings quote your live book: exposure, today's P&L and stake sizing. Load a bet in the terminal to ask about its price.
             </p>
           </div>
         )}
@@ -284,7 +250,7 @@ export const ScoutDrawer = () => {
             id="scout-draft"
             type="text"
             autoComplete="off"
-            placeholder="Ask about this market..."
+            placeholder="Ask about stakes, prices or this market..."
             value={draft}
             onChange={(event) => setDraft(event.target.value)}
             className={`w-full min-w-0 border-0 bg-transparent p-0 text-[13px] tracking-tight placeholder:text-slate-400 focus:outline-none focus:ring-0 dark:placeholder:text-slate-600 ${SURFACE.primary}`}
@@ -311,7 +277,7 @@ export const ScoutDrawer = () => {
         </form>
 
         <p className={`mt-3 text-center text-[10px] leading-relaxed tracking-tight ${SURFACE.muted}`}>
-          Deterministic feed explainer · paper ledger only · no sportsbook execution
+          Rule-based briefings on your live book · paper exchange only
         </p>
       </div>
     </div>

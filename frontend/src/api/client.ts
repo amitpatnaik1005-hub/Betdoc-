@@ -1,6 +1,26 @@
-const BASE_URL = "http://localhost:8000/api/v1";
-const REQUEST_TIMEOUT_MS = 10_000;
+// Relative by default so the Vite proxy (dev) or nginx (prod) fronts the API: one origin, no CORS.
+const BASE_URL: string = (import.meta.env.VITE_API_BASE_URL || "/api/v1").replace(/\/+$/, "");
+const REQUEST_TIMEOUT_MS = 15_000;
 const TOKEN_KEY = "token";
+
+type UnauthorizedHandler = () => void;
+let onUnauthorized: UnauthorizedHandler = () => {
+  localStorage.removeItem(TOKEN_KEY);
+  window.location.reload();
+};
+
+/** The auth store registers a logout here, so an expired session returns to the login screen in place. */
+export function setUnauthorizedHandler(handler: UnauthorizedHandler): void {
+  onUnauthorized = handler;
+}
+
+export function readToken(): string | null {
+  try {
+    return localStorage.getItem(TOKEN_KEY);
+  } catch {
+    return null;
+  }
+}
 
 export class ApiError extends Error {
   readonly status: number;
@@ -18,7 +38,7 @@ interface FastApiValidationItem {
   type?: string;
 }
 
-type HttpMethod = "GET" | "POST";
+type HttpMethod = "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
 
 function isAbortError(err: unknown): boolean {
   return (
@@ -71,12 +91,12 @@ async function request<T>(
   const controller = new AbortController();
   const timeoutId: number = window.setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
 
-  const token: string | null = localStorage.getItem(TOKEN_KEY);
+  const token: string | null = readToken();
   const headers: Record<string, string> = { Accept: "application/json" };
   if (token) headers.Authorization = `Bearer ${token}`;
 
   const init: RequestInit = { method, headers, signal: controller.signal };
-  if (method !== "GET") {
+  if (method !== "GET" && body !== undefined) {
     if (!isFormData) headers["Content-Type"] = "application/json";
     init.body = isFormData ? (body as BodyInit) : JSON.stringify(body);
   }
@@ -91,9 +111,8 @@ async function request<T>(
 
     // Only a 401 on an authenticated request means "session expired".
     if (response.status === 401 && token) {
-      localStorage.removeItem(TOKEN_KEY);
-      window.location.reload();
-      throw new ApiError("Session Expired", 401);
+      onUnauthorized();
+      throw new ApiError("Session expired. Please sign in again.", 401);
     }
 
     let text: string;
@@ -131,16 +150,48 @@ async function request<T>(
   }
 }
 
+type Query = Record<string, string | number | boolean | null | undefined>;
+
+/** `/vault/overview` + `{ currency: "INR", start: undefined }` -> `/vault/overview?currency=INR` */
+export function withQuery(endpoint: string, query?: Query): string {
+  if (!query) return endpoint;
+  const params = new URLSearchParams();
+  for (const [key, value] of Object.entries(query)) {
+    if (value !== undefined && value !== null && value !== "") params.set(key, String(value));
+  }
+  const qs = params.toString();
+  return qs ? `${endpoint}?${qs}` : endpoint;
+}
+
 export const apiClient = {
-  async get<T = unknown>(endpoint: string): Promise<T> {
-    return request<T>("GET", endpoint);
+  async get<T = unknown>(endpoint: string, query?: Query): Promise<T> {
+    return request<T>("GET", withQuery(endpoint, query));
   },
 
   async post<T = unknown>(
     endpoint: string,
-    body: unknown,
+    body?: unknown,
     isFormData: boolean = false,
   ): Promise<T> {
     return request<T>("POST", endpoint, body, isFormData);
   },
+
+  async put<T = unknown>(endpoint: string, body?: unknown): Promise<T> {
+    return request<T>("PUT", endpoint, body);
+  },
+
+  async patch<T = unknown>(endpoint: string, body?: unknown): Promise<T> {
+    return request<T>("PATCH", endpoint, body);
+  },
+
+  async delete<T = unknown>(endpoint: string): Promise<T> {
+    return request<T>("DELETE", endpoint);
+  },
 };
+
+/** Absolute ws(s):// URL for an API path, on the page's own origin (proxied like REST). */
+export function wsUrl(path: string): string {
+  const base = new URL(BASE_URL, window.location.origin);
+  base.protocol = base.protocol === "https:" ? "wss:" : "ws:";
+  return `${base.toString().replace(/\/+$/, "")}${path}`;
+}

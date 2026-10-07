@@ -1,6 +1,9 @@
 import { create } from "zustand";
+import { wsUrl } from "../api/client";
 
-const WS_BASE_URL = "ws://localhost:8000/api/v1/ws/live-odds";
+const LIVE_ODDS_PATH = "/ws/live-odds";
+// The server closes sockets idle for 90s; ping well inside that window.
+const PING_INTERVAL_MS = 30_000;
 const BASE_BACKOFF_MS = 1_000;
 const MAX_BACKOFF_MS = 30_000;
 const JITTER_MS = 500;
@@ -42,7 +45,14 @@ let reconnectTimeout: ReturnType<typeof setTimeout> | null = null;
 let reconnectAttempts: number = 0;
 let isIntentionallyDisconnected: boolean = false;
 let currentToken: string = "";
+let pingTimer: ReturnType<typeof setInterval> | null = null;
 
+function stopPing(): void {
+  if (pingTimer !== null) {
+    clearInterval(pingTimer);
+    pingTimer = null;
+  }
+}
 // Tick coalescing buffer: last-write-wins per (match, selection), flushed once per
 // animation frame. A burst of 500 messages in 16ms produces ONE store update.
 // Bounded by market count, so it can't grow while a background tab pauses rAF.
@@ -144,6 +154,7 @@ function enqueueTicks(ticks: MarketTick[]): void {
 }
 
 function teardownSocket(): void {
+  stopPing();
   const ws: WebSocket | null = activeSocket;
   activeSocket = null;
   if (ws === null) return;
@@ -177,7 +188,7 @@ function openSocket(): void {
 
   let ws: WebSocket;
   try {
-    ws = new WebSocket(`${WS_BASE_URL}?token=${encodeURIComponent(currentToken)}`);
+    ws = new WebSocket(`${wsUrl(LIVE_ODDS_PATH)}?token=${encodeURIComponent(currentToken)}`);
   } catch {
     scheduleReconnect();
     return;
@@ -188,10 +199,14 @@ function openSocket(): void {
     if (ws !== activeSocket) return;
     reconnectAttempts = 0;
     useMarketStore.setState({ isConnected: true, isReconnecting: false, connectionError: null });
+    stopPing();
+    pingTimer = setInterval(() => {
+      if (ws === activeSocket && ws.readyState === WebSocket.OPEN) ws.send("ping");
+    }, PING_INTERVAL_MS);
   };
 
   ws.onmessage = (event: MessageEvent): void => {
-    if (ws !== activeSocket || typeof event.data !== "string") return;
+    if (ws !== activeSocket || typeof event.data !== "string" || event.data === "pong") return;
     let parsed: unknown;
     try {
       parsed = JSON.parse(event.data);
@@ -210,6 +225,7 @@ function openSocket(): void {
   ws.onclose = (event: CloseEvent): void => {
     if (ws !== activeSocket) return;
     activeSocket = null;
+    stopPing();
 
     if (isIntentionallyDisconnected) {
       useMarketStore.setState({ isConnected: false, isReconnecting: false });
