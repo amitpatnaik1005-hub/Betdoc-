@@ -1,4 +1,4 @@
-import { useRef } from "react";
+import { useRef, type JSX } from "react";
 import { SELECTIONS, type Selection, useExecutionStore } from "../store/useExecutionStore";
 import { useMarketStore } from "../store/useMarketStore";
 

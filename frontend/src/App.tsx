@@ -17,7 +17,9 @@ import { formatINR, formatSignedINR, paiseToRupees } from './pages/BetHistory';
 import ExecutionTerminal from './components/ExecutionTerminal';
 import { ScoutDrawer as EmbeddedScout } from './components/oracle/ScoutDrawer';
 import LoginForm from './components/LoginForm';
+import { RouteErrorBoundary } from './components/RouteErrorBoundary';
 import { useAuthStore } from './store/useAuthStore';
+import { useMarketStore } from './store/useMarketStore';
 
 const CommandCenter = lazy(() => import('./pages/CommandCenter').then(m => ({ default: m.CommandCenter })));
 const TheArena = lazy(() => import('./pages/TheArena').then(m => ({ default: m.TheArena })));
@@ -199,7 +201,9 @@ const StageHeader = (): ReactElement => {
   const balancePaise = useBankrollStore((s: any) => s.bankroll * 100);
   const exposurePaise = useBankrollStore((s: any) => s.exposure * 100);
   const dayPnlPaise = useBankrollStore((s: any) => s.sessionPnl * 100);
-  const socketStatus = useBankrollStore((s: any) => s.connectionState || 'live');
+  const socketStatus: SocketStatus = useMarketStore((s) =>
+    s.isConnected ? 'live' : s.isReconnecting ? 'connecting' : s.connectionError ? 'stalled' : 'offline',
+  );
 
   const dayPnl = paiseToRupees(dayPnlPaise);
   const socket = SOCKET_STYLE[socketStatus as keyof typeof SOCKET_STYLE];
@@ -472,6 +476,7 @@ const ExecutionPanel = () => {
 
 const AppShell = () => {
   const { theme, toggle } = useTheme();
+  const { pathname } = useLocation();
 
   useEffect(() => {
     useBankrollStore.getState().fetchWallet();
@@ -487,9 +492,11 @@ const AppShell = () => {
       >
         <StageHeader />
         <div className="flex-1 px-8 pb-10">
-          <Suspense fallback={<RouteFallback />}>
-            <Outlet />
-          </Suspense>
+          <RouteErrorBoundary key={pathname}>
+            <Suspense fallback={<RouteFallback />}>
+              <Outlet />
+            </Suspense>
+          </RouteErrorBoundary>
         </div>
       </motion.main>
       <ExecutionPanel />

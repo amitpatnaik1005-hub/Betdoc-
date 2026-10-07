@@ -2,6 +2,8 @@ import { create } from "zustand";
 import { apiClient } from "../api/client";
 
 const TOKEN_KEY = "token";
+// Mock login stays on until the FastAPI backend is running; set VITE_MOCK_AUTH=false to use it.
+const MOCK_AUTH: boolean = import.meta.env.VITE_MOCK_AUTH !== "false";
 
 interface LoginResponse {
   access_token: string;
@@ -37,11 +39,27 @@ export const useAuthStore = create<AuthState>()((set) => {
     login: async (u: string, p: string): Promise<void> => {
       set({ isLoading: true, error: null });
       try {
-        // MOCK LOGIN FOR TESTING: Backend not running
-        await new Promise(resolve => setTimeout(resolve, 500));
-        const fakeToken = "mock_token_for_testing";
-        localStorage.setItem(TOKEN_KEY, fakeToken);
-        set({ token: fakeToken, isAuthenticated: true, error: null });
+        if (MOCK_AUTH) {
+          // MOCK LOGIN FOR TESTING: Backend not running
+          await new Promise(resolve => setTimeout(resolve, 500));
+          const fakeToken = "mock_token_for_testing";
+          localStorage.setItem(TOKEN_KEY, fakeToken);
+          set({ token: fakeToken, isAuthenticated: true, error: null });
+          return;
+        }
+
+        const form = new URLSearchParams();
+        form.set("username", u.trim());
+        form.set("password", p); // never trim passwords
+
+        const data = await apiClient.post<LoginResponse>("/auth/login", form, true);
+
+        if (!data || typeof data.access_token !== "string" || data.access_token.length === 0) {
+          throw new Error("Malformed login response");
+        }
+
+        localStorage.setItem(TOKEN_KEY, data.access_token);
+        set({ token: data.access_token, isAuthenticated: true, error: null });
       } catch (err: unknown) {
         set({
           token: null,

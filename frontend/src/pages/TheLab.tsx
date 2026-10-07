@@ -346,3 +346,6 @@ export default function TheLab() {
     </div>
   );
 }
+
+// App.tsx lazy-loads pages by named export.
+export { TheLab };

@@ -1,4 +1,4 @@
-import { FormEvent, useState } from "react";
+import { useState, type FormEvent, type JSX } from "react";
 import { useAuthStore } from "../store/useAuthStore";
 
 // NOTE: `[Webkit-box-shadow:...]` compiles to the invalid CSS property

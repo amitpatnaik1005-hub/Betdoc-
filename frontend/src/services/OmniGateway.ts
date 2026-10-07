@@ -174,8 +174,10 @@ const retryAfterMs = (error: AxiosError): number | null => {
 export class OmniRest {
   private static instance: OmniRest | null = null;
   readonly http: AxiosInstance;
+  private readonly config: RestConfig;
 
-  private constructor(private readonly config: RestConfig) {
+  private constructor(config: RestConfig) {
+    this.config = config;
     this.http = axios.create({
       baseURL: config.baseURL,
       timeout: config.timeoutMs,
@@ -281,11 +283,13 @@ export class OmniSocket {
   private lifecycleBound = false;
   private readonly handlers = new Map<string, Set<OmniMessageHandler>>();
   private readonly statusListeners = new Set<OmniStatusListener>();
+  private readonly config: WsConfig;
+  private readonly options: OmniSocketOptions;
 
-  private constructor(
-    private readonly config: WsConfig,
-    private readonly options: OmniSocketOptions,
-  ) {}
+  private constructor(config: WsConfig, options: OmniSocketOptions) {
+    this.config = config;
+    this.options = options;
+  }
 
   static getInstance(options: OmniSocketOptions = {}): OmniSocket {
     OmniSocket.instance ??= new OmniSocket(loadWsConfig(), { pauseWhenHidden: true, ...options });
