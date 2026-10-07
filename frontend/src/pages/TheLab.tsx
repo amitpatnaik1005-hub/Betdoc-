@@ -1,351 +1,387 @@
-import { useState, type ChangeEvent, type CSSProperties, type FormEvent } from 'react';
+import { useEffect, useState, type FormEvent } from 'react';
+import { AnimatePresence, motion } from 'framer-motion';
 import { apiClient } from '../api/client';
+import { TheLabScene } from '../components/bots/TheLabScene';
+import { formatAgo, formatDateTime, formatOdds, formatPct, formatRatioPct } from '../lib/format';
+import { runMutation, useResource } from '../lib/resource';
+import { type Selection, useExecutionStore } from '../store/useExecutionStore';
+import { CommanderHero, MOTIFS } from '../ui/hero';
+import { Async, Button, ConfirmButton, EmptyState, Field, KeyValues, NumberInput, Page, Panel, Select, StatusBadge, TextInput, Toggle, num } from '../ui/kit';
+import { Markdown } from '../ui/markdown';
 
-// ---------- Types (mirror backend/app/schemas/math.py) ----------
-export type Selection = 'HOME' | 'DRAW' | 'AWAY';
-
-export interface MatchContextPayload {
-  home_team: string;
-  away_team: string;
-  home_xg: number | null;
-  away_xg: number | null;
-  home_elo: number | null;
-  away_elo: number | null;
-  bookmaker_odds: Partial<Record<Selection, number>> | null;
+// ---------------------------------------------------------------------------
+// CONTRACTS (mirror backend schemas)
+// ---------------------------------------------------------------------------
+interface PredictionResponse {
+  prediction: { home_win_prob: number; draw_prob: number; away_win_prob: number; most_likely_scoreline: string; confidence_score: number };
+  value_bets: { selection: Selection; true_prob: number; bookmaker_odds: number; expected_value: number; kelly_stake_fraction: number }[];
 }
+interface SourceHealth { source_name: string; status: 'ONLINE' | 'DEGRADED' | 'OFFLINE'; latency_ms: number; last_checked: string }
+interface Research { id: string; category: string; topic: string; status: 'PENDING' | 'RUNNING' | 'COMPLETED' | 'FAILED'; markdown_content: string | null; created_at: string; completed_at: string | null }
+interface Experiment { id: string; name: string; hypothesis: string; model_a_name: string; model_b_name: string; status: 'RUNNING' | 'CONCLUDED'; winner: string | null; metrics: Record<string, unknown> | null; created_at: string; concluded_at: string | null }
+interface HumanTouchConfig { is_blended_mode_active: boolean; max_adjustment_limit_pct: number; sentiment_weight: number; momentum_weight: number; min_adjustment_threshold_pct: number; updated_at: string }
+interface BlendResponse { pure_math_prob: number; adjusted_prob: number; adjustment_delta: number; confidence_tier: string; narrative_modifier: number; bypassed: boolean; below_threshold: boolean; clamped: boolean }
 
-export interface PredictionResult {
-  home_win_prob: number;
-  draw_prob: number;
-  away_win_prob: number;
-  most_likely_scoreline: string;
-  confidence_score: number;
-}
+const RESEARCH_CATEGORIES = ['TEAM', 'MATCH', 'MARKET', 'LEAGUE'] as const;
 
-export interface ValueBetFlag {
-  selection: Selection;
-  true_prob: number;
-  bookmaker_odds: number;
-  expected_value: number;
-  kelly_stake_fraction: number;
-}
+// ---------------------------------------------------------------------------
+// MODEL SANDBOX (/engine/predict)
+// ---------------------------------------------------------------------------
+const EMPTY = { home_team: '', away_team: '', home_xg: '', away_xg: '', home_elo: '', away_elo: '', odds_home: '', odds_draw: '', odds_away: '' };
+const SAMPLE = { home_team: 'Arsenal', away_team: 'Chelsea', home_xg: '1.85', away_xg: '1.10', home_elo: '1850', away_elo: '1780', odds_home: '2.05', odds_draw: '3.60', odds_away: '3.90' };
+const opt = (v: string): number | null => (Number.isFinite(num(v)) ? num(v) : null);
 
-export interface PredictionResponse {
-  prediction: PredictionResult;
-  value_bets: ValueBetFlag[];
-}
-
-interface FormState {
-  home_team: string;
-  away_team: string;
-  home_xg: string;
-  away_xg: string;
-  home_elo: string;
-  away_elo: string;
-  odds_home: string;
-  odds_draw: string;
-  odds_away: string;
-}
-
-interface ParsedError {
-  status: number | null;
-  message: string;
-}
-
-const EMPTY_FORM: FormState = {
-  home_team: '', away_team: '', home_xg: '', away_xg: '',
-  home_elo: '', away_elo: '', odds_home: '', odds_draw: '', odds_away: '',
-};
-
-const SAMPLE_FORM: FormState = {
-  home_team: 'Arsenal', away_team: 'Chelsea', home_xg: '1.85', away_xg: '1.10',
-  home_elo: '1850', away_elo: '1780', odds_home: '2.05', odds_draw: '3.60', odds_away: '3.90',
-};
-
-// ---------- Helpers ----------
-const toNum = (value: string): number | null => {
-  const trimmed = value.trim();
-  if (!trimmed) return null;
-  const n = Number(trimmed);
-  return Number.isFinite(n) ? n : null;
-};
-
-const pct = (v: number, digits = 1): string => `${(v * 100).toFixed(digits)}%`;
-
-const isRecord = (v: unknown): v is Record<string, unknown> =>
-  typeof v === 'object' && v !== null;
-
-function extractDetail(data: unknown): string | null {
-  if (!isRecord(data)) return typeof data === 'string' ? data : null;
-  const detail = data.detail;
-  if (typeof detail === 'string') return detail;
-  if (Array.isArray(detail)) {
-    return detail
-      .map((d) => (isRecord(d) && typeof d.msg === 'string' ? d.msg : JSON.stringify(d)))
-      .join('; ');
-  }
-  return null;
-}
-
-function parseError(err: unknown): ParsedError {
-  if (isRecord(err)) {
-    const response = isRecord(err.response) ? err.response : null;
-    let status: number | null =
-      typeof response?.status === 'number' ? response.status
-        : typeof err.status === 'number' ? err.status : null;
-    const detail =
-      extractDetail(response?.data) ?? extractDetail(err.data) ??
-      extractDetail(err.body) ?? extractDetail(err);
-    const rawMessage = typeof err.message === 'string' ? err.message : null;
-    if (status === null && rawMessage) {
-      const match = rawMessage.match(/\b([45]\d\d)\b/);
-      if (match) status = Number(match[1]);
-    }
-    return { status, message: detail ?? rawMessage ?? 'Unexpected error' };
-  }
-  if (typeof err === 'string') return { status: null, message: err };
-  return { status: null, message: 'Unexpected error' };
-}
-
-function buildPayload(form: FormState): MatchContextPayload {
-  const odds: Partial<Record<Selection, number>> = {};
-  const h = toNum(form.odds_home);
-  const d = toNum(form.odds_draw);
-  const a = toNum(form.odds_away);
-  if (h !== null) odds.HOME = h;
-  if (d !== null) odds.DRAW = d;
-  if (a !== null) odds.AWAY = a;
-
-  return {
-    home_team: form.home_team.trim() || 'Home',
-    away_team: form.away_team.trim() || 'Away',
-    home_xg: toNum(form.home_xg),
-    away_xg: toNum(form.away_xg),
-    home_elo: toNum(form.home_elo),
-    away_elo: toNum(form.away_elo),
-    bookmaker_odds: Object.keys(odds).length > 0 ? odds : null,
-  };
-}
-
-// ---------- Styles ----------
-const s: Record<string, CSSProperties> = {
-  page: { maxWidth: 960, margin: '0 auto', padding: 24, fontFamily: 'Inter, system-ui, sans-serif', color: '#e5e7eb' },
-  header: { marginBottom: 20 },
-  title: { fontSize: 28, fontWeight: 800, margin: 0, letterSpacing: -0.5 },
-  subtitle: { color: '#9ca3af', marginTop: 4 },
-  card: { background: '#111827', border: '1px solid #1f2937', borderRadius: 14, padding: 20, marginBottom: 20 },
-  sectionLabel: { fontSize: 12, textTransform: 'uppercase', letterSpacing: 1.2, color: '#818cf8', fontWeight: 700, margin: '14px 0 8px' },
-  grid2: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 },
-  grid3: { display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12 },
-  label: { display: 'flex', flexDirection: 'column', gap: 6, fontSize: 13, color: '#d1d5db' },
-  input: { background: '#0b1220', border: '1px solid #374151', borderRadius: 8, padding: '9px 11px', color: '#f9fafb', fontSize: 14, outline: 'none' },
-  actions: { display: 'flex', gap: 10, marginTop: 18, flexWrap: 'wrap' },
-  primary: { background: 'linear-gradient(135deg,#6366f1,#8b5cf6)', color: '#fff', border: 'none', borderRadius: 8, padding: '10px 18px', fontWeight: 700, cursor: 'pointer' },
-  secondary: { background: 'transparent', color: '#c7d2fe', border: '1px solid #4f46e5', borderRadius: 8, padding: '10px 16px', cursor: 'pointer' },
-  error: { background: '#3f1d1d', border: '1px solid #b91c1c', color: '#fecaca', borderRadius: 10, padding: 14, marginBottom: 20 },
-  errorTitle: { fontWeight: 800, marginBottom: 4 },
-  probRow: { marginBottom: 14 },
-  probHead: { display: 'flex', justifyContent: 'space-between', fontSize: 14, marginBottom: 6 },
-  barTrack: { height: 12, background: '#1f2937', borderRadius: 999, overflow: 'hidden' },
-  stats: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginTop: 18 },
-  stat: { background: '#0b1220', border: '1px solid #1f2937', borderRadius: 10, padding: 14 },
-  statLabel: { fontSize: 12, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: 1 },
-  statValue: { fontSize: 24, fontWeight: 800, marginTop: 4 },
-  table: { width: '100%', borderCollapse: 'collapse', fontSize: 14 },
-  th: { textAlign: 'left', padding: '8px 10px', color: '#9ca3af', borderBottom: '1px solid #374151', fontWeight: 600 },
-  td: { padding: '10px', borderBottom: '1px solid #1f2937' },
-  badge: { background: '#064e3b', color: '#6ee7b7', borderRadius: 6, padding: '2px 8px', fontWeight: 700, fontSize: 12 },
-  muted: { color: '#9ca3af', fontSize: 14 },
-};
-
-const barFill = (value: number, color: string): CSSProperties => ({
-  width: `${Math.max(0, Math.min(100, value * 100))}%`,
-  height: '100%',
-  background: color,
-  borderRadius: 999,
-  transition: 'width 400ms ease',
-});
-
-// ---------- Component ----------
-export default function TheLab() {
-  const [form, setForm] = useState<FormState>(EMPTY_FORM);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<ParsedError | null>(null);
+const ModelSandbox = () => {
+  const [form, setForm] = useState(EMPTY);
+  const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<PredictionResponse | null>(null);
-  const [lastPayload, setLastPayload] = useState<MatchContextPayload | null>(null);
+  const setDraft = useExecutionStore((s) => s.setDraft);
+  const set = (k: keyof typeof EMPTY) => (e: React.ChangeEvent<HTMLInputElement>) => setForm((f) => ({ ...f, [k]: e.target.value }));
 
-  const update = (key: keyof FormState) => (e: ChangeEvent<HTMLInputElement>) =>
-    setForm((prev) => ({ ...prev, [key]: e.target.value }));
-
-  const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
+  const submit = async (e: FormEvent) => {
     e.preventDefault();
-    const payload = buildPayload(form);
-    setLoading(true);
-    setError(null);
-    setResult(null);
-    setLastPayload(payload);
-    try {
-      const response = await apiClient.post<PredictionResponse>('/engine/predict', payload);
-      setResult(response);
-    } catch (err: unknown) {
-      setError(parseError(err));
-    } finally {
-      setLoading(false);
-    }
+    const odds: Partial<Record<Selection, number>> = {};
+    if (opt(form.odds_home)) odds.HOME = opt(form.odds_home)!;
+    if (opt(form.odds_draw)) odds.DRAW = opt(form.odds_draw)!;
+    if (opt(form.odds_away)) odds.AWAY = opt(form.odds_away)!;
+    setBusy(true);
+    const res = await runMutation(
+      () => apiClient.post<PredictionResponse>('/engine/predict', {
+        home_team: form.home_team.trim() || 'Home', away_team: form.away_team.trim() || 'Away',
+        home_xg: opt(form.home_xg), away_xg: opt(form.away_xg), home_elo: opt(form.home_elo), away_elo: opt(form.away_elo),
+        bookmaker_odds: Object.keys(odds).length ? odds : null,
+      }),
+      { errorTitle: 'Ensemble rejected the inputs' },
+    );
+    setBusy(false);
+    setResult(res ?? null);
   };
 
-  const oddsCount = lastPayload?.bookmaker_odds ? Object.keys(lastPayload.bookmaker_odds).length : 0;
-
-  const field = (key: keyof FormState, label: string, placeholder: string, step = 'any') => (
-    <label style={s.label}>
-      {label}
-      <input
-        style={s.input}
-        type={key.includes('team') ? 'text' : 'number'}
-        step={step}
-        min={key.includes('team') ? undefined : 0}
-        placeholder={placeholder}
-        value={form[key]}
-        onChange={update(key)}
-      />
-    </label>
-  );
-
+  const p = result?.prediction;
   return (
-    <div style={s.page}>
-      <header style={s.header}>
-        <h1 style={s.title}>🧪 PANINI Test Bench</h1>
-        <p style={s.subtitle}>Poisson · Dixon-Coles · Elo ensemble with 3-way value detection</p>
-      </header>
-
-      <form style={s.card} onSubmit={handleSubmit}>
-        <div style={s.sectionLabel}>Fixture</div>
-        <div style={s.grid2}>
-          {field('home_team', 'Home team', 'Arsenal')}
-          {field('away_team', 'Away team', 'Chelsea')}
+    <Panel title="Model sandbox · PANINI ensemble" icon="functions" className="lg:col-span-7" subtitle="Poisson 30% · Dixon-Coles 40% · Elo 30%">
+      <form onSubmit={submit} className="flex flex-col gap-4">
+        <div className="grid grid-cols-2 gap-3">
+          <Field label="Home team"><TextInput value={form.home_team} onChange={set('home_team')} placeholder="Arsenal" /></Field>
+          <Field label="Away team"><TextInput value={form.away_team} onChange={set('away_team')} placeholder="Chelsea" /></Field>
+          <Field label="Home xG"><NumberInput value={form.home_xg} onChange={set('home_xg')} /></Field>
+          <Field label="Away xG"><NumberInput value={form.away_xg} onChange={set('away_xg')} /></Field>
+          <Field label="Home Elo"><NumberInput value={form.home_elo} onChange={set('home_elo')} /></Field>
+          <Field label="Away Elo"><NumberInput value={form.away_elo} onChange={set('away_elo')} /></Field>
         </div>
-
-        <div style={s.sectionLabel}>Expected goals (xG)</div>
-        <div style={s.grid2}>
-          {field('home_xg', 'Home xG', '1.85', '0.01')}
-          {field('away_xg', 'Away xG', '1.10', '0.01')}
+        <div className="grid grid-cols-3 gap-3">
+          <Field label="Home odds"><NumberInput value={form.odds_home} onChange={set('odds_home')} /></Field>
+          <Field label="Draw odds"><NumberInput value={form.odds_draw} onChange={set('odds_draw')} /></Field>
+          <Field label="Away odds"><NumberInput value={form.odds_away} onChange={set('odds_away')} /></Field>
         </div>
-
-        <div style={s.sectionLabel}>Elo ratings</div>
-        <div style={s.grid2}>
-          {field('home_elo', 'Home Elo', '1850', '1')}
-          {field('away_elo', 'Away Elo', '1780', '1')}
-        </div>
-
-        <div style={s.sectionLabel}>Bookmaker odds (decimal)</div>
-        <div style={s.grid3}>
-          {field('odds_home', 'HOME', '2.05', '0.01')}
-          {field('odds_draw', 'DRAW', '3.60', '0.01')}
-          {field('odds_away', 'AWAY', '3.90', '0.01')}
-        </div>
-
-        <div style={s.actions}>
-          <button type="submit" style={{ ...s.primary, opacity: loading ? 0.6 : 1 }} disabled={loading}>
-            {loading ? 'Running PANINI…' : 'Run Prediction'}
-          </button>
-          <button type="button" style={s.secondary} onClick={() => setForm(SAMPLE_FORM)} disabled={loading}>
-            Load sample
-          </button>
-          <button
-            type="button"
-            style={s.secondary}
-            onClick={() => { setForm(EMPTY_FORM); setResult(null); setError(null); }}
-            disabled={loading}
-          >
-            Reset
-          </button>
+        <div className="flex flex-wrap gap-2">
+          <Button type="submit" variant="primary" icon="play_arrow" busy={busy}>Run ensemble</Button>
+          <Button icon="science" onClick={() => setForm(SAMPLE)}>Load sample</Button>
+          <Button variant="ghost" icon="restart_alt" onClick={() => { setForm(EMPTY); setResult(null); }}>Reset</Button>
         </div>
       </form>
-
-      {error && (
-        <div style={s.error} role="alert">
-          <div style={s.errorTitle}>
-            {error.status === 400 ? '⚠️ HTTP 400: Bad Request'
-              : error.status ? `Error ${error.status}` : 'Request failed'}
-          </div>
-          <div>{error.message}</div>
-          {error.status === 400 && (
-            <div style={{ marginTop: 6, fontSize: 13 }}>
-              Provide both xG values and/or both Elo ratings so at least one model can run.
-            </div>
-          )}
-        </div>
-      )}
-
-      {result && (
-        <>
-          <section style={s.card}>
-            <div style={s.sectionLabel}>Ensemble probabilities</div>
-            {([
-              ['Home win', result.prediction.home_win_prob, '#22c55e'],
-              ['Draw', result.prediction.draw_prob, '#eab308'],
-              ['Away win', result.prediction.away_win_prob, '#3b82f6'],
-            ] as const).map(([label, value, color]) => (
-              <div key={label} style={s.probRow}>
-                <div style={s.probHead}>
-                  <span>{label}</span>
-                  <strong>{pct(value)}</strong>
+      <AnimatePresence>
+        {p && result && (
+          <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} className="mt-5 flex flex-col gap-4 border-t border-slate-900/[0.06] pt-4 dark:border-white/[0.06]">
+            {(['home_win_prob', 'draw_prob', 'away_win_prob'] as const).map((k, i) => (
+              <div key={k}>
+                <div className="mb-1 flex justify-between text-xs text-slate-600 dark:text-slate-300">
+                  <span>{['Home', 'Draw', 'Away'][i]}</span>
+                  <span className="font-semibold tabular-nums">{formatRatioPct(p[k])}</span>
                 </div>
-                <div style={s.barTrack}><div style={barFill(value, color)} /></div>
+                <div className="h-2 overflow-hidden rounded-full bg-slate-900/[0.06] dark:bg-white/[0.07]">
+                  <motion.div className="h-full rounded-full" style={{ background: ['var(--viz-series-1)', 'var(--viz-axis)', 'var(--viz-series-2)'][i] }} initial={{ width: 0 }} animate={{ width: `${p[k] * 100}%` }} />
+                </div>
               </div>
             ))}
-            <div style={s.stats}>
-              <div style={s.stat}>
-                <div style={s.statLabel}>Most likely scoreline</div>
-                <div style={s.statValue}>{result.prediction.most_likely_scoreline}</div>
-              </div>
-              <div style={s.stat}>
-                <div style={s.statLabel}>Confidence</div>
-                <div style={s.statValue}>{pct(result.prediction.confidence_score)}</div>
-              </div>
-            </div>
-          </section>
-
-          <section style={s.card}>
-            <div style={s.sectionLabel}>Value bets (EV &gt; 2%)</div>
+            <KeyValues items={[{ label: 'Most likely scoreline', value: p.most_likely_scoreline }, { label: 'Confidence', value: formatRatioPct(p.confidence_score) }]} />
             {result.value_bets.length > 0 ? (
-              <table style={s.table}>
-                <thead>
-                  <tr>
-                    <th style={s.th}>Selection</th>
-                    <th style={s.th}>Model prob</th>
-                    <th style={s.th}>Odds</th>
-                    <th style={s.th}>Implied</th>
-                    <th style={s.th}>EV</th>
-                    <th style={s.th}>Kelly stake</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {result.value_bets.map((bet) => (
-                    <tr key={bet.selection}>
-                      <td style={s.td}><span style={s.badge}>{bet.selection}</span></td>
-                      <td style={s.td}>{pct(bet.true_prob)}</td>
-                      <td style={s.td}>{bet.bookmaker_odds.toFixed(2)}</td>
-                      <td style={s.td}>{pct(1 / bet.bookmaker_odds)}</td>
-                      <td style={{ ...s.td, color: '#6ee7b7', fontWeight: 700 }}>+{pct(bet.expected_value, 2)}</td>
-                      <td style={s.td}>{pct(bet.kelly_stake_fraction, 2)} of bankroll</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+              <ul className="flex flex-col gap-2">
+                {result.value_bets.map((v) => (
+                  <li key={v.selection} className="flex items-center justify-between gap-2 rounded-xl bg-emerald-50 px-3 py-2 text-sm dark:bg-emerald-500/10">
+                    <span className="text-emerald-800 dark:text-emerald-200">{v.selection} @ {formatOdds(v.bookmaker_odds)} · EV {formatPct(v.expected_value * 100, 2)} · Kelly {formatRatioPct(v.kelly_stake_fraction, 2)}</span>
+                    <Button size="sm" icon="receipt_long" onClick={() => setDraft({ matchId: `${form.home_team}-v-${form.away_team}`.toLowerCase().replace(/\s+/g, '-'), selection: v.selection, odds: v.bookmaker_odds, trueProbability: v.true_prob, label: `${form.home_team} v ${form.away_team}`, source: 'Lab sandbox' })}>Stage</Button>
+                  </li>
+                ))}
+              </ul>
             ) : (
-              <p style={s.muted}>
-                {oddsCount === 0 ? 'No bookmaker odds supplied.'
-                  : oddsCount < 3 ? 'Value detection skipped: HOME, DRAW and AWAY odds are all required.'
-                  : 'No selection clears the +2% EV threshold.'}
-              </p>
+              <p className="text-xs text-slate-500">No selection clears the +2% EV threshold at those prices.</p>
             )}
-          </section>
-        </>
-      )}
-    </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </Panel>
   );
-}
+};
 
-// App.tsx lazy-loads pages by named export.
-export { TheLab };
+// ---------------------------------------------------------------------------
+// SOURCE HEALTH
+// ---------------------------------------------------------------------------
+const SourceHealth = ({ health }: { health: ReturnType<typeof useResource<SourceHealth[]>> }) => (
+  <Panel title="Data source health" icon="lan" className="lg:col-span-5" updatedAt={health.updatedAt} actions={<Button size="sm" icon="refresh" busy={health.loading} onClick={() => void health.refresh()}>Probe</Button>}>
+    <Async resource={health}>
+      {(rows) => (
+        <ul className="flex flex-col gap-2">
+          {rows.map((s) => (
+            <li key={s.source_name} className="flex items-center justify-between gap-3 rounded-xl bg-slate-50 px-3 py-2.5 dark:bg-white/[0.03]">
+              <span className="text-sm font-medium text-slate-800 dark:text-slate-100">{s.source_name}</span>
+              <span className="flex items-center gap-2">
+                <span className="text-[11px] tabular-nums text-slate-400">{s.latency_ms}ms</span>
+                <StatusBadge status={s.status} />
+              </span>
+            </li>
+          ))}
+          <li className="pt-1 text-[11px] text-slate-400">Live HTTP probes from the API server (4s timeout). Over 1.5s or a 5xx counts as degraded.</li>
+        </ul>
+      )}
+    </Async>
+  </Panel>
+);
+
+// ---------------------------------------------------------------------------
+// RESEARCH DESK
+// ---------------------------------------------------------------------------
+const ResearchDesk = ({ research }: { research: ReturnType<typeof useResource<Research[]>> }) => {
+  const [category, setCategory] = useState<string>('TEAM');
+  const [topic, setTopic] = useState('');
+  const [openId, setOpenId] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const open = research.data?.find((r) => r.id === openId) ?? null;
+
+  const submit = async (e: FormEvent) => {
+    e.preventDefault();
+    if (!topic.trim()) return;
+    setBusy(true);
+    const created = await runMutation(() => apiClient.post<Research>('/lab/research', { category, topic: topic.trim() }), {
+      invalidate: ['lab:research'],
+      success: 'Research queued: the data agent is compiling it',
+      errorTitle: 'Could not queue research',
+    });
+    setBusy(false);
+    if (created) {
+      setTopic('');
+      setOpenId(created.id);
+    }
+  };
+
+  return (
+    <Panel title="Research desk" icon="description" className="lg:col-span-7" updatedAt={research.updatedAt} subtitle="DataResearchAgent · stored odds + ledger">
+      <form onSubmit={submit} className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-end">
+        <Field label="Category" className="sm:w-36">
+          <Select value={category} onChange={(e) => setCategory(e.target.value)}>
+            {RESEARCH_CATEGORIES.map((c) => <option key={c}>{c}</option>)}
+          </Select>
+        </Field>
+        <Field label="Topic (name teams as they appear in the odds feed)" className="flex-1">
+          <TextInput id="research-topic" value={topic} onChange={(e) => setTopic(e.target.value)} placeholder="Arsenal v Chelsea price drift" maxLength={255} />
+        </Field>
+        <Button type="submit" variant="primary" icon="send" busy={busy} disabled={!topic.trim()}>Queue</Button>
+      </form>
+      <div className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,240px)_1fr]">
+        <Async resource={research} isEmpty={(r) => r.length === 0} empty={<EmptyState icon="description" title="No reports yet" />}>
+          {(rows) => (
+            <ul className="flex max-h-[420px] flex-col gap-1.5 overflow-y-auto">
+              {rows.map((r) => (
+                <li key={r.id}>
+                  <button type="button" onClick={() => setOpenId(r.id)} className={`w-full rounded-xl px-3 py-2 text-left transition-colors ${openId === r.id ? 'bg-[color-mix(in_srgb,var(--accent)_10%,transparent)]' : 'hover:bg-slate-900/[0.03] dark:hover:bg-white/[0.04]'}`}>
+                    <span className="flex items-center justify-between gap-2">
+                      <span className="truncate text-sm font-medium text-slate-800 dark:text-slate-100">{r.topic}</span>
+                      <StatusBadge status={r.status} />
+                    </span>
+                    <span className="text-[11px] text-slate-400">{r.category} · {formatAgo(r.created_at)}</span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </Async>
+        <div className="min-h-[200px] rounded-xl bg-slate-50 p-4 dark:bg-white/[0.03]">
+          {open?.markdown_content ? (
+            <Markdown source={open.markdown_content} />
+          ) : open ? (
+            <EmptyState icon="hourglass_top" title={open.status === 'FAILED' ? 'Report failed' : 'Compiling…'} detail={open.status === 'FAILED' ? 'The agent could not finish this report.' : 'This refreshes automatically when the agent finishes.'} />
+          ) : (
+            <EmptyState icon="article" title="Select a report" />
+          )}
+        </div>
+      </div>
+    </Panel>
+  );
+};
+
+// ---------------------------------------------------------------------------
+// A/B EXPERIMENTS
+// ---------------------------------------------------------------------------
+const Experiments = ({ experiments }: { experiments: ReturnType<typeof useResource<Experiment[]>> }) => {
+  const [form, setForm] = useState({ name: '', hypothesis: '', model_a_name: 'DixonColes', model_b_name: 'Ensemble' });
+  const [busy, setBusy] = useState(false);
+  const valid = form.name.trim() && form.hypothesis.trim() && form.model_a_name.trim() && form.model_b_name.trim();
+
+  const create = async (e: FormEvent) => {
+    e.preventDefault();
+    if (!valid) return;
+    setBusy(true);
+    const ok = await runMutation(() => apiClient.post('/lab/experiments', form), { invalidate: ['lab:experiments', 'commanders'], success: 'Experiment started', errorTitle: 'Could not start experiment' });
+    setBusy(false);
+    if (ok) setForm((f) => ({ ...f, name: '', hypothesis: '' }));
+  };
+
+  const conclude = (x: Experiment, winner: string) =>
+    runMutation(() => apiClient.patch(`/lab/experiments/${x.id}/conclude`, { winner, metrics: { concluded_from: 'lab-ui' } }), {
+      invalidate: ['lab:experiments', 'commanders'],
+      success: `${x.name}: ${winner} wins`,
+      errorTitle: 'Could not conclude',
+    });
+
+  return (
+    <Panel title="A/B experiments" icon="compare_arrows" className="lg:col-span-5" updatedAt={experiments.updatedAt}>
+      <form onSubmit={create} className="mb-4 grid grid-cols-2 gap-2.5">
+        <Field label="Name" className="col-span-2"><TextInput value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="Draw-bias correction" /></Field>
+        <Field label="Hypothesis" className="col-span-2"><TextInput value={form.hypothesis} onChange={(e) => setForm({ ...form, hypothesis: e.target.value })} placeholder="B improves Brier score on draws" /></Field>
+        <Field label="Model A"><TextInput value={form.model_a_name} onChange={(e) => setForm({ ...form, model_a_name: e.target.value })} /></Field>
+        <Field label="Model B"><TextInput value={form.model_b_name} onChange={(e) => setForm({ ...form, model_b_name: e.target.value })} /></Field>
+        <Button type="submit" variant="primary" icon="add" busy={busy} disabled={!valid} className="col-span-2">Start experiment</Button>
+      </form>
+      <Async resource={experiments} isEmpty={(r) => r.length === 0} empty={<EmptyState icon="compare_arrows" title="No experiments" />}>
+        {(rows) => (
+          <ul className="flex max-h-[300px] flex-col gap-2 overflow-y-auto">
+            {rows.map((x) => (
+              <li key={x.id} className="rounded-xl bg-slate-50 p-3 dark:bg-white/[0.03]">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="truncate text-sm font-semibold text-slate-800 dark:text-slate-100">{x.name}</span>
+                  <StatusBadge status={x.status} />
+                </div>
+                <p className="mt-0.5 text-[11px] text-slate-500 dark:text-slate-400">{x.model_a_name} vs {x.model_b_name} · {x.hypothesis}</p>
+                {x.status === 'RUNNING' ? (
+                  <div className="mt-2 flex gap-1.5">
+                    <ConfirmButton size="sm" variant="ghost" confirmLabel={`${x.model_a_name} wins?`} onConfirm={() => void conclude(x, x.model_a_name)}>A wins</ConfirmButton>
+                    <ConfirmButton size="sm" variant="ghost" confirmLabel={`${x.model_b_name} wins?`} onConfirm={() => void conclude(x, x.model_b_name)}>B wins</ConfirmButton>
+                  </div>
+                ) : (
+                  <p className="mt-1.5 text-[11px] text-emerald-600 dark:text-emerald-400">Winner: {x.winner} · {formatDateTime(x.concluded_at)}</p>
+                )}
+              </li>
+            ))}
+          </ul>
+        )}
+      </Async>
+    </Panel>
+  );
+};
+
+// ---------------------------------------------------------------------------
+// HUMAN TOUCH (FA-8)
+// ---------------------------------------------------------------------------
+const HumanTouch = () => {
+  const config = useResource('human-touch:config', () => apiClient.get<HumanTouchConfig>('/human-touch/config'));
+  const [draft, setDraft] = useState<HumanTouchConfig | null>(null);
+  const [blend, setBlend] = useState({ prob: '0.55', sentiment: '0.3', factor: 'derby_intensity', value: '0.8', impact: '0.4' });
+  const [result, setResult] = useState<BlendResponse | null>(null);
+  useEffect(() => { if (config.data) setDraft(config.data); }, [config.data]);
+
+  const save = () => draft && runMutation(
+    () => apiClient.put('/human-touch/config', {
+      is_blended_mode_active: draft.is_blended_mode_active, max_adjustment_limit_pct: draft.max_adjustment_limit_pct,
+      sentiment_weight: draft.sentiment_weight, momentum_weight: draft.momentum_weight, min_adjustment_threshold_pct: draft.min_adjustment_threshold_pct,
+    }),
+    { invalidate: ['human-touch'], success: 'Human Touch configuration saved', errorTitle: 'Configuration rejected' },
+  );
+
+  const runBlend = async () => {
+    const res = await runMutation(() => apiClient.post<BlendResponse>('/human-touch/blend', {
+      pure_math_prob: num(blend.prob), sentiment_score: num(blend.sentiment),
+      factors: blend.factor.trim() ? [{ name: blend.factor.trim(), value: num(blend.value), impact: num(blend.impact) }] : [],
+    }), { errorTitle: 'Blend rejected' });
+    setResult(res ?? null);
+  };
+
+  const slider = (key: 'max_adjustment_limit_pct' | 'sentiment_weight' | 'momentum_weight' | 'min_adjustment_threshold_pct', label: string, max: number, step: number) =>
+    draft && (
+      <Field label={`${label}: ${draft[key]}`}>
+        <input type="range" min={0} max={max} step={step} value={draft[key]} onChange={(e) => setDraft({ ...draft, [key]: Number(e.target.value) })} className="accent-[var(--accent)]" />
+      </Field>
+    );
+
+  return (
+    <Panel title="Human Touch · FA-8 narrative blending" icon="psychology_alt" className="lg:col-span-12" updatedAt={config.updatedAt}>
+      <Async resource={config}>
+        {() => draft && (
+          <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+            <div className="flex flex-col gap-4">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <p className="text-sm font-semibold text-slate-800 dark:text-slate-100">Blended mode</p>
+                  <p className="text-xs text-slate-500 dark:text-slate-400">When off, the pure math probability passes through untouched.</p>
+                </div>
+                <Toggle label="Blended mode" checked={draft.is_blended_mode_active} onChange={(v) => setDraft({ ...draft, is_blended_mode_active: v })} />
+              </div>
+              {slider('max_adjustment_limit_pct', 'Max adjustment %', 25, 0.5)}
+              {slider('min_adjustment_threshold_pct', 'Min threshold %', 5, 0.1)}
+              {slider('sentiment_weight', 'Sentiment weight', 1, 0.05)}
+              {slider('momentum_weight', 'Momentum weight', 1, 0.05)}
+              <Button variant="primary" icon="save" onClick={() => void save()}>Save configuration</Button>
+            </div>
+            <div className="flex flex-col gap-3 rounded-xl bg-slate-50 p-4 dark:bg-white/[0.03]">
+              <p className="text-sm font-semibold text-slate-800 dark:text-slate-100">Blend calculator</p>
+              <div className="grid grid-cols-2 gap-2.5">
+                <Field label="Math probability (0-1)"><NumberInput value={blend.prob} onChange={(e) => setBlend({ ...blend, prob: e.target.value })} /></Field>
+                <Field label="Sentiment (-1 to 1)"><NumberInput value={blend.sentiment} onChange={(e) => setBlend({ ...blend, sentiment: e.target.value })} /></Field>
+                <Field label="Factor" className="col-span-2"><TextInput value={blend.factor} onChange={(e) => setBlend({ ...blend, factor: e.target.value })} /></Field>
+                <Field label="Factor value (0-1)"><NumberInput value={blend.value} onChange={(e) => setBlend({ ...blend, value: e.target.value })} /></Field>
+                <Field label="Impact (-1 to 1)"><NumberInput value={blend.impact} onChange={(e) => setBlend({ ...blend, impact: e.target.value })} /></Field>
+              </div>
+              <Button icon="calculate" onClick={() => void runBlend()}>Blend</Button>
+              {result && (
+                <KeyValues items={[
+                  { label: 'Pure math', value: formatRatioPct(result.pure_math_prob) },
+                  { label: 'Adjusted', value: formatRatioPct(result.adjusted_prob) },
+                  { label: 'Delta', value: `${result.adjustment_delta >= 0 ? '+' : ''}${(result.adjustment_delta * 100).toFixed(2)} pts` },
+                  { label: 'Tier', value: <StatusBadge status={result.confidence_tier === 'HIGH_CONFIDENCE' ? 'ONLINE' : result.confidence_tier === 'CONTRARIAN' ? 'WARNING' : 'IDLE'} label={result.confidence_tier.replace('_', ' ')} /> },
+                  { label: 'Flags', value: [result.bypassed && 'bypassed', result.below_threshold && 'below threshold', result.clamped && 'clamped'].filter(Boolean).join(', ') || 'none' },
+                ]} />
+              )}
+            </div>
+          </div>
+        )}
+      </Async>
+    </Panel>
+  );
+};
+
+// ---------------------------------------------------------------------------
+// NAMED EXPORT: THE LAB
+// ---------------------------------------------------------------------------
+export const TheLab = () => {
+  const health = useResource('lab:health', () => apiClient.get<SourceHealth[]>('/lab/health'), { intervalMs: 120_000 });
+  const research = useResource('lab:research', () => apiClient.get<Research[]>('/lab/research', { limit: 25 }), { intervalMs: 10_000 });
+  const experiments = useResource('lab:experiments', () => apiClient.get<Experiment[]>('/lab/experiments', { limit: 25 }), { intervalMs: 30_000 });
+
+  const running = (experiments.data ?? []).filter((x) => x.status === 'RUNNING').length;
+  const compiling = (research.data ?? []).filter((r) => r.status === 'PENDING' || r.status === 'RUNNING').length;
+  const online = (health.data ?? []).filter((s) => s.status === 'ONLINE').length;
+  const lastDone = (research.data ?? []).find((r) => r.status === 'COMPLETED');
+  const state = compiling > 0 || running > 0 ? 'synthesizing' : lastDone ? 'complete' : 'idle';
+
+  return (
+    <Page>
+      <CommanderHero
+        commander="PANINI"
+        headline={`PANINI ACTIVE. ${running} experiment${running === 1 ? '' : 's'} running, ${compiling} report${compiling === 1 ? '' : 's'} compiling, ${online}/${health.data?.length ?? 3} sources reachable.`}
+        motif={MOTIFS.hex}
+        detail={lastDone ? <>Latest report: <strong className="text-slate-800 dark:text-slate-100">{lastDone.topic}</strong> ({formatAgo(lastDone.completed_at)}).</> : 'Queue a research topic or start an A/B experiment to put the lab to work.'}
+        scene={<TheLabScene analysisState={state} activeBeakers={Math.max(1, Math.min(6, running + compiling))} statusLabel={state === 'synthesizing' ? 'Synthesizing' : state === 'complete' ? 'Report ready' : 'Standing by'} className="h-[220px]" />}
+        actions={
+          <>
+            <Button variant="primary" icon="description" onClick={() => document.getElementById('research-topic')?.focus()}>New research</Button>
+            <Button icon="lan" busy={health.loading && health.data !== undefined} onClick={() => void health.refresh()}>Probe sources</Button>
+          </>
+        }
+      />
+      <ModelSandbox />
+      <SourceHealth health={health} />
+      <ResearchDesk research={research} />
+      <Experiments experiments={experiments} />
+      <HumanTouch />
+    </Page>
+  );
+};

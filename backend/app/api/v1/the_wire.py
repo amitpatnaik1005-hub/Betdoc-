@@ -3,12 +3,9 @@ from typing import Annotated, Final
 from fastapi import APIRouter, HTTPException, Query, status
 
 from app.api.deps import CurrentUser
-from app.domain.the_wire import (
-    MockNewsProvider,
-    MockScoreProvider,
-    MockWeatherProvider,
-    WireAggregatorService,
-)
+from app.core.config import settings
+from app.domain.the_wire import WireAggregatorService
+from app.domain.the_wire.live_providers import OddsApiScoreProvider, RssNewsProvider, VenueWeatherUnavailable
 from app.schemas.the_wire import WireDashboard
 
 MAX_MATCH_IDS: Final[int] = 50
@@ -17,9 +14,13 @@ MAX_MATCH_ID_LENGTH: Final[int] = 64
 router = APIRouter(tags=["the_wire"])
 
 wire_service = WireAggregatorService(
-    news_provider=MockNewsProvider(),
-    score_provider=MockScoreProvider(),
-    weather_provider=MockWeatherProvider(),
+    news_provider=RssNewsProvider(settings.WIRE_NEWS_FEEDS),
+    score_provider=OddsApiScoreProvider(
+        settings.ODDS_API_KEY.get_secret_value() if settings.ODDS_API_KEY else None,
+        settings.ODDS_API_BASE_URL,
+        settings.odds_sport_keys,
+    ),
+    weather_provider=VenueWeatherUnavailable(),
 )
 
 

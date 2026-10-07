@@ -39,6 +39,13 @@ class Settings(BaseSettings):
     ODDS_SPORT_KEYS: str = "soccer_epl"
     ODDS_QUOTA_FLOOR: int = 10
 
+    # The Wire: public sports RSS feeds (no key needed)
+    WIRE_NEWS_FEEDS: List[str] = [
+        "https://feeds.bbci.co.uk/sport/rss.xml",
+        "https://feeds.bbci.co.uk/sport/football/rss.xml",
+        "https://feeds.bbci.co.uk/sport/cricket/rss.xml",
+    ]
+
     @property
     def odds_sport_keys(self) -> List[str]:
         return [s.strip() for s in self.ODDS_SPORT_KEYS.split(",") if s.strip()]
