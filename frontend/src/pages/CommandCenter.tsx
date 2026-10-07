@@ -73,14 +73,14 @@ const GENERALS: GeneralStatus[] = [
     pingColor: '#EAB308',
   },
   {
-    botName: 'ARYABHATA',
+    botName: 'PANINI',
     domain: 'The Lab',
     currentTask: 'Crunching Posterior Ranks',
     statusCode: 102,
     pingColor: '#3B82F6',
   },
   {
-    botName: 'TODAR MAL',
+    botName: 'KUMBHA',
     domain: 'The Vault',
     currentTask: 'Auditing Cashflow',
     statusCode: 200,

@@ -39,7 +39,7 @@ class OddsSnapshot(Base):
     )
 
     __table_args__ = (
-        # PRITHVIRAJ: per-match, per-bookmaker price history.
+        # KARNA: per-match, per-bookmaker price history.
         Index("ix_match_bookmaker_time", "match_id", "bookmaker", "timestamp"),
         # /live latest-snapshot lookup and the poller's freshness check.
         Index("ix_sport_time", "sport_key", "timestamp"),
