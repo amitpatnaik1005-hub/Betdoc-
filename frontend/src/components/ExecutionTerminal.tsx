@@ -1,5 +1,5 @@
 import { useRef } from "react";
-import { SELECTIONS, Selection, useExecutionStore } from "../store/useExecutionStore";
+import { SELECTIONS, type Selection, useExecutionStore } from "../store/useExecutionStore";
 import { useMarketStore } from "../store/useMarketStore";
 
 const QUICK_STAKES: readonly number[] = [100, 500, 1000, 5000];

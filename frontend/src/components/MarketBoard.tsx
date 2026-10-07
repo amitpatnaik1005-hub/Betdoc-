@@ -1,8 +1,8 @@
 import { memo, useEffect, useRef, useState } from "react";
 import { useShallow } from "zustand/react/shallow";
 import { useAuthStore } from "../store/useAuthStore";
-import { Selection, useExecutionStore } from "../store/useExecutionStore";
-import { MarketTick, useMarketStore } from "../store/useMarketStore";
+import { type Selection, useExecutionStore } from "../store/useExecutionStore";
+import { type MarketTick, useMarketStore } from "../store/useMarketStore";
 
 const COLUMNS: readonly Selection[] = ["HOME", "DRAW", "AWAY"];
 const FLASH_MS = 500;

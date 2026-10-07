@@ -1,0 +1,92 @@
+name: betdoc
+
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "${DOCKER_LOG_MAX_SIZE:-10m}"
+    max-file: "${DOCKER_LOG_MAX_FILE:-3}"
+
+x-service-defaults: &service-defaults
+  restart: unless-stopped
+  security_opt: ["no-new-privileges:true"]
+  networks: [betdoc_net]
+  logging: *default-logging
+
+x-healthcheck-timing: &healthcheck-timing
+  interval: ${HEALTHCHECK_INTERVAL:-30s}
+  timeout: ${HEALTHCHECK_TIMEOUT:-10s}
+  retries: ${HEALTHCHECK_RETRIES:-3}
+  start_period: ${HEALTHCHECK_START_PERIOD:-40s}
+
+services:
+  postgres_db:
+    <<: *service-defaults
+    image: postgres:16-alpine
+    env_file: .env
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      <<: *healthcheck-timing
+      # Law 10: Secure DB Healthcheck (pass credentials properly)
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+
+  redis_cache:
+    <<: *service-defaults
+    image: redis:7-alpine
+    env_file: .env
+    command: redis-server --requirepass ${REDIS_PASSWORD} --appendonly yes
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      <<: *healthcheck-timing
+      # FIX: redis-cli ping always returns 0 even on NOAUTH, so grep for PONG
+      test: ["CMD-SHELL", "redis-cli -a $$REDIS_PASSWORD ping | grep -q PONG"]
+
+  backend_api:
+    <<: *service-defaults
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres_db:5432/${POSTGRES_DB}
+      REDIS_URL: redis://:${REDIS_PASSWORD}@redis_cache:6379/0
+      # Trust Nginx proxy IP
+      FORWARDED_ALLOW_IPS: "*"
+      MAX_WORKERS: 4
+      ENVIRONMENT: production
+    depends_on:
+      postgres_db:
+        condition: service_healthy
+      redis_cache:
+        condition: service_healthy
+    healthcheck:
+      <<: *healthcheck-timing
+      # Using our deep health endpoint
+      test: ["CMD-SHELL", "curl -f http://127.0.0.1:8000/health/ || exit 1"]
+
+  frontend_web:
+    <<: *service-defaults
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    ports:
+      - "${FRONTEND_PORT:-80}:8080"
+    depends_on:
+      backend_api:
+        condition: service_healthy
+    healthcheck:
+      <<: *healthcheck-timing
+      test: ["CMD-SHELL", "wget --spider -q http://127.0.0.1:8080/ || exit 1"]
+
+networks:
+  betdoc_net:
+    driver: bridge
+
+volumes:
+  pgdata:
+  redisdata:
