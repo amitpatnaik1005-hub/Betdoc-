@@ -31,56 +31,55 @@ export const CommanderHero = ({ commander, headline, detail, motif, actions, sta
   return (
     <motion.section
       variants={CARD_VARIANTS}
-      className="relative overflow-hidden rounded-3xl bg-white p-6 ring-1 ring-inset ring-slate-900/[0.06] lg:col-span-12 lg:p-8 dark:bg-[#161514] dark:ring-white/[0.08]"
+      className="relative overflow-hidden rounded-[2rem] bg-white p-7 shadow-soft sm:p-10 lg:col-span-12 lg:p-12 dark:bg-stone-900 dark:shadow-none dark:ring-1 dark:ring-inset dark:ring-white/[0.04]"
     >
-      {/* Commander glow + motif */}
+      {/* A whisper of the commander's colour: a flat wash and a faint, static emblem. */}
       <div
         aria-hidden="true"
-        className="pointer-events-none absolute -right-32 -top-32 size-[420px] rounded-full opacity-60 blur-3xl dark:opacity-40"
-        style={{ background: `radial-gradient(closest-side, ${profile.theme.glow}, transparent)` }}
+        className="pointer-events-none absolute inset-0 bg-[linear-gradient(135deg,transparent_55%,color-mix(in_srgb,var(--accent)_7%,transparent))]"
       />
       {motif && (
-        <div aria-hidden="true" className="pointer-events-none absolute -right-10 -top-10 size-[340px] opacity-[0.18] dark:opacity-25" style={{ color: profile.theme.primary }}>
+        <div aria-hidden="true" className="pointer-events-none absolute -right-16 -top-16 size-[380px] text-[var(--accent)] opacity-[0.07] dark:opacity-[0.09]">
           {motif}
         </div>
       )}
 
-      <div className="relative z-[1] flex flex-col gap-6 xl:flex-row xl:items-center xl:justify-between">
-        <div className="flex min-w-0 flex-col gap-4">
+      <div className="relative z-[1] flex flex-wrap items-center justify-between gap-x-10 gap-y-8">
+        <div className="flex min-w-[min(100%,26rem)] flex-1 basis-[26rem] flex-col gap-5">
           <div className="flex items-center gap-3">
             <BotAvatar botName={profile.name} status={avatarStatus(status)} size="md" customHexColor={profile.theme.primary} />
             <div className="min-w-0">
-              <p className="text-[11px] font-bold uppercase tracking-[0.2em] text-[var(--accent-text)]">
+              <p className="text-xs font-medium text-[var(--accent-text)]">
                 {profile.domain}
               </p>
               <div className="mt-1 flex flex-wrap items-center gap-2">
-                <span className="text-sm font-semibold text-slate-900 dark:text-slate-50">{profile.name}</span>
+                <span className="font-display text-sm font-semibold text-stone-900 dark:text-stone-100">{profile.name}</span>
                 <StatusBadge status={status === "NO SIGNAL" ? "OFFLINE" : status} label={status} />
                 {live?.heartbeat && (
-                  <span className="text-[11px] text-slate-400 dark:text-slate-500">heartbeat {formatAgo(live.heartbeat.last_ping_at)}</span>
+                  <span className="text-xs text-stone-400 dark:text-stone-500">heartbeat {formatAgo(live.heartbeat.last_ping_at)}</span>
                 )}
               </div>
             </div>
           </div>
 
-          <h1 className="max-w-3xl text-2xl font-semibold leading-tight tracking-tight text-slate-900 lg:text-[28px] dark:text-slate-50">
+          <h1 className="max-w-3xl font-display text-[26px] font-bold leading-[1.15] tracking-[-0.025em] text-stone-900 sm:text-3xl lg:text-[34px] dark:text-stone-100">
             {words.map((word, i) => (
               <motion.span
                 key={`${headline}-${i}`}
                 className="mr-[0.28em] inline-block"
                 initial={reduce ? false : { opacity: 0, y: 8 }}
                 animate={{ opacity: 1, y: 0 }}
-                transition={{ ...SPRING, delay: reduce ? 0 : 0.03 * i }}
+                transition={{ ...SPRING, delay: reduce ? 0 : 0.035 * i }}
               >
                 {word}
               </motion.span>
             ))}
           </h1>
-          {detail && <div className="max-w-2xl text-sm leading-relaxed text-slate-500 dark:text-slate-400">{detail}</div>}
+          {detail && <div className="max-w-2xl text-[15px] leading-relaxed text-stone-500 dark:text-stone-400">{detail}</div>}
           {stats}
-          {actions && <div className="flex flex-wrap gap-2.5">{actions}</div>}
+          {actions && <div className="mt-1 flex flex-wrap gap-3">{actions}</div>}
         </div>
-        {scene && <div className="w-full shrink-0 xl:w-[360px]">{scene}</div>}
+        {scene && <div className="mx-auto w-full max-w-[340px] shrink-0 basis-[260px]">{scene}</div>}
       </div>
     </motion.section>
   );
@@ -90,7 +89,7 @@ export const CommanderHero = ({ commander, headline, detail, motif, actions, sta
 // Faint section emblems drawn in currentColor (the commander's primary).
 export const MOTIFS = {
   rings: (
-    <svg viewBox="0 0 400 400" fill="none" className="size-full animate-[spin_60s_linear_infinite]">
+    <svg viewBox="0 0 400 400" fill="none" className="size-full">
       {[180, 130, 80].map((r, i) => (
         <circle key={r} cx="200" cy="200" r={r} stroke="currentColor" strokeWidth={1.2 - i * 0.3} strokeDasharray="6 10" />
       ))}
@@ -103,9 +102,6 @@ export const MOTIFS = {
       ))}
       <line x1="200" y1="20" x2="200" y2="380" stroke="currentColor" strokeWidth="0.6" />
       <line x1="20" y1="200" x2="380" y2="200" stroke="currentColor" strokeWidth="0.6" />
-      <g className="origin-center animate-[spin_4s_linear_infinite]" style={{ transformOrigin: "200px 200px" }}>
-        <line x1="200" y1="200" x2="200" y2="30" stroke="currentColor" strokeWidth="2" />
-      </g>
     </svg>
   ),
   constellation: (

@@ -35,6 +35,6 @@ export const useUIStore = create<UIState>((set, get) => ({
 if (hasWindow) {
   // Crossing into phone width closes both overlays so content is never hidden behind them.
   window.matchMedia(COMPACT_QUERY).addEventListener('change', (e) => {
-    useUIStore.setState(e.matches ? { isCompact: true, isLeftCollapsed: true, isRightCollapsed: true } : { isCompact: false });
+    useUIStore.setState(e.matches ? { isCompact: true, isLeftCollapsed: true, isRightCollapsed: true } : { isCompact: false, isLeftCollapsed: false });
   });
 }

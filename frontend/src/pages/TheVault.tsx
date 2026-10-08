@@ -5,7 +5,7 @@ import { downloadCsv, formatDate, formatDateTime, formatINR, formatINRCompact, f
 import { runMutation, useResource } from '../lib/resource';
 import { CommanderHero, MOTIFS } from '../ui/hero';
 import { DivergingBars, LineChart } from '../ui/charts';
-import { AnimatedNumber, Async, Button, ConfirmButton, type Column, DataTable, EmptyState, Field, KeyValues, NumberInput, Page, Panel, Stat, StatusBadge, TextInput, Toggle, num } from '../ui/kit';
+import { AnimatedNumber, Async, Button, ConfirmButton, type Column, DataTable, EmptyState, Field, KeyValues, NumberInput, Page, Panel, Segmented, Stat, StatusBadge, TextInput, Toggle, num } from '../ui/kit';
 
 // ---------------------------------------------------------------------------
 // CONTRACTS
@@ -61,30 +61,30 @@ const PnLBreakdown = () => {
       className="lg:col-span-12"
       updatedAt={periods.updatedAt}
       actions={
-        <div className="flex rounded-lg bg-slate-100 p-0.5 dark:bg-white/[0.05]" role="tablist" aria-label="Timeframe">
-          {(['DAILY', 'WEEKLY', 'MONTHLY', 'YEARLY'] as const).map((t) => (
-            <button key={t} type="button" role="tab" aria-selected={tf === t} onClick={() => setTf(t)} className={`rounded-md px-2 py-1 text-[10px] font-bold tracking-wider ${tf === t ? 'bg-white text-slate-900 shadow-sm dark:bg-white/10 dark:text-white' : 'text-slate-500'}`}>
-              {t}
-            </button>
-          ))}
-        </div>
+        <Segmented
+          label="Timeframe"
+          size="sm"
+          value={tf}
+          onChange={setTf}
+          options={(['DAILY', 'WEEKLY', 'MONTHLY', 'YEARLY'] as const).map((t) => ({ value: t, label: t.charAt(0) + t.slice(1).toLowerCase() }))}
+        />
       }
     >
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
         <div>
-          <p className="mb-2 text-[10px] font-bold uppercase tracking-[0.14em] text-slate-400">By {tf.toLowerCase().replace('ly', '')}</p>
+          <p className="mb-2 text-xs font-semibold text-stone-400">By {tf.toLowerCase().replace('ly', '')}</p>
           <Async resource={periods} isEmpty={(r) => r.length === 0} empty={empty}>
             {(rows) => <DivergingBars caption="Profit by period" formatValue={formatINR} items={rows.slice(-10).map((r) => ({ label: r.period, value: r.profit, detail: `${r.bets_won}W / ${r.bets_lost}L · yield ${formatPct(r.yield_pct)} · volume ${formatINR(r.volume)}` }))} />}
           </Async>
         </div>
         <div>
-          <p className="mb-2 text-[10px] font-bold uppercase tracking-[0.14em] text-slate-400">By market</p>
+          <p className="mb-2 text-xs font-semibold text-stone-400">By market</p>
           <Async resource={markets} isEmpty={(r) => r.length === 0} empty={empty}>
             {(rows) => <DivergingBars caption="Net profit by market" formatValue={formatINR} items={rows.map((r) => ({ label: r.market_type, value: r.net_profit, detail: `ROI ${formatPct(r.roi_pct)} · volume ${formatINR(r.volume)}` }))} />}
           </Async>
         </div>
         <div>
-          <p className="mb-2 text-[10px] font-bold uppercase tracking-[0.14em] text-slate-400">By exchange</p>
+          <p className="mb-2 text-xs font-semibold text-stone-400">By exchange</p>
           <Async resource={books} isEmpty={(r) => r.length === 0} empty={empty}>
             {(rows) => <DivergingBars caption="Net profit by exchange" formatValue={formatINR} items={rows.map((r) => ({ label: r.exchange, value: r.net_profit, detail: `ROI ${formatPct(r.roi_pct)} · volume ${formatINR(r.volume)}` }))} />}
           </Async>
@@ -96,16 +96,16 @@ const PnLBreakdown = () => {
 
 const LedgerPanel = ({ ledger }: { ledger: ReturnType<typeof useResource<LedgerRow[]>> }) => {
   const columns: Column<LedgerRow>[] = [
-    { key: 'when', header: 'Placed', render: (r) => <span className="whitespace-nowrap text-xs text-slate-500">{formatDateTime(r.placed_at)}</span> },
-    { key: 'what', header: 'Position', render: (r) => <span>{r.selection} <span className="font-mono text-xs text-slate-400">{r.match_id}</span></span> },
-    { key: 'ref', header: 'Exchange ref', render: (r) => <span className="font-mono text-[11px] text-slate-400">{r.exchange_bet_id ?? r.id.slice(0, 8)}</span> },
+    { key: 'when', header: 'Placed', render: (r) => <span className="whitespace-nowrap text-xs text-stone-500">{formatDateTime(r.placed_at)}</span> },
+    { key: 'what', header: 'Position', render: (r) => <span>{r.selection} <span className="font-mono text-xs text-stone-400">{r.match_id}</span></span> },
+    { key: 'ref', header: 'Exchange ref', render: (r) => <span className="font-mono text-[11px] text-stone-400">{r.exchange_bet_id ?? r.id.slice(0, 8)}</span> },
     { key: 'stake', header: 'Stake @ odds', align: 'right', render: (r) => `${formatINR(Number(r.stake))} @ ${formatOdds(Number(r.odds))}` },
     { key: 'payout', header: 'Payout', align: 'right', render: (r) => (r.payout === null ? '—' : formatINR(Number(r.payout))) },
     { key: 'status', header: 'Status', render: (r) => <StatusBadge status={r.status} /> },
   ];
   return (
     <Panel title="Immutable ledger" icon="receipt_long" className="lg:col-span-12" updatedAt={ledger.updatedAt} subtitle="append-only, idempotent">
-      <Async resource={ledger} isEmpty={(r) => r.length === 0} empty={<EmptyState icon="receipt_long" title="No ledger entries" detail="Every order routed through the execution terminal is recorded here." />}>
+      <Async resource={ledger} isEmpty={(r) => r.length === 0} empty={<EmptyState icon="receipt_long" title="No ledger entries" detail="Every order you place from the bet slip is recorded here." />}>
         {(rows) => <DataTable columns={columns} rows={rows} rowKey={(r) => r.id} dense />}
       </Async>
     </Panel>
@@ -163,9 +163,9 @@ const StopLossPanel = () => {
     <Panel title="Stop-loss guard" icon="emergency_home" className="lg:col-span-4" updatedAt={status.updatedAt}>
       <div className="flex flex-col gap-4">
         {s && (
-          <div className="flex items-center justify-between gap-2 rounded-xl bg-slate-50 px-3 py-2 dark:bg-white/[0.03]">
+          <div className="flex items-center justify-between gap-2 rounded-xl bg-stone-50 px-3 py-2 dark:bg-white/[0.03]">
             <StatusBadge status={s.is_triggered ? 'CRITICAL' : 'ONLINE'} label={s.is_triggered ? 'Triggered' : 'Armed'} />
-            <span className="text-right text-[11px] text-slate-500 dark:text-slate-400">
+            <span className="text-right text-[11px] text-stone-500 dark:text-stone-400">
               today {formatSignedINR(-s.daily_loss_current)} · {s.consecutive_losses_current} losses in a row
               {s.cooldown_until ? ` · cooldown until ${formatDateTime(s.cooldown_until)}` : ''}
             </span>
@@ -180,7 +180,7 @@ const StopLossPanel = () => {
             <Field label="Trailing stop %"><NumberInput value={draft.trailing_stop_pct} onChange={(e) => setDraft({ ...draft, trailing_stop_pct: e.target.value })} placeholder="off" /></Field>
             <Field label="Cooldown (min)"><NumberInput value={draft.cooldown_minutes} onChange={(e) => setDraft({ ...draft, cooldown_minutes: e.target.value })} placeholder="off" /></Field>
             <div className="flex items-end justify-between gap-2 pb-2">
-              <span className="text-xs text-slate-500">Enabled</span>
+              <span className="text-xs text-stone-500">Enabled</span>
               <Toggle label="Stop-loss enabled" checked={draft.enabled} onChange={(v) => setDraft({ ...draft, enabled: v })} />
             </div>
             <Button type="submit" variant="primary" icon="save" className="col-span-1">Save</Button>
@@ -217,14 +217,14 @@ const CfoPanel = ({ overview }: { overview: Overview | undefined }) => {
   return (
     <Panel title="CFO advisory desk" icon="account_balance" className="lg:col-span-4" updatedAt={alerts.updatedAt}>
       <div className="flex flex-col gap-4">
-        <div className="grid grid-cols-3 gap-1 rounded-lg bg-slate-100 p-0.5 dark:bg-white/[0.05]">
+        <div className="grid grid-cols-3 gap-1 rounded-xl bg-stone-100 p-0.5 dark:bg-white/[0.05]">
           {(['advisory', 'stress', 'tax'] as const).map((m) => (
-            <button key={m} type="button" onClick={() => { setMode(m); setResult(null); }} className={`rounded-md py-1 text-[11px] font-semibold capitalize ${mode === m ? 'bg-white text-slate-900 shadow-sm dark:bg-white/10 dark:text-white' : 'text-slate-500'}`}>
+            <button key={m} type="button" onClick={() => { setMode(m); setResult(null); }} className={`rounded-lg py-1 text-[11px] font-semibold capitalize ${mode === m ? 'bg-white text-stone-900 shadow-sm dark:bg-white/10 dark:text-white' : 'text-stone-500'}`}>
               {m === 'stress' ? 'Stress test' : m}
             </button>
           ))}
         </div>
-        {mode === 'advisory' && <p className="text-xs text-slate-500 dark:text-slate-400">Scores capital health from your live bankroll ({formatINR(bankroll)}) and exposure ({formatINR(overview?.total_exposure)}).</p>}
+        {mode === 'advisory' && <p className="text-xs text-stone-500 dark:text-stone-400">Scores capital health from your live bankroll ({formatINR(bankroll)}) and exposure ({formatINR(overview?.total_exposure)}).</p>}
         {mode === 'stress' && (
           <div className="grid grid-cols-2 gap-2.5">
             <Field label="Scenario" className="col-span-2"><TextInput value={stress.scenario} onChange={(e) => setStress({ ...stress, scenario: e.target.value })} /></Field>
@@ -241,21 +241,21 @@ const CfoPanel = ({ overview }: { overview: Overview | undefined }) => {
         )}
         <Button variant="primary" icon="calculate" disabled={bankroll <= 0} onClick={() => void run()}>Run {mode === 'stress' ? 'stress test' : mode}</Button>
         {result && (
-          <div className="rounded-xl bg-slate-50 p-3 text-xs dark:bg-white/[0.03]">
+          <div className="rounded-xl bg-stone-50 p-3 text-xs dark:bg-white/[0.03]">
             {'capital_health_score' in result && <p className="mb-2 text-sm font-semibold">Health {String(result.capital_health_score)}/100 · variance <StatusBadge status={String(result.variance_status)} /></p>}
-            {Array.isArray(result.suggestions) && <ul className="list-disc space-y-1 pl-4 text-slate-600 dark:text-slate-300">{(result.suggestions as string[]).map((s) => <li key={s}>{s}</li>)}</ul>}
-            {'survived' in result && <p className="text-sm">{result.survived ? 'Survives' : 'Breaks'} · simulated P&L {formatINR(Number(result.simulated_pnl))} · drawdown {formatPct(Number(result.simulated_drawdown_pct))}<br /><span className="text-slate-500">{String(result.recommendation)}</span></p>}
+            {Array.isArray(result.suggestions) && <ul className="list-disc space-y-1 pl-4 text-stone-600 dark:text-stone-300">{(result.suggestions as string[]).map((s) => <li key={s}>{s}</li>)}</ul>}
+            {'survived' in result && <p className="text-sm">{result.survived ? 'Survives' : 'Breaks'} · simulated P&L {formatINR(Number(result.simulated_pnl))} · drawdown {formatPct(Number(result.simulated_drawdown_pct))}<br /><span className="text-stone-500">{String(result.recommendation)}</span></p>}
             {'estimated_tax' in result && <p className="text-sm">Taxable {formatINR(Number(result.taxable_amount))} · estimated tax <strong>{formatINR(Number(result.estimated_tax))}</strong></p>}
           </div>
         )}
         <div>
-          <p className="mb-2 text-[10px] font-bold uppercase tracking-[0.14em] text-slate-400">Alerts</p>
-          <Async resource={alerts} isEmpty={(r) => r.length === 0} empty={<p className="text-xs text-slate-400">No CFO alerts.</p>}>
+          <p className="mb-2 text-xs font-semibold text-stone-400">Alerts</p>
+          <Async resource={alerts} isEmpty={(r) => r.length === 0} empty={<p className="text-xs text-stone-400">No CFO alerts.</p>}>
             {(rows) => (
               <ul className="flex max-h-[180px] flex-col gap-1.5 overflow-y-auto">
                 {rows.map((a) => (
                   <li key={a.id} className={`flex items-start justify-between gap-2 text-xs ${a.is_read ? 'opacity-50' : ''}`}>
-                    <span className="flex items-start gap-1.5"><StatusBadge status={a.level} /><span className="text-slate-600 dark:text-slate-300">{a.message}</span></span>
+                    <span className="flex items-start gap-1.5"><StatusBadge status={a.level} /><span className="text-stone-600 dark:text-stone-300">{a.message}</span></span>
                     {!a.is_read && <button type="button" className="shrink-0 text-[10px] font-semibold text-[var(--accent-text)]" onClick={() => void runMutation(() => apiClient.patch(`/the-vault/cfo/alerts/${a.id}/read`), { invalidate: ['the-vault'] })}>Mark read</button>}
                   </li>
                 ))}

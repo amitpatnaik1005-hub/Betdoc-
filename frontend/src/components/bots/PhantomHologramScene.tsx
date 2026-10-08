@@ -18,13 +18,13 @@ const clamp = (value: number, min: number, max: number, fallback: number): numbe
   Number.isFinite(value) ? Math.min(max, Math.max(min, value)) : fallback;
 
 const toneStrokeMap: Record<HologramTone, string> = {
-  scanning: "#06b6d4",
-  locked: "#10b981",
+  scanning: "#8fa9b8",
+  locked: "#86b49a",
 };
 
 const toneTextClassMap: Record<HologramTone, string> = {
-  scanning: "text-cyan-300",
-  locked: "text-emerald-300",
+  scanning: "text-stone-500 dark:text-stone-400",
+  locked: "text-emerald-700 dark:text-emerald-300/90",
 };
 
 export const PhantomHologramScene: React.FC<PhantomHologramSceneProps> = ({
@@ -48,8 +48,8 @@ export const PhantomHologramScene: React.FC<PhantomHologramSceneProps> = ({
     <div className={cx("relative w-full aspect-square select-none", className)} {...rest}>
       <div className="absolute inset-x-[15%] bottom-[8%] h-[22%]" style={{ perspective: "900px" }}>
         <motion.div
-          className="h-full w-full rounded-[50%] border-2 bg-slate-900/70"
-          style={{ borderColor: stroke, boxShadow: `0 0 40px ${stroke}55, inset 0 0 30px ${stroke}33`, transformStyle: "preserve-3d", willChange: "transform" }}
+          className="h-full w-full rounded-[50%] border-2 bg-stone-100 dark:bg-stone-800/60"
+          style={{ borderColor: stroke, transformStyle: "preserve-3d", willChange: "transform" }}
           initial={{ rotateY: 0, rotateX: 70 }}
           animate={{ rotateY: 360, rotateX: 70 }}
           transition={{ duration: spinSeconds, repeat: Infinity, ease: "linear" }}
@@ -143,11 +143,10 @@ export const PhantomHologramScene: React.FC<PhantomHologramSceneProps> = ({
             initial={{ y1: 760, y2: 760, stroke: toneStrokeMap.scanning, opacity: 0.9 }}
             animate={{ y1: scanY, y2: scanY, stroke, opacity: targetFound ? 0 : 0.9 }}
             transition={{ type: "spring", stiffness: 120, damping: 20 }}
-            style={{ filter: `drop-shadow(0 0 6px ${stroke})` }}
           />
         </motion.g>
 
-        <circle cx="500" cy="500" r="300" fill="none" className="stroke-slate-800" strokeWidth="10" />
+        <circle cx="500" cy="500" r="300" fill="none" className="stroke-stone-200 dark:stroke-stone-800" strokeWidth="10" />
         <motion.circle
           cx="500"
           cy="500"
@@ -187,19 +186,19 @@ export const PhantomHologramScene: React.FC<PhantomHologramSceneProps> = ({
         </AnimatePresence>
       </svg>
 
-      <div className="pointer-events-none absolute inset-x-0 top-3 flex items-center justify-between px-4 font-mono text-[10px] uppercase tracking-widest">
-        <span className={toneTextClassMap[tone]}>{targetFound ? `${targetLabel} LOCKED` : `SCANNING ${Math.round(progress)}%`}</span>
+      <div className="pointer-events-none absolute inset-x-0 top-3 flex items-center justify-between px-4 text-xs font-medium">
+        <span className={toneTextClassMap[tone]}>{targetFound ? `${targetLabel} found` : `Scanning · ${Math.round(progress)}%`}</span>
         <AnimatePresence>
           {isGlitching && (
             <motion.span
               key="phantom-glitch-flag"
-              className="text-rose-400"
+              className="text-rose-600 dark:text-rose-300/90"
               initial={{ opacity: 0 }}
-              animate={{ opacity: [1, 0.2, 1] }}
+              animate={{ opacity: [1, 0.55, 1] }}
               exit={{ opacity: 0 }}
               transition={{ duration: glitchDuration * 3, repeat: Infinity }}
             >
-              SIGNAL UNSTABLE
+              Signal unsteady
             </motion.span>
           )}
         </AnimatePresence>

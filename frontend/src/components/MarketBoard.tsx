@@ -8,9 +8,9 @@ const COLUMNS: readonly Selection[] = ["HOME", "DRAW", "AWAY"];
 const FLASH_MS = 600;
 
 const CELL_BASE =
-  "w-[4.5rem] rounded-lg py-1.5 text-center font-mono text-sm font-semibold tabular-nums ring-1 ring-inset transition-colors duration-300";
+  "w-[4.5rem] rounded-xl py-1.5 text-center font-mono text-sm font-semibold tabular-nums ring-1 ring-inset transition-colors duration-300";
 const CELL_DEFAULT =
-  "cursor-pointer bg-white text-slate-800 ring-slate-900/10 hover:ring-[var(--accent)] dark:bg-white/[0.04] dark:text-slate-100 dark:ring-white/10";
+  "cursor-pointer bg-white text-stone-800 ring-stone-900/10 hover:ring-[var(--accent)] dark:bg-white/[0.04] dark:text-stone-100 dark:ring-white/10";
 // Price moves use the validated diverging pair plus an arrow glyph, so direction is never colour-alone.
 const CELL_UP = "cursor-pointer bg-[var(--viz-positive)] text-white ring-transparent";
 const CELL_DOWN = "cursor-pointer bg-[var(--viz-negative)] text-white ring-transparent";
@@ -51,7 +51,7 @@ const OddsCell = memo(function OddsCell({ matchId, label, selection, tick }: Odd
   if (!tick) {
     return (
       <td className="px-2 py-2 text-center">
-        <div className={`${CELL_BASE} mx-auto bg-slate-50 text-slate-300 ring-slate-900/5 dark:bg-white/[0.02] dark:text-slate-600 dark:ring-white/5`}>—</div>
+        <div className={`${CELL_BASE} mx-auto bg-stone-50 text-stone-300 ring-stone-900/5 dark:bg-white/[0.02] dark:text-stone-600 dark:ring-white/5`}>—</div>
       </td>
     );
   }
@@ -59,7 +59,7 @@ const OddsCell = memo(function OddsCell({ matchId, label, selection, tick }: Odd
   if (tick.isSuspended) {
     return (
       <td className="px-2 py-2 text-center">
-        <button type="button" disabled aria-label={`${selection} suspended`} className={`${CELL_BASE} mx-auto cursor-not-allowed bg-slate-100 text-slate-400 ring-slate-900/10 dark:bg-white/[0.06] dark:text-slate-500`}>
+        <button type="button" disabled aria-label={`${selection} suspended`} className={`${CELL_BASE} mx-auto cursor-not-allowed bg-stone-100 text-stone-400 ring-stone-900/10 dark:bg-white/[0.06] dark:text-stone-500`}>
           <span className="material-symbols-outlined text-[14px]">lock</span>
         </button>
       </td>
@@ -94,12 +94,12 @@ const MatchRow = memo(function MatchRow({ matchId }: { matchId: string }): JSX.E
   const label = `${match.homeTeam} v ${match.awayTeam}`;
 
   return (
-    <tr className="border-b border-slate-900/[0.05] last:border-0 dark:border-white/[0.05]">
+    <tr className="border-b border-stone-900/[0.05] last:border-0 dark:border-white/[0.05]">
       <td className="px-4 py-2">
-        <div className="truncate font-medium text-slate-800 dark:text-slate-100">
-          {match.homeTeam} <span className="text-slate-400">v</span> {match.awayTeam}
+        <div className="truncate font-medium text-stone-800 dark:text-stone-100">
+          {match.homeTeam} <span className="text-stone-400">v</span> {match.awayTeam}
         </div>
-        <div className="truncate font-mono text-[10px] text-slate-400 dark:text-slate-500">{match.matchId}</div>
+        <div className="truncate font-mono text-[10px] text-stone-400 dark:text-stone-500">{match.matchId}</div>
       </td>
       {COLUMNS.map((sel) => (
         <OddsCell key={sel} matchId={matchId} label={label} selection={sel} tick={match.selections[sel]} />
@@ -123,7 +123,7 @@ export default function MarketBoard(): JSX.Element {
       <div className="flex items-center justify-between gap-3">
         <div className="flex items-center gap-2">
           <span className="material-symbols-outlined text-[18px] text-accent">candlestick_chart</span>
-          <h2 className="text-[11px] font-bold uppercase tracking-[0.16em] text-slate-700 dark:text-slate-200">Live market board</h2>
+          <h2 className="text-[11px] font-semibold text-stone-700 dark:text-stone-200">Live market board</h2>
         </div>
         <div className="flex items-center gap-2">
           {isConnected && (
@@ -139,7 +139,7 @@ export default function MarketBoard(): JSX.Element {
 
       {/* Stale prices are dimmed and unclickable while the feed is down. */}
       <div
-        className={`overflow-x-auto rounded-2xl bg-white ring-1 ring-inset ring-slate-900/[0.06] transition-opacity dark:bg-[#161514] dark:ring-white/[0.08] ${
+        className={`overflow-x-auto rounded-2xl bg-white ring-1 ring-inset ring-stone-900/[0.06] transition-opacity dark:bg-[#1c1917] dark:ring-white/[0.08] ${
           isConnected || matchIds.length === 0 ? "" : "pointer-events-none opacity-50"
         }`}
       >
@@ -147,15 +147,15 @@ export default function MarketBoard(): JSX.Element {
           <EmptyState
             icon="stream"
             title={isConnected ? "Waiting for the first tick" : "Live tick feed not connected"}
-            detail="Prices stream here as the ingestion pipeline pushes ticks to /api/v1/ingest. Click any price to load it into the execution terminal."
+            detail="Prices stream here as the ingestion pipeline pushes ticks to /api/v1/ingest. Click any price to add it to your bet slip."
           />
         ) : (
           <table className="w-full min-w-[480px] text-left text-sm">
             <thead>
-              <tr className="border-b border-slate-900/[0.06] dark:border-white/[0.06]">
-                <th className="px-4 py-2.5 text-[10px] font-bold uppercase tracking-[0.14em] text-slate-400">Match</th>
+              <tr className="border-b border-stone-900/[0.06] dark:border-white/[0.06]">
+                <th className="px-4 py-2.5 text-xs font-semibold text-stone-400">Match</th>
                 {COLUMNS.map((c) => (
-                  <th key={c} className="w-24 px-2 py-2.5 text-center text-[10px] font-bold uppercase tracking-[0.14em] text-slate-400">{c}</th>
+                  <th key={c} className="w-24 px-2 py-2.5 text-center text-xs font-semibold text-stone-400">{c}</th>
                 ))}
               </tr>
             </thead>

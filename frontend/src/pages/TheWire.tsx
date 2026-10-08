@@ -71,16 +71,16 @@ export const TheWire = () => {
       <Panel title="Intercept feed" icon="wifi_tethering" className="lg:col-span-7" updatedAt={wire.updatedAt} subtitle="public RSS">
         <Async resource={wire} skeletonRows={6} isEmpty={() => news.length === 0} empty={<EmptyState icon="newspaper" title="No headlines" detail="The news feeds are unreachable from the API server right now." />}>
           {() => (
-            <ul className="flex max-h-[640px] flex-col gap-2.5 overflow-y-auto pr-1">
+            <ul className="flex max-h-[640px] flex-col gap-3 overflow-y-auto pr-1">
               {news.map((n) => (
                 <li key={n.id}>
-                  <a href={n.url} target="_blank" rel="noopener noreferrer" className="group block rounded-xl border-l-2 border-[var(--accent)] bg-slate-50 p-3 transition-colors hover:bg-slate-100 dark:bg-white/[0.03] dark:hover:bg-white/[0.06]">
-                    <div className="flex items-center justify-between gap-2 text-[11px] text-slate-400">
-                      <span className="font-semibold uppercase tracking-wider">{n.source}</span>
+                  <a href={n.url} target="_blank" rel="noopener noreferrer" className="group block rounded-2xl bg-stone-50 p-4 transition-[background-color,transform] duration-300 hover:-translate-y-0.5 hover:bg-stone-100/80 active:scale-[0.99] dark:bg-white/[0.03] dark:hover:bg-white/[0.05]">
+                    <div className="flex items-center justify-between gap-2 text-[11px] text-stone-400">
+                      <span className="font-semibold ">{n.source}</span>
                       <span>{formatAgo(n.published_at)}</span>
                     </div>
-                    <p className="mt-1 text-sm font-semibold leading-snug text-slate-800 group-hover:underline dark:text-slate-100">{n.title}</p>
-                    {n.summary && <p className="mt-1 line-clamp-2 text-xs text-slate-500 dark:text-slate-400">{n.summary}</p>}
+                    <p className="mt-1 text-sm font-semibold leading-snug text-stone-800 group-hover:underline dark:text-stone-100">{n.title}</p>
+                    {n.summary && <p className="mt-1 line-clamp-2 text-xs text-stone-500 dark:text-stone-400">{n.summary}</p>}
                   </a>
                 </li>
               ))}
@@ -95,8 +95,8 @@ export const TheWire = () => {
             {() => (
               <ul className="flex max-h-[300px] flex-col gap-1.5 overflow-y-auto">
                 {[...scores].sort((a, b) => Number(b.status === 'LIVE') - Number(a.status === 'LIVE')).map((s) => (
-                  <li key={s.match_id} className="flex items-center justify-between gap-3 rounded-xl bg-slate-50 px-3 py-2 text-sm dark:bg-white/[0.03]">
-                    <span className="min-w-0 truncate text-slate-700 dark:text-slate-200">{s.home_team} v {s.away_team}</span>
+                  <li key={s.match_id} className="flex items-center justify-between gap-3 rounded-xl bg-stone-50 px-3 py-2 text-sm dark:bg-white/[0.03]">
+                    <span className="min-w-0 truncate text-stone-700 dark:text-stone-200">{s.home_team} v {s.away_team}</span>
                     <span className="flex shrink-0 items-center gap-2">
                       {s.status !== 'SCHEDULED' && <span className="font-mono font-semibold tabular-nums">{s.home_score}-{s.away_score}</span>}
                       <StatusBadge status={s.status === 'FT' ? 'COMPLETED' : s.status === 'LIVE' ? 'RUNNING' : 'QUEUED'} label={s.status} />
@@ -106,7 +106,7 @@ export const TheWire = () => {
               </ul>
             )}
           </Async>
-          <p className="mt-3 text-[11px] text-slate-400">Venue weather is not shown: none of the ingested feeds carry venue locations.</p>
+          <p className="mt-3 text-[11px] text-stone-400">Venue weather is not shown: none of the ingested feeds carry venue locations.</p>
         </Panel>
 
         <Panel title="Sentiment radar" icon="sensors" updatedAt={steam.updatedAt} actions={<StatusBadge status={mood === 'BULLISH' ? 'ONLINE' : mood === 'BEARISH' ? 'WARNING' : 'IDLE'} label={`Market ${mood.toLowerCase()}`} />}>
@@ -119,14 +119,14 @@ export const TheWire = () => {
                   return (
                     <li key={`${r.match_id}-${r.selection_id}`}>
                       <div className="flex items-center justify-between gap-2 text-xs">
-                        <span className="truncate text-slate-700 dark:text-slate-200">{teamsByMatch.get(r.match_id) ?? r.match_id} · {r.selection_id}</span>
-                        <span className="shrink-0 tabular-nums text-slate-500">{formatOdds(r.opening_odds)} → {formatOdds(r.current_odds)}</span>
+                        <span className="truncate text-stone-700 dark:text-stone-200">{teamsByMatch.get(r.match_id) ?? r.match_id} · {r.selection_id}</span>
+                        <span className="shrink-0 tabular-nums text-stone-500">{formatOdds(r.opening_odds)} → {formatOdds(r.current_odds)}</span>
                       </div>
                       <div className="mt-1 flex items-center gap-2">
-                        <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-slate-900/[0.06] dark:bg-white/[0.07]">
+                        <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-stone-900/[0.06] dark:bg-white/[0.07]">
                           <div className="h-full rounded-full" style={{ width: `${width}%`, background: backed ? 'var(--viz-positive)' : 'var(--viz-negative)' }} />
                         </div>
-                        <span className="w-24 text-right text-[10px] font-semibold text-slate-600 dark:text-slate-300">{backed ? '▲ backed' : '▼ drifting'} {formatPct(Math.abs(r.implied_prob_delta_pct))}</span>
+                        <span className="w-24 text-right text-[10px] font-semibold text-stone-600 dark:text-stone-300">{backed ? '▲ backed' : '▼ drifting'} {formatPct(Math.abs(r.implied_prob_delta_pct))}</span>
                       </div>
                     </li>
                   );
@@ -141,15 +141,15 @@ export const TheWire = () => {
         {omni.length === 0 ? (
           <EmptyState icon="stream" title="No provider payloads yet" detail="Normalised payloads appear here as the Omni Celery workers ingest configured providers (Control Panel → Omni admin)." />
         ) : (
-          <ul className="max-h-[260px] divide-y divide-slate-900/[0.05] overflow-y-auto dark:divide-white/[0.05]">
+          <ul className="max-h-[260px] flex flex-col gap-0.5 overflow-y-auto p-2.5">
             <AnimatePresence initial={false}>
               {omni.map((m, i) => (
-                <motion.li key={`${m.at}-${i}`} initial={{ opacity: 0, x: -6 }} animate={{ opacity: 1, x: 0 }} className="flex items-center justify-between gap-3 px-4 py-2 text-xs">
+                <motion.li key={`${m.at}-${i}`} initial={{ opacity: 0, x: -6 }} animate={{ opacity: 1, x: 0 }} className="flex items-center justify-between gap-3 px-3.5 py-3 text-sm rounded-2xl transition-colors duration-300 hover:bg-stone-50 dark:hover:bg-white/[0.025]">
                   <span className="flex min-w-0 items-center gap-2">
                     <Pill tone="accent">{m.topic ?? 'payload'}</Pill>
-                    <span className="truncate font-mono text-slate-500">{m.provider_name ?? m.provider ?? ''} {JSON.stringify(m.payload ?? m).slice(0, 120)}</span>
+                    <span className="truncate font-mono text-stone-500">{m.provider_name ?? m.provider ?? ''} {JSON.stringify(m.payload ?? m).slice(0, 120)}</span>
                   </span>
-                  <span className="shrink-0 font-mono text-[10px] text-slate-400">{formatTime(m.at)}</span>
+                  <span className="shrink-0 font-mono text-[11px] text-stone-400 dark:text-stone-500">{formatTime(m.at)}</span>
                 </motion.li>
               ))}
             </AnimatePresence>

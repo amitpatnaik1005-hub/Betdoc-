@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { apiClient } from '../api/client';
-import { type MatchOdds, type Side, bestPrices, useControls, useDashboardSummary, useLiveOdds } from '../lib/api';
+import { type MatchOdds, type Side, bestPrices, matchOddsMarket, outcomeSide, useControls, useDashboardSummary, useLiveOdds } from '../lib/api';
 import { downloadCsv, formatDateTime, formatINR, formatOdds, formatPct, formatRatioPct } from '../lib/format';
 import { runMutation, useResource } from '../lib/resource';
 import { useExecutionStore } from '../store/useExecutionStore';
@@ -69,11 +69,11 @@ function consensus(match: MatchOdds): ConsensusRow {
   const sums: Record<Side, number> = { HOME: 0, DRAW: 0, AWAY: 0 };
   let books = 0;
   for (const book of match.bookmakers) {
-    const h2h = book.markets.find((m) => m.key === 'h2h');
+    const h2h = matchOddsMarket(book);
     if (!h2h) continue;
     const implied: Partial<Record<Side, number>> = {};
     for (const o of h2h.outcomes) {
-      const side: Side | null = o.name === match.home_team ? 'HOME' : o.name === match.away_team ? 'AWAY' : o.name.toLowerCase() === 'draw' ? 'DRAW' : null;
+      const side = outcomeSide(o.name, match);
       if (side && o.price > 1) implied[side] = 1 / o.price;
     }
     const overround = Object.values(implied).reduce((a, b) => a + (b ?? 0), 0);
@@ -124,12 +124,12 @@ const ProbabilityBar = ({ fair }: { fair: Partial<Record<Side, number>> }) => {
   const a = (fair.AWAY ?? 0) * 100;
   return (
     <div className="flex flex-col gap-1">
-      <div className="flex h-2 w-full overflow-hidden rounded-full bg-slate-900/[0.06] dark:bg-white/[0.07]">
+      <div className="flex h-2 w-full overflow-hidden rounded-full bg-stone-900/[0.06] dark:bg-white/[0.07]">
         <div style={{ width: `${h}%`, background: 'var(--viz-series-1)' }} />
-        <div style={{ width: `${d}%` }} className="bg-slate-300 dark:bg-slate-600" />
+        <div style={{ width: `${d}%` }} className="bg-stone-300 dark:bg-stone-600" />
         <div style={{ width: `${a}%`, background: 'var(--viz-series-2)' }} />
       </div>
-      <div className="flex justify-between text-[10px] tabular-nums text-slate-500 dark:text-slate-400">
+      <div className="flex justify-between text-[10px] tabular-nums text-stone-500 dark:text-stone-400">
         <span>H {h.toFixed(1)}%</span>
         {d > 0 && <span>D {d.toFixed(1)}%</span>}
         <span>A {a.toFixed(1)}%</span>
@@ -189,20 +189,20 @@ const EnginePanel = ({ rows }: { rows: ConsensusRow[] }) => {
             <Field label="Home xG"><NumberInput value={homeXg} onChange={(e) => setHomeXg(e.target.value)} placeholder="1.6" /></Field>
             <Field label="Away xG"><NumberInput value={awayXg} onChange={(e) => setAwayXg(e.target.value)} placeholder="1.1" /></Field>
           </div>
-          <p className="text-[11px] text-slate-500 dark:text-slate-400">BetDoc stores no team ratings, so the ensemble runs on the Elo and/or xG you supply here, priced against the live best odds.</p>
+          <p className="text-[11px] text-stone-500 dark:text-stone-400">BetDoc stores no team ratings, so the ensemble runs on the Elo and/or xG you supply here, priced against the live best odds.</p>
           <Button variant="primary" icon="play_arrow" busy={busy} disabled={!hasInputs} onClick={() => void run()}>Run ensemble</Button>
           {result && row && (
-            <div className="flex flex-col gap-3 rounded-xl bg-slate-50 p-3 dark:bg-white/[0.03]">
+            <div className="flex flex-col gap-3 rounded-xl bg-stone-50 p-3 dark:bg-white/[0.03]">
               <ProbabilityBar fair={{ HOME: result.prediction.home_win_prob, DRAW: result.prediction.draw_prob, AWAY: result.prediction.away_win_prob }} />
-              <p className="text-xs text-slate-500 dark:text-slate-400">
+              <p className="text-xs text-stone-500 dark:text-stone-400">
                 Most likely {result.prediction.most_likely_scoreline} · confidence {formatRatioPct(result.prediction.confidence_score)}
               </p>
               {result.value_bets.length === 0 ? (
-                <p className="text-xs text-slate-500">No side clears the value threshold at current prices.</p>
+                <p className="text-xs text-stone-500">No side clears the value threshold at current prices.</p>
               ) : (
                 result.value_bets.map((v) => (
                   <div key={v.leg_id} className="flex items-center justify-between gap-2">
-                    <span className="text-sm text-slate-700 dark:text-slate-200">
+                    <span className="text-sm text-stone-700 dark:text-stone-200">
                       {v.selection} @ {formatOdds(v.bookmaker_odds)} · EV {formatPct(v.expected_value * 100, 2)}
                     </span>
                     <Button size="sm" icon="receipt_long" onClick={() => setDraft({ matchId: row.match.id, selection: v.selection, odds: v.bookmaker_odds, trueProbability: v.true_prob, label: `${row.match.home_team} v ${row.match.away_team}`, source: 'Oracle · ensemble' })}>
@@ -256,7 +256,7 @@ const GoldenAlpha = ({ bets }: { bets: ValueBetFlag[] }) => {
     <Panel title="Golden alpha · portfolio" icon="workspace_premium" className="lg:col-span-7" subtitle="ASHOKA core-satellite allocator">
       <div className="flex flex-col gap-4">
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <p className="text-sm text-slate-600 dark:text-slate-300">
+          <p className="text-sm text-stone-600 dark:text-stone-300">
             Allocates {bets.length} value bet{bets.length === 1 ? '' : 's'} against your bankroll ({formatINR(bankroll)}), live drawdown and the Control Panel exposure cap.
           </p>
           <Button variant="primary" icon="auto_awesome" busy={busy} disabled={bets.length === 0 || !risk.data || bankroll <= 0} onClick={() => void allocate()}>
@@ -276,12 +276,12 @@ const GoldenAlpha = ({ bets }: { bets: ValueBetFlag[] }) => {
             ) : (
               <ul className="flex flex-col gap-2">
                 {result.suggestions.map((s, i) => (
-                  <li key={i} className="rounded-xl bg-slate-50 p-3 dark:bg-white/[0.03]">
+                  <li key={i} className="rounded-xl bg-stone-50 p-3 dark:bg-white/[0.03]">
                     <div className="flex items-center justify-between gap-2">
                       <Pill tone="accent">{String(s.structure.bet_type ?? s.structure.type ?? 'structure')}</Pill>
                       <span className="text-sm font-semibold tabular-nums text-emerald-600 dark:text-emerald-400">EV {formatPct(s.total_ev_pct, 2)} · {formatINR(s.capital_allocated)}</span>
                     </div>
-                    <p className="mt-1.5 text-xs leading-relaxed text-slate-500 dark:text-slate-400">{s.rationale}</p>
+                    <p className="mt-1.5 text-xs leading-relaxed text-stone-500 dark:text-stone-400">{s.rationale}</p>
                   </li>
                 ))}
               </ul>
@@ -307,12 +307,12 @@ const PopularPicks = () => {
         {(rows) => (
           <ul className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
             {rows.slice(0, 6).map((p) => (
-              <li key={p.id} className="rounded-xl bg-slate-50 p-3 dark:bg-white/[0.03]">
+              <li key={p.id} className="rounded-xl bg-stone-50 p-3 dark:bg-white/[0.03]">
                 <div className="flex items-center justify-between gap-2">
-                  <span className="truncate text-sm font-semibold text-slate-800 dark:text-slate-100">{p.title}</span>
+                  <span className="truncate text-sm font-semibold text-stone-800 dark:text-stone-100">{p.title}</span>
                   <Pill tone={p.pick_type === 'SHARP_MONEY' ? 'good' : p.pick_type === 'AI_PREDICTED' ? 'info' : 'accent'}>{p.pick_type.replace('_', ' ')}</Pill>
                 </div>
-                <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">{p.legs.length} legs · total {formatOdds(p.total_odds)} · hit rate {formatRatioPct(p.historical_success_rate)}</p>
+                <p className="mt-1 text-xs text-stone-500 dark:text-stone-400">{p.legs.length} legs · total {formatOdds(p.total_odds)} · hit rate {formatRatioPct(p.historical_success_rate)}</p>
                 <div className="mt-2 flex gap-1.5">
                   <Button size="sm" variant="ghost" icon="check" onClick={() => void review(p.id, 'ACCEPTED')}>Accept</Button>
                   <Button size="sm" variant="ghost" icon="close" onClick={() => void review(p.id, 'REJECTED')}>Reject</Button>
@@ -374,11 +374,11 @@ export const TheOracle = () => {
           {() => (
             <ul className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               {rows.slice(0, 12).map((r) => (
-                <li key={r.match.id} className="flex flex-col gap-2 rounded-xl bg-slate-50 p-3 dark:bg-white/[0.03]">
+                <li key={r.match.id} className="flex flex-col gap-2 rounded-xl bg-stone-50 p-3 dark:bg-white/[0.03]">
                   <div className="flex items-start justify-between gap-2">
                     <div className="min-w-0">
-                      <p className="truncate text-sm font-semibold text-slate-800 dark:text-slate-100">{r.match.home_team} v {r.match.away_team}</p>
-                      <p className="text-[11px] text-slate-400">{formatDateTime(r.match.commence_time)} · {r.books} books</p>
+                      <p className="truncate text-sm font-semibold text-stone-800 dark:text-stone-100">{r.match.home_team} v {r.match.away_team}</p>
+                      <p className="text-[11px] text-stone-400">{formatDateTime(r.match.commence_time)} · {r.books} books</p>
                     </div>
                     <StatusBadge status={r.books >= 3 ? 'STABLE' : 'LOW'} label={r.books >= 3 ? 'Deep' : 'Thin'} />
                   </div>
@@ -396,19 +396,19 @@ export const TheOracle = () => {
         ) : (
           <ul className="flex max-h-[520px] flex-col gap-2.5 overflow-y-auto">
             {bets.slice(0, 15).map((b) => (
-              <li key={b.leg_id} className="rounded-xl bg-slate-50 p-3 dark:bg-white/[0.03]">
+              <li key={b.leg_id} className="rounded-xl bg-stone-50 p-3 dark:bg-white/[0.03]">
                 <div className="flex items-center justify-between gap-2">
-                  <span className="truncate text-sm font-semibold text-slate-800 dark:text-slate-100">{b.label}</span>
+                  <span className="truncate text-sm font-semibold text-stone-800 dark:text-stone-100">{b.label}</span>
                   <Pill tone="good" icon="trending_up">EV {formatPct(b.expected_value * 100, 2)}</Pill>
                 </div>
-                <div className="mt-2 grid grid-cols-3 gap-2 text-[11px] text-slate-500 dark:text-slate-400">
-                  <span>{b.selection} @ <strong className="text-slate-800 dark:text-slate-100">{formatOdds(b.bookmaker_odds)}</strong></span>
+                <div className="mt-2 grid grid-cols-3 gap-2 text-[11px] text-stone-500 dark:text-stone-400">
+                  <span>{b.selection} @ <strong className="text-stone-800 dark:text-stone-100">{formatOdds(b.bookmaker_odds)}</strong></span>
                   <span>fair {formatRatioPct(b.true_prob)}</span>
                   <span>{b.bookmaker}</span>
                 </div>
                 <div className="mt-2 flex items-center gap-3">
                   <Meter value={Math.min(1, b.kelly_stake_fraction * 10)} label="Kelly stake" />
-                  <span className="shrink-0 text-[11px] tabular-nums text-slate-500">{formatRatioPct(b.kelly_stake_fraction, 2)} of bank</span>
+                  <span className="shrink-0 text-[11px] tabular-nums text-stone-500">{formatRatioPct(b.kelly_stake_fraction, 2)} of bank</span>
                 </div>
                 <Button size="sm" variant="ghost" icon="receipt_long" className="mt-1.5 -ml-2" onClick={() => setDraft({ matchId: b.match_id, selection: b.selection, odds: b.bookmaker_odds, trueProbability: b.true_prob, label: b.label, source: `Oracle · ${b.bookmaker}` })}>
                   Execute Oracle bet

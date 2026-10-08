@@ -23,17 +23,17 @@ export const Toaster = () => {
             exit={{ opacity: 0, y: 8, scale: 0.96 }}
             transition={{ type: "spring", stiffness: 420, damping: 32 }}
             role={t.tone === "error" ? "alert" : "status"}
-            className="pointer-events-auto flex items-start gap-3 rounded-2xl bg-white/95 px-4 py-3 shadow-xl ring-1 ring-slate-900/10 backdrop-blur dark:bg-[#1f1d1b]/95 dark:ring-white/10"
+            className="pointer-events-auto flex items-start gap-3 rounded-2xl bg-white/95 px-4 py-3 shadow-xl ring-1 ring-stone-900/10 backdrop-blur dark:bg-[#292524]/95 dark:ring-white/10"
           >
             <span className={`material-symbols-outlined mt-0.5 text-[20px] ${STYLE[t.tone].color}`}>{STYLE[t.tone].icon}</span>
             <div className="min-w-0 flex-1">
-              <p className="text-sm font-semibold text-slate-900 dark:text-slate-50">{t.title}</p>
-              {t.detail && <p className="mt-0.5 break-words text-xs text-slate-500 dark:text-slate-400">{t.detail}</p>}
+              <p className="text-sm font-semibold text-stone-900 dark:text-stone-50">{t.title}</p>
+              {t.detail && <p className="mt-0.5 break-words text-xs text-stone-500 dark:text-stone-400">{t.detail}</p>}
             </div>
             <button
               type="button"
               onClick={() => dismiss(t.id)}
-              className="rounded-lg p-0.5 text-slate-400 hover:text-slate-700 dark:hover:text-slate-200"
+              className="rounded-xl p-0.5 text-stone-400 hover:text-stone-700 dark:hover:text-stone-200"
               aria-label="Dismiss notification"
             >
               <span className="material-symbols-outlined text-[18px]">close</span>

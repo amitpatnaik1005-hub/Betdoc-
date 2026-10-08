@@ -50,6 +50,17 @@ const glide = { type: 'spring', stiffness: 380, damping: 34, mass: 0.8 } as cons
 type Theme = 'light' | 'dark';
 const THEME_KEY = 'betdoc:theme';
 
+// Blend a commander colour 24% toward warm stone (#78716c): matte, never neon.
+const mute = (hex: string, amount = 0.24): string =>
+  '#' +
+  [1, 3, 5]
+    .map((i) => {
+      const c = parseInt(hex.slice(i, i + 2), 16);
+      const stone = parseInt('78716c'.slice(i - 1, i + 1), 16);
+      return Math.round(c + (stone - c) * amount).toString(16).padStart(2, '0');
+    })
+    .join('');
+
 // Text colour for an accent fill: white or near-black, whichever has the higher WCAG contrast.
 const INK_DARK = '#1c1917';
 const inkOn = (hex: string): string => {
@@ -93,7 +104,6 @@ interface BrandMarkProps {
 const BrandMark = ({ size = 24, loop = false, className = '' }: BrandMarkProps): ReactElement => {
   const reduceMotion = useReducedMotion();
   const gradientId = useId();
-  const glowId = useId();
 
   const draw = reduceMotion
     ? { pathLength: 1, opacity: 1 }
@@ -116,13 +126,6 @@ const BrandMark = ({ size = 24, loop = false, className = '' }: BrandMarkProps):
           <stop offset="50%" stopColor={BRAND.dominant} />
           <stop offset="100%" stopColor={BRAND.violet} />
         </linearGradient>
-        <filter id={glowId} x="-50%" y="-50%" width="200%" height="200%">
-          <feGaussianBlur stdDeviation="1.2" result="blur" />
-          <feMerge>
-            <feMergeNode in="blur" />
-            <feMergeNode in="SourceGraphic" />
-          </feMerge>
-        </filter>
       </defs>
 
       <motion.path
@@ -147,17 +150,17 @@ const BrandMark = ({ size = 24, loop = false, className = '' }: BrandMarkProps):
       />
 
       <motion.circle
-        cx="20" cy="7" r="1.4" fill={BRAND.violet} filter={`url(#${glowId})`}
+        cx="20" cy="7" r="1.4" fill={BRAND.violet}
         initial={reduceMotion ? false : { scale: 0, opacity: 0 }}
         animate={
           reduceMotion
             ? { scale: 1, opacity: 1 }
-            : { scale: [0, 1.15, 1, 1.25, 1], opacity: [0, 1, 0.75, 1, 0.75] }
+            : { scale: [0, 1, 1.08, 1], opacity: [0, 1, 0.8, 1] }
         }
         transition={
           reduceMotion
             ? { duration: 0 }
-            : { duration: 2.4, delay: 0.9, repeat: Infinity, ease: 'easeInOut' as any }
+            : { duration: 3.2, delay: 0.9, repeat: Infinity, ease: 'easeInOut' as any }
         }
         style={{ originX: '20px', originY: '7px' }}
       />
@@ -167,10 +170,10 @@ const BrandMark = ({ size = 24, loop = false, className = '' }: BrandMarkProps):
 
 type Tone = 'neutral' | 'positive' | 'negative' | 'caution';
 const TONE_STYLE: Record<Tone, { readonly icon: string; readonly value: string }> = {
-  neutral: { icon: 'text-slate-400 dark:text-slate-500', value: 'text-slate-900 dark:text-slate-50' },
-  positive: { icon: 'text-emerald-500', value: 'text-emerald-600 dark:text-emerald-400' },
-  negative: { icon: 'text-rose-500', value: 'text-rose-600 dark:text-rose-400' },
-  caution: { icon: 'text-amber-500', value: 'text-amber-600 dark:text-amber-400' },
+  neutral: { icon: 'text-stone-400 dark:text-stone-500', value: 'text-stone-800 dark:text-stone-300' },
+  positive: { icon: 'text-emerald-500/80', value: 'text-emerald-700 dark:text-emerald-300/90' },
+  negative: { icon: 'text-rose-400', value: 'text-rose-600 dark:text-rose-300/90' },
+  caution: { icon: 'text-amber-500/80', value: 'text-amber-700 dark:text-amber-200/90' },
 };
 
 interface StatTileProps {
@@ -187,14 +190,14 @@ const StatTile = ({ label, value, icon, motionPreset, tone = 'neutral', changeKe
   const t = TONE_STYLE[tone];
 
   return (
-    <div className="flex min-w-0 flex-1 items-center gap-2 px-3 py-2.5 sm:min-w-[9.5rem] sm:flex-none sm:gap-3 sm:px-5 sm:py-3">
+    <div className="flex min-w-0 flex-1 items-center gap-2 px-3 py-3 sm:min-w-[10rem] sm:flex-none sm:gap-3 sm:px-5 sm:py-3.5">
       <AnimatedGlyph
         icon={icon}
         motionPreset={motionPreset}
         className={`hidden shrink-0 text-[20px] transition-colors duration-300 sm:inline-block ${t.icon}`}
       />
       <div className="min-w-0">
-        <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-400 dark:text-slate-500">
+        <p className="text-xs font-medium text-stone-400 dark:text-stone-500">
           {label}
         </p>
         <motion.p
@@ -202,7 +205,7 @@ const StatTile = ({ label, value, icon, motionPreset, tone = 'neutral', changeKe
           initial={reduceMotion ? false : { opacity: 0.4, y: -3 }}
           animate={{ opacity: 1, y: 0 }}
           transition={glide}
-          className={`mt-1 truncate text-[15px] font-semibold leading-none tracking-tight tabular-nums transition-colors duration-300 ${t.value}`}
+          className={`mt-1.5 truncate font-mono text-[13px] font-medium leading-none tracking-tight tabular-nums transition-colors duration-500 sm:text-[15px] ${t.value}`}
         >
           {value}
         </motion.p>
@@ -213,10 +216,10 @@ const StatTile = ({ label, value, icon, motionPreset, tone = 'neutral', changeKe
 
 type SocketStatus = 'connecting' | 'live' | 'stalled' | 'offline';
 const SOCKET_STYLE = {
-  live: { dot: 'bg-emerald-500', halo: 'bg-emerald-500/40 animate-ping', text: 'text-emerald-600 dark:text-emerald-400', label: 'Live feed' },
-  connecting: { dot: 'bg-[#C89B3C] animate-pulse', halo: '', text: 'text-[#C89B3C] dark:text-[#E0B85A]', label: 'Connecting' },
-  stalled: { dot: 'bg-[#C89B3C]', halo: '', text: 'text-[#C89B3C] dark:text-[#E0B85A]', label: 'Feed stalled' },
-  offline: { dot: 'bg-slate-300 dark:bg-slate-600', halo: '', text: 'text-slate-400 dark:text-slate-500', label: 'Offline' },
+  live: { dot: 'bg-emerald-400 animate-breathe', halo: '', text: 'text-emerald-700 dark:text-emerald-300/90', label: 'Live' },
+  connecting: { dot: 'bg-amber-400 animate-breathe', halo: '', text: 'text-amber-700 dark:text-amber-200/90', label: 'Connecting' },
+  stalled: { dot: 'bg-amber-400', halo: '', text: 'text-amber-700 dark:text-amber-200/90', label: 'Feed stalled' },
+  offline: { dot: 'bg-stone-300 dark:bg-stone-600', halo: '', text: 'text-stone-400 dark:text-stone-500', label: 'Offline' },
 } as const satisfies Record<SocketStatus, { readonly dot: string; readonly halo: string; readonly text: string; readonly label: string }>;
 
 const StageHeader = (): ReactElement => {
@@ -243,22 +246,14 @@ const StageHeader = (): ReactElement => {
   const pnlIcon = dayPnl > 0 ? 'trending_up' : dayPnl < 0 ? 'trending_down' : 'trending_flat';
 
   return (
-    <header className="sticky top-0 z-10 flex flex-wrap items-center justify-between gap-3 border-b border-slate-200/60 bg-[#F8F6F0]/80 px-4 py-3 backdrop-blur-md sm:gap-4 sm:px-8 sm:py-4 dark:border-white/[0.06] dark:bg-[#121110]/80">
+    <header className="sticky top-0 z-10 flex flex-wrap items-center justify-between gap-3 bg-[#F8F6F0]/70 px-4 py-3.5 backdrop-blur-xl backdrop-saturate-150 sm:gap-4 sm:px-10 sm:py-5 dark:bg-stone-950/70">
       <div className="flex min-w-0 items-center gap-3.5">
         {isCompact && (
-          <button type="button" onClick={toggleLeft} aria-label="Open navigation" className="-ml-1 grid size-10 shrink-0 place-items-center rounded-xl text-slate-600 hover:bg-slate-900/5 dark:text-slate-300 dark:hover:bg-white/5">
+          <button type="button" onClick={toggleLeft} aria-label="Open navigation" className="-ml-1 grid size-10 shrink-0 place-items-center rounded-2xl text-stone-600 transition-transform duration-300 hover:bg-stone-900/5 active:scale-95 dark:text-stone-300 dark:hover:bg-white/5">
             <span className="material-symbols-outlined text-2xl">menu</span>
           </button>
         )}
-        <span className="relative grid size-10 shrink-0 place-items-center rounded-xl bg-white ring-1 ring-inset ring-slate-900/[0.06] dark:bg-white/[0.04] dark:ring-white/[0.08]">
-          {socketStatus === 'live' && (
-            <motion.span
-              aria-hidden="true"
-              className="absolute inset-0 rounded-xl ring-1 ring-[#C89B3C]/40"
-              animate={{ scale: [1, 1.25], opacity: [0.6, 0] }}
-              transition={{ duration: 2, repeat: Infinity, ease: 'easeOut' }}
-            />
-          )}
+        <span className="relative grid size-11 shrink-0 place-items-center rounded-2xl bg-white shadow-soft dark:bg-stone-900 dark:shadow-none">
           <AnimatedGlyph
             icon="dns"
             motionPreset={socketStatus === 'live' ? 'pulse' : 'none'}
@@ -269,12 +264,11 @@ const StageHeader = (): ReactElement => {
 
         <div className="min-w-0">
           <div className="flex items-center gap-2.5">
-            <h1 className="truncate text-xl font-semibold tracking-tight text-slate-900 dark:text-slate-50">
+            <h1 className="truncate font-display text-xl font-bold tracking-[-0.02em] text-stone-900 dark:text-stone-100">
               Quantitative Desk
             </h1>
             <span
-              className="hidden items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-[0.14em] ring-1 ring-inset sm:inline-flex"
-              style={{ color: activeCommander.theme.primary, background: `${activeCommander.theme.primary}14`, boxShadow: `inset 0 0 0 1px ${activeCommander.theme.primary}40` }}
+              className="hidden items-center gap-1 rounded-full bg-[color-mix(in_srgb,var(--accent)_12%,transparent)] px-2.5 py-0.5 text-[11px] font-medium text-[var(--accent-text)] sm:inline-flex"
               title={activeCommander.domain}
             >
               {activeCommander.name}
@@ -283,7 +277,7 @@ const StageHeader = (): ReactElement => {
               <button
                 type="button"
                 onClick={() => window.dispatchEvent(new CustomEvent('betdoc:palette'))}
-                className="inline-flex animate-pulse items-center gap-1 rounded-full bg-rose-600 px-2 py-0.5 text-[10px] font-bold uppercase tracking-[0.14em] text-white"
+                className="inline-flex animate-breathe items-center gap-1 rounded-full bg-rose-50 px-2.5 py-0.5 text-[11px] font-semibold text-rose-700 dark:bg-rose-400/10 dark:text-rose-300"
                 title="Trading halted by the emergency stop. Open the command palette to resume."
               >
                 <span className="material-symbols-outlined text-[12px]">front_hand</span>
@@ -298,16 +292,16 @@ const StageHeader = (): ReactElement => {
             </span>
             <p className={`text-[11px] font-medium tracking-wide ${socket.text}`}>
               {MOCK_AUTH ? 'Mock session' : socket.label}
-              <span className="text-slate-300 dark:text-slate-700"> · </span>
-              <span className="text-slate-400 dark:text-slate-500">Odds feed {oddsLive ? 'streaming' : 'idle'}</span>
-              <span className="text-slate-300 dark:text-slate-700"> · </span>
-              <span className="text-slate-400 dark:text-slate-500">INR book</span>
+              <span className="text-stone-300 dark:text-stone-700"> · </span>
+              <span className="text-stone-400 dark:text-stone-500">Odds feed {oddsLive ? 'streaming' : 'idle'}</span>
+              <span className="text-stone-300 dark:text-stone-700"> · </span>
+              <span className="text-stone-400 dark:text-stone-500">INR book</span>
             </p>
           </div>
         </div>
       </div>
 
-      <div className="flex w-full divide-x divide-slate-200/70 rounded-2xl bg-white ring-1 sm:w-auto ring-slate-900/[0.06] dark:divide-white/[0.06] dark:bg-white/[0.04] dark:ring-white/[0.08]">
+      <div className="flex w-full divide-x divide-stone-100 rounded-3xl bg-white shadow-soft sm:w-auto dark:divide-white/[0.05] dark:bg-stone-900 dark:shadow-none">
         <StatTile label="Bankroll" value={summary.data ? formatINR(bankroll) : '—'} icon="account_balance_wallet" motionPreset="breathe" tone="positive" changeKey={bankroll} />
         <StatTile label="Exposure" value={summary.data ? formatINR(exposure) : '—'} icon="inventory_2" motionPreset="sway" tone="caution" changeKey={exposure} />
         <StatTile label="Today" value={summary.data ? formatSignedINR(dayPnl) : '—'} icon={pnlIcon} motionPreset="drift" tone={pnlTone} changeKey={dayPnl} />
@@ -340,24 +334,13 @@ const RouteFallback = (): ReactElement => {
         transition={glide}
         whileHover={reduceMotion ? undefined : { scale: 1.04, rotate: -3 }}
         whileTap={reduceMotion ? undefined : { scale: 0.96, rotate: 3 }}
-        className="relative grid size-24 cursor-default place-items-center rounded-[28px] bg-white ring-1 ring-inset ring-[#C89B3C]/10 dark:bg-white/[0.06] dark:ring-white/10"
+        className="relative grid size-24 cursor-default place-items-center rounded-[28px] bg-white shadow-soft-lg dark:bg-stone-900 dark:shadow-none"
       >
-        <motion.span
-          aria-hidden="true"
-          className="pointer-events-none absolute -inset-1.5 rounded-[32px]"
-          style={{
-            background: `conic-gradient(from 0deg, ${BRAND.azure}00, ${BRAND.dominant}, ${BRAND.violet}, ${BRAND.azure}00)`,
-            WebkitMaskImage: 'radial-gradient(farthest-side, transparent calc(100% - 3px), #000 calc(100% - 2px))',
-            maskImage: 'radial-gradient(farthest-side, transparent calc(100% - 3px), #000 calc(100% - 2px))',
-          }}
-          animate={reduceMotion ? undefined : { rotate: 360 }}
-          transition={{ duration: 2.6, repeat: Infinity, ease: 'linear' }}
-        />
         <BrandMark size={56} loop />
       </motion.div>
 
       <div className="flex flex-col items-center gap-3">
-        <p className={`text-[30px] font-extrabold leading-none tracking-[-0.04em] ${BRAND.gradientText}`}>BetDoc</p>
+        <p className="font-display text-[30px] font-bold leading-none tracking-[-0.04em] text-stone-900 dark:text-stone-100">BetDoc</p>
         <div className="flex h-5 items-center overflow-hidden">
           <AnimatePresence mode="wait" initial={false}>
             <motion.p
@@ -366,7 +349,7 @@ const RouteFallback = (): ReactElement => {
               animate={{ opacity: 1, y: 0 }}
               exit={reduceMotion ? undefined : { opacity: 0, y: -10 }}
               transition={glide}
-              className="text-[12px] font-medium tabular-nums text-slate-500 dark:text-slate-400"
+              className="text-[12px] font-medium tabular-nums text-stone-500 dark:text-stone-400"
             >
               {FALLBACK_QUIPS[quip]}
               <motion.span aria-hidden="true" animate={reduceMotion ? undefined : { opacity: [0, 1, 0] }} transition={{ duration: 1.2, repeat: Infinity, ease: 'easeInOut' as any }}>…</motion.span>
@@ -377,7 +360,7 @@ const RouteFallback = (): ReactElement => {
 
       <div className="flex items-end gap-1.5" aria-hidden="true">
         {bars.map((color, i) => (
-          <motion.span key={color} className="w-1.5 rounded-full" style={{ backgroundColor: color, height: 18 }} animate={reduceMotion ? undefined : { scaleY: [0.4, 1, 0.4] }} transition={{ duration: 0.9, repeat: Infinity, delay: i * 0.15, ease: 'easeInOut' as any }} />
+          <motion.span key={color} className="w-1.5 rounded-full" style={{ backgroundColor: color, height: 18 }} animate={reduceMotion ? undefined : { scaleY: [0.4, 1, 0.4] }} transition={{ duration: 1.4, repeat: Infinity, delay: i * 0.18, ease: 'easeInOut' as any }} />
         ))}
       </div>
     </div>
@@ -387,7 +370,7 @@ const RouteFallback = (): ReactElement => {
 // ---------------------------------------------------------------------------
 // NEW LAYOUT AND ROUTING FROM ASTRA
 // ---------------------------------------------------------------------------
-const SPRING = { type: 'spring', stiffness: 350, damping: 30 } as const;
+const SPRING = { type: 'spring', stiffness: 170, damping: 26, mass: 0.9 } as const;
 
 const NAV_ITEMS: readonly { to: string; label: string; icon: string; bot: CommanderId }[] = [
   { to: '/command-center', label: 'Command Center', icon: 'dashboard',       bot: 'KAUTILYA' },
@@ -404,14 +387,14 @@ const NAV_ITEMS: readonly { to: string; label: string; icon: string; bot: Comman
 ];
 
 const STATUS_DOT: Record<string, string> = {
-  WORKING: 'bg-sky-500', ONLINE: 'bg-emerald-500', DEGRADED: 'bg-amber-500', FATAL: 'bg-rose-500', SLEEPING: 'bg-amber-500',
+  WORKING: 'bg-sky-400', ONLINE: 'bg-emerald-400', DEGRADED: 'bg-amber-400', FATAL: 'bg-rose-400', SLEEPING: 'bg-amber-400',
 };
 
 const SidebarNav = ({ collapsed }: { collapsed: boolean }) => {
   const { byId } = useCommanders();
   return (
     <nav className="flex-1 overflow-y-auto px-3 py-2 scrollbar-hide" aria-label="Sections">
-      <ul className="flex flex-col gap-1">
+      <ul className="flex flex-col gap-0.5">
         {NAV_ITEMS.map(({ to, label, icon, bot }) => {
           const commander = byId.get(bot);
           const status = commander?.status ?? 'NO SIGNAL';
@@ -422,10 +405,10 @@ const SidebarNav = ({ collapsed }: { collapsed: boolean }) => {
                 title={`${label} · ${COMMANDER_REGISTRY[bot].name} · ${status}`}
                 className={({ isActive }) =>
                   [
-                    'group relative flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-colors duration-150',
+                    'group relative flex items-center gap-3 rounded-2xl px-3 py-2.5 text-sm font-medium transition-[color,background-color,transform] duration-300 active:scale-[0.98]',
                     isActive
-                      ? 'text-stone-900'
-                      : 'text-slate-500 hover:bg-slate-100 dark:hover:bg-white/5 hover:text-slate-900 dark:hover:text-white',
+                      ? 'text-stone-900 dark:text-stone-50'
+                      : 'text-stone-500 hover:bg-stone-900/[0.03] hover:text-stone-900 dark:text-stone-400 dark:hover:bg-white/[0.04] dark:hover:text-stone-100',
                   ].join(' ')
                 }
               >
@@ -434,11 +417,7 @@ const SidebarNav = ({ collapsed }: { collapsed: boolean }) => {
                     {isActive && (
                       <motion.span
                         layoutId="nav-active-pill"
-                        className="absolute inset-0 rounded-xl"
-                        style={{
-                          background: `linear-gradient(135deg, ${BRAND.dominant}, ${BRAND.azure})`,
-                          boxShadow: `0 2px 12px ${BRAND.azure}55`,
-                        }}
+                        className="absolute inset-0 rounded-2xl bg-white shadow-soft dark:bg-stone-800/80 dark:shadow-none"
                         transition={SPRING}
                       />
                     )}
@@ -446,7 +425,7 @@ const SidebarNav = ({ collapsed }: { collapsed: boolean }) => {
                       className={[
                         'material-symbols-outlined relative shrink-0 text-xl transition-all',
                         collapsed ? 'mx-auto' : '',
-                        isActive ? 'text-stone-900' : '',
+                        isActive ? 'text-[var(--accent-text)]' : '',
                       ].join(' ')}
                     >
                       {icon}
@@ -467,8 +446,8 @@ const SidebarNav = ({ collapsed }: { collapsed: boolean }) => {
                       className={[
                         'relative size-1.5 shrink-0 rounded-full',
                         collapsed ? 'absolute right-2 top-2' : '',
-                        STATUS_DOT[status] ?? 'bg-slate-300 dark:bg-slate-600',
-                        isActive ? 'ring-2 ring-white/70' : '',
+                        STATUS_DOT[status] ?? 'bg-stone-300 dark:bg-stone-600',
+                        '',
                       ].join(' ')}
                     />
                   </>
@@ -503,7 +482,7 @@ const Sidebar = ({ theme, onToggleTheme }: { theme: string; onToggleTheme: () =>
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
-          className="fixed inset-0 z-40 bg-black/40 backdrop-blur-[2px]"
+          className="fixed inset-0 z-40 bg-stone-900/20 backdrop-blur-sm dark:bg-black/40"
         />
       )}
     </AnimatePresence>
@@ -512,9 +491,9 @@ const Sidebar = ({ theme, onToggleTheme }: { theme: string; onToggleTheme: () =>
       animate={{ width: hidden ? 0 : isLeftCollapsed ? 80 : 264 }}
       transition={SPRING}
       aria-hidden={hidden || undefined}
-      className={`${isCompact ? 'fixed left-0 top-0 z-50 shadow-2xl' : 'sticky top-0 z-40'} ${hidden ? 'invisible border-r-0' : 'border-r'} flex h-screen shrink-0 flex-col border-slate-200 dark:border-white/10 bg-[#FDFCFB] dark:bg-[#161514] overflow-hidden`}
+      className={`${isCompact ? 'fixed left-0 top-0 z-50 rounded-r-3xl bg-white/75 shadow-soft-lg backdrop-blur-xl backdrop-saturate-150 dark:bg-stone-900/80' : 'sticky top-0 z-40 bg-white/50 dark:bg-stone-900/40'} ${hidden ? 'invisible' : ''} flex h-screen shrink-0 flex-col overflow-hidden`}
     >
-      <div className="flex items-center px-4 pb-6 pt-8 overflow-hidden">
+      <div className="flex items-center overflow-hidden px-4 pb-4 pt-6 sm:pb-6 sm:pt-8">
         <AnimatePresence mode="wait">
           {!isLeftCollapsed ? (
             <motion.div key="full-logo" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.15 }}>
@@ -530,30 +509,30 @@ const Sidebar = ({ theme, onToggleTheme }: { theme: string; onToggleTheme: () =>
 
       <SidebarNav collapsed={isLeftCollapsed} />
 
-      <div className="flex flex-col gap-1 border-t border-slate-200 dark:border-white/10 p-3">
-        <button onClick={() => window.dispatchEvent(new CustomEvent('betdoc:palette'))} className="flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm text-slate-500 hover:bg-slate-100 dark:hover:bg-white/5 transition-colors" title="Command palette (Ctrl/⌘ K)">
+      <div className="flex flex-col gap-0.5 p-3 pb-5">
+        <button onClick={() => window.dispatchEvent(new CustomEvent('betdoc:palette'))} className="flex items-center gap-3 rounded-2xl px-3 py-2.5 text-sm text-stone-500 transition-colors duration-300 hover:bg-stone-900/[0.03] hover:text-stone-800 dark:text-stone-400 dark:hover:bg-white/[0.04] dark:hover:text-stone-200" title="Command palette (Ctrl/⌘ K)">
           <span className="material-symbols-outlined shrink-0 text-xl">keyboard_command_key</span>
           <motion.span className="flex flex-1 items-center justify-between whitespace-nowrap overflow-hidden" animate={{ opacity: isLeftCollapsed ? 0 : 1, width: isLeftCollapsed ? 0 : 'auto' }} transition={SPRING}>
             Commands
-            <kbd className="rounded-md bg-slate-100 px-1.5 py-0.5 text-[10px] font-semibold text-slate-500 dark:bg-white/10 dark:text-slate-400">Ctrl K</kbd>
+            <kbd className="rounded-lg bg-stone-900/[0.04] px-1.5 py-0.5 font-mono text-[10px] text-stone-400 dark:bg-white/[0.06] dark:text-stone-500">Ctrl K</kbd>
           </motion.span>
         </button>
-        <button onClick={onToggleTheme} className="flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm text-slate-500 hover:bg-slate-100 dark:hover:bg-white/5 transition-colors" title="Toggle theme">
+        <button onClick={onToggleTheme} className="flex items-center gap-3 rounded-2xl px-3 py-2.5 text-sm text-stone-500 transition-colors duration-300 hover:bg-stone-900/[0.03] hover:text-stone-800 dark:text-stone-400 dark:hover:bg-white/[0.04] dark:hover:text-stone-200" title="Toggle theme">
           <span className="material-symbols-outlined shrink-0 text-xl">{theme === 'dark' ? 'light_mode' : 'dark_mode'}</span>
           <motion.span className="whitespace-nowrap overflow-hidden" animate={{ opacity: isLeftCollapsed ? 0 : 1, width: isLeftCollapsed ? 0 : 'auto' }} transition={SPRING}>
-            {theme === 'dark' ? 'Light Mode' : 'Dark Mode'}
+            {theme === 'dark' ? 'Light mode' : 'Dark mode'}
           </motion.span>
         </button>
-        <button onClick={toggleLeft} className="flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm text-slate-400 hover:bg-slate-100 dark:hover:bg-white/5 transition-colors" title={isLeftCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}>
+        <button onClick={toggleLeft} className="flex items-center gap-3 rounded-2xl px-3 py-2.5 text-sm text-stone-400 transition-colors duration-300 hover:bg-stone-900/[0.03] hover:text-stone-700 dark:hover:bg-white/[0.04] dark:hover:text-stone-200" title={isLeftCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}>
           <motion.span className="material-symbols-outlined shrink-0 text-xl" animate={{ rotate: isLeftCollapsed ? 180 : 0 }} transition={SPRING}>chevron_left</motion.span>
           <motion.span className="whitespace-nowrap overflow-hidden" animate={{ opacity: isLeftCollapsed ? 0 : 1, width: isLeftCollapsed ? 0 : 'auto' }} transition={SPRING}>
             Collapse
           </motion.span>
         </button>
-        <button onClick={logout} className="flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm text-slate-500 hover:bg-rose-50 hover:text-rose-600 dark:hover:bg-rose-500/10 dark:hover:text-rose-300 transition-colors" title="Sign out">
+        <button onClick={logout} className="flex items-center gap-3 rounded-2xl px-3 py-2.5 text-sm text-stone-500 transition-colors duration-300 hover:bg-rose-50 hover:text-rose-600 dark:text-stone-400 dark:hover:bg-rose-400/10 dark:hover:text-rose-300" title="Sign out">
           <span className="material-symbols-outlined shrink-0 text-xl">logout</span>
           <motion.span className="min-w-0 whitespace-nowrap overflow-hidden text-left" animate={{ opacity: isLeftCollapsed ? 0 : 1, width: isLeftCollapsed ? 0 : 'auto' }} transition={SPRING}>
-            Sign out{user ? <span className="text-slate-400 dark:text-slate-500"> · {user.username}</span> : null}
+            Sign out{user ? <span className="text-stone-400 dark:text-stone-500"> · {user.username}</span> : null}
           </motion.span>
         </button>
       </div>
@@ -577,7 +556,8 @@ const ExecutionPanel = () => {
             initial={{ scale: 0.8, opacity: 0 }}
             animate={{ scale: 1, opacity: 1 }}
             exit={{ scale: 0.8, opacity: 0 }}
-            className="fixed bottom-4 right-4 z-30 inline-flex items-center gap-2 rounded-full bg-[var(--accent)] px-4 py-3 text-sm font-semibold text-[var(--accent-ink)] shadow-[0_10px_28px_-8px_var(--accent-glow)]"
+            whileTap={{ scale: 0.95 }}
+            className="fixed bottom-5 right-5 z-30 inline-flex items-center gap-2 rounded-full bg-[var(--accent)] px-5 py-3.5 text-sm font-semibold text-[var(--accent-ink)] shadow-soft-lg"
           >
             <span className="material-symbols-outlined text-xl">receipt_long</span>
             Bet slip
@@ -591,15 +571,15 @@ const ExecutionPanel = () => {
             animate={{ y: 0 }}
             exit={{ y: '100%' }}
             transition={SPRING}
-            className="fixed inset-0 z-50 flex flex-col bg-white dark:bg-[#161514]"
+            className="fixed inset-0 z-50 flex flex-col bg-[#FBFAF7] dark:bg-stone-900"
           >
-            <div className="flex shrink-0 items-center justify-between border-b border-slate-200 px-4 py-3 dark:border-white/10">
-              <span className="text-xs font-bold uppercase tracking-widest text-[var(--accent-text)]">Execution Panel</span>
-              <button onClick={toggleRight} title="Close panel" className="flex h-9 w-9 items-center justify-center rounded-lg text-slate-500 hover:bg-slate-100 dark:hover:bg-white/5"><span className="material-symbols-outlined text-xl">close</span></button>
+            <div className="flex shrink-0 items-center justify-between px-5 pb-2 pt-4">
+              <span className="font-display text-base font-semibold text-stone-900 dark:text-stone-100">Bet slip</span>
+              <button onClick={toggleRight} title="Close panel" className="grid size-10 place-items-center rounded-full bg-stone-900/[0.04] text-stone-500 transition-transform duration-300 active:scale-95 dark:bg-white/[0.06]"><span className="material-symbols-outlined text-xl">close</span></button>
             </div>
             <div className="min-h-0 flex-1 overflow-y-auto">
               <ExecutionTerminal />
-              <div className="flex h-[70vh] flex-col border-t border-slate-200 dark:border-white/10"><EmbeddedScout /></div>
+              <div className="flex h-[70vh] flex-col"><EmbeddedScout /></div>
             </div>
           </motion.aside>
         )}
@@ -612,19 +592,19 @@ const ExecutionPanel = () => {
       layout
       animate={{ width: isRightCollapsed ? 80 : 380 }}
       transition={SPRING}
-      className="z-20 flex shrink-0 flex-col border-l border-slate-200 dark:border-white/10 bg-white dark:bg-[#161514] h-screen overflow-hidden"
+      className="z-20 flex h-screen shrink-0 flex-col overflow-hidden bg-[#FBFAF7] shadow-[-1px_0_0_rgba(41,37,36,0.04)] dark:bg-stone-900/60 dark:shadow-[-1px_0_0_rgba(255,255,255,0.03)]"
     >
       {isRightCollapsed ? (
         <div className="flex flex-col items-center gap-4 pt-6">
-          <button onClick={toggleRight} title="Expand panel" className="flex h-10 w-10 items-center justify-center rounded-xl text-slate-400 hover:bg-slate-100 dark:hover:bg-white/5 transition-colors"><span className="material-symbols-outlined text-xl">chevron_left</span></button>
-          <button onClick={toggleRight} title="Open Betslip" className="flex h-10 w-10 items-center justify-center rounded-xl text-slate-400 hover:bg-slate-100 dark:hover:bg-white/5 transition-colors"><span className="material-symbols-outlined text-xl">receipt_long</span></button>
-          <button onClick={toggleRight} title="Open Scout Oracle" className="flex h-10 w-10 items-center justify-center rounded-xl text-slate-400 hover:bg-slate-100 dark:hover:bg-white/5 transition-colors"><span className="material-symbols-outlined text-xl">chat</span></button>
+          <button onClick={toggleRight} title="Expand panel" className="flex h-10 w-10 items-center justify-center rounded-2xl text-stone-400 transition-[background-color,transform] duration-300 hover:bg-stone-900/[0.04] active:scale-95 dark:hover:bg-white/[0.05]"><span className="material-symbols-outlined text-xl">chevron_left</span></button>
+          <button onClick={toggleRight} title="Open Betslip" className="flex h-10 w-10 items-center justify-center rounded-2xl text-stone-400 transition-[background-color,transform] duration-300 hover:bg-stone-900/[0.04] active:scale-95 dark:hover:bg-white/[0.05]"><span className="material-symbols-outlined text-xl">receipt_long</span></button>
+          <button onClick={toggleRight} title="Open Scout Oracle" className="flex h-10 w-10 items-center justify-center rounded-2xl text-stone-400 transition-[background-color,transform] duration-300 hover:bg-stone-900/[0.04] active:scale-95 dark:hover:bg-white/[0.05]"><span className="material-symbols-outlined text-xl">chat</span></button>
         </div>
       ) : (
         <motion.div className="flex flex-col h-full w-[380px]" initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.2 }}>
-          <div className="flex items-center justify-between border-b border-slate-200 dark:border-white/10 px-4 py-3 shrink-0">
-            <span className="text-xs font-bold uppercase tracking-widest" style={{ color: BRAND.azure }}>Execution Panel</span>
-            <button onClick={toggleRight} title="Collapse panel" className="flex h-7 w-7 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 dark:hover:bg-white/5 transition-colors"><span className="material-symbols-outlined text-base">chevron_right</span></button>
+          <div className="flex shrink-0 items-center justify-between px-5 pb-1 pt-5">
+            <span className="font-display text-[15px] font-semibold text-stone-900 dark:text-stone-100">Bet slip</span>
+            <button onClick={toggleRight} title="Collapse panel" className="flex h-8 w-8 items-center justify-center rounded-full text-stone-400 transition-[background-color,transform] duration-300 hover:bg-stone-900/[0.04] active:scale-95 dark:hover:bg-white/[0.05]"><span className="material-symbols-outlined text-base">chevron_right</span></button>
           </div>
           <div className="flex-none max-h-[55%] overflow-y-auto"><ExecutionTerminal /></div>
           <div className="flex-1 min-h-0 flex flex-col"><EmbeddedScout /></div>
@@ -694,9 +674,10 @@ const SessionEffects = () => {
 
   useEffect(() => {
     const root = document.documentElement;
-    root.style.setProperty('--accent', active.theme.primary);
-    root.style.setProperty('--accent-glow', active.theme.glow);
-    root.style.setProperty('--accent-ink', inkOn(active.theme.primary));
+    const accent = mute(active.theme.primary);
+    root.style.setProperty('--accent', accent);
+    root.style.setProperty('--accent-glow', `${accent}33`);
+    root.style.setProperty('--accent-ink', inkOn(accent));
   }, [active]);
 
   useEffect(() => {
@@ -715,7 +696,7 @@ const usePaletteCommands = (): PaletteCommand[] => {
   return useMemo(
     () => [
       ...nav,
-      { id: 'act:betslip', label: 'Toggle execution panel', icon: 'receipt_long', group: 'Actions', run: toggleRight },
+      { id: 'act:betslip', label: 'Toggle bet slip', icon: 'receipt_long', group: 'Actions', run: toggleRight },
       {
         id: 'act:refresh',
         label: 'Refresh every section',
@@ -740,7 +721,7 @@ const AppShell = () => {
   const commands = usePaletteCommands();
 
   return (
-    <div className="flex h-screen w-full overflow-hidden bg-[#F8F6F0] text-slate-900 antialiased selection:bg-[#C89B3C]/30 dark:bg-[#121110] dark:text-[#E8E6E3]">
+    <div className="flex h-screen w-full overflow-hidden bg-[#F8F6F0] text-stone-800 dark:bg-stone-950 dark:text-stone-200">
       <SessionEffects />
       <Sidebar theme={theme} onToggleTheme={toggle} />
       <motion.main
@@ -750,7 +731,7 @@ const AppShell = () => {
       >
         <StageHeader />
         <HaltBanner />
-        <div className="flex-1 px-4 pb-24 sm:px-8 sm:pb-10">
+        <div className="flex-1 px-4 pb-28 sm:px-10 sm:pb-14">
           <RouteErrorBoundary key={pathname}>
             <Suspense fallback={<RouteFallback />}>
               <Outlet />

@@ -92,7 +92,7 @@ export function LineChart({ labels, series, formatValue, height = 220, caption, 
   return (
     <figure className="flex flex-col gap-2">
       {series.length >= 2 && (
-        <figcaption className="flex flex-wrap items-center gap-4 text-[11px] text-slate-600 dark:text-slate-300" aria-hidden="true">
+        <figcaption className="flex flex-wrap items-center gap-4 text-[11px] text-stone-600 dark:text-stone-300" aria-hidden="true">
           {series.map((s) => (
             <span key={s.name} className="inline-flex items-center gap-1.5">
               <svg width="18" height="6" aria-hidden="true">
@@ -128,14 +128,14 @@ export function LineChart({ labels, series, formatValue, height = 220, caption, 
           {ticks.map((t) => (
             <g key={t}>
               <line x1={PAD.left} x2={width - PAD.right} y1={y(t)} y2={y(t)} stroke="var(--viz-grid)" strokeWidth="1" />
-              <text x={PAD.left - 8} y={y(t)} dy="0.32em" textAnchor="end" className="fill-slate-400 text-[10px] tabular-nums dark:fill-slate-500">
+              <text x={PAD.left - 8} y={y(t)} dy="0.32em" textAnchor="end" className="fill-stone-400 text-[10px] tabular-nums dark:fill-stone-500">
                 {formatValue(t)}
               </text>
             </g>
           ))}
           {labels.map((label, i) =>
             i % xLabelEvery === 0 || i === n - 1 ? (
-              <text key={label + i} x={x(i)} y={height - 6} textAnchor="middle" className="fill-slate-400 text-[10px] dark:fill-slate-500">
+              <text key={label + i} x={x(i)} y={height - 6} textAnchor="middle" className="fill-stone-400 text-[10px] dark:fill-stone-500">
                 {label}
               </text>
             ) : null,
@@ -159,7 +159,7 @@ export function LineChart({ labels, series, formatValue, height = 220, caption, 
           {series.map((s) => {
             const last = s.values[n - 1];
             return Number.isFinite(last) ? (
-              <text key={s.name} x={x(n - 1) + 8} y={y(last)} dy="0.32em" className="fill-slate-600 text-[10px] font-semibold dark:fill-slate-300">
+              <text key={s.name} x={x(n - 1) + 8} y={y(last)} dy="0.32em" className="fill-stone-600 text-[10px] font-semibold dark:fill-stone-300">
                 {series.length >= 2 ? s.name : formatValue(last)}
               </text>
             ) : null;
@@ -168,24 +168,24 @@ export function LineChart({ labels, series, formatValue, height = 220, caption, 
             <g>
               <line x1={x(hover)} x2={x(hover)} y1={PAD.top} y2={baseline} stroke="var(--viz-axis)" strokeWidth="1" strokeDasharray="3 3" />
               {series.map((s) => (
-                <circle key={s.name} cx={x(hover)} cy={y(s.values[hover])} r="4.5" fill={s.color} stroke="var(--chart-ring, white)" strokeWidth="2" className="[--chart-ring:white] dark:[--chart-ring:#161514]" />
+                <circle key={s.name} cx={x(hover)} cy={y(s.values[hover])} r="4.5" fill={s.color} stroke="var(--chart-ring, white)" strokeWidth="2" className="[--chart-ring:white] dark:[--chart-ring:#1c1917]" />
               ))}
             </g>
           )}
         </svg>
         {hover !== null && (
           <div
-            className="pointer-events-none absolute top-1 z-10 min-w-[150px] rounded-xl bg-white px-3 py-2 text-xs shadow-lg ring-1 ring-slate-900/10 dark:bg-[#1f1d1b] dark:ring-white/10"
+            className="pointer-events-none absolute top-1 z-10 min-w-[150px] rounded-xl bg-white px-3 py-2 text-xs shadow-lg ring-1 ring-stone-900/10 dark:bg-[#292524] dark:ring-white/10"
             style={x(hover) > width / 2 ? { right: width - x(hover) + 12 } : { left: x(hover) + 12 }}
           >
-            <p className="mb-1 font-semibold text-slate-800 dark:text-slate-100">{labels[hover]}</p>
+            <p className="mb-1 font-semibold text-stone-800 dark:text-stone-100">{labels[hover]}</p>
             {series.map((s) => (
-              <p key={s.name} className="flex items-center justify-between gap-4 text-slate-600 dark:text-slate-300">
+              <p key={s.name} className="flex items-center justify-between gap-4 text-stone-600 dark:text-stone-300">
                 <span className="inline-flex items-center gap-1.5">
                   <span className="size-2 rounded-full" style={{ background: s.color }} />
                   {s.name}
                 </span>
-                <span className="font-semibold tabular-nums text-slate-900 dark:text-slate-50">{formatValue(s.values[hover])}</span>
+                <span className="font-semibold tabular-nums text-stone-900 dark:text-stone-50">{formatValue(s.values[hover])}</span>
               </p>
             ))}
           </div>
@@ -243,11 +243,11 @@ export function DivergingBars({ items, formatValue, caption }: { items: readonly
         return (
           <div
             key={item.label}
-            className="group relative grid grid-cols-[minmax(80px,140px)_1fr_auto] items-center gap-3 rounded-lg px-1 py-1 hover:bg-slate-900/[0.03] dark:hover:bg-white/[0.03]"
+            className="group relative grid grid-cols-[minmax(80px,140px)_1fr_auto] items-center gap-3 rounded-lg px-1 py-1 hover:bg-stone-900/[0.03] dark:hover:bg-white/[0.03]"
             onMouseEnter={() => setHover(idx)}
             onMouseLeave={() => setHover(null)}
           >
-            <span className="truncate text-xs text-slate-600 dark:text-slate-300" title={item.label}>{item.label}</span>
+            <span className="truncate text-xs text-stone-600 dark:text-stone-300" title={item.label}>{item.label}</span>
             <div className={hasNegative ? "grid grid-cols-2" : "grid grid-cols-1"}>
               {hasNegative && (
                 <div className="flex justify-end border-r border-[var(--viz-axis)]/40">
@@ -258,12 +258,12 @@ export function DivergingBars({ items, formatValue, caption }: { items: readonly
                 {positive && <div className="h-3 rounded-r-[4px]" style={{ width: `${share * 100}%`, background: "var(--viz-positive)" }} />}
               </div>
             </div>
-            <span className="min-w-[88px] text-right text-xs font-semibold tabular-nums text-slate-800 dark:text-slate-100">
+            <span className="min-w-[88px] text-right text-xs font-semibold tabular-nums text-stone-800 dark:text-stone-100">
               {positive && item.value > 0 ? "+" : ""}
               {formatValue(item.value)}
             </span>
             {hover === idx && item.detail && (
-              <div className="pointer-events-none absolute left-1/3 top-full z-10 mt-1 rounded-xl bg-white px-3 py-2 text-xs text-slate-600 shadow-lg ring-1 ring-slate-900/10 dark:bg-[#1f1d1b] dark:text-slate-300 dark:ring-white/10">
+              <div className="pointer-events-none absolute left-1/3 top-full z-10 mt-1 rounded-xl bg-white px-3 py-2 text-xs text-stone-600 shadow-lg ring-1 ring-stone-900/10 dark:bg-[#292524] dark:text-stone-300 dark:ring-white/10">
                 {item.detail}
               </div>
             )}

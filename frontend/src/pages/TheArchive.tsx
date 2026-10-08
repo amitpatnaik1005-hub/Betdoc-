@@ -49,7 +49,7 @@ const TableBrowser = ({ tables }: { tables: ReturnType<typeof useResource<TableS
               {(tables.data ?? []).map((t) => <option key={t.table_name} value={t.table_name}>{t.table_name} ({formatInt(t.row_count)})</option>)}
             </Select>
           </Field>
-          <div className="flex items-center gap-2 pb-0.5 text-xs text-slate-500">
+          <div className="flex items-center gap-2 pb-0.5 text-xs text-stone-500">
             <Button size="sm" icon="chevron_left" disabled={offset === 0} onClick={() => setOffset(Math.max(0, offset - PAGE))}>Prev</Button>
             <span className="tabular-nums">{total === 0 ? 0 : offset + 1}–{Math.min(offset + PAGE, total)} of {formatInt(total)}</span>
             <Button size="sm" icon="chevron_right" disabled={offset + PAGE >= total} onClick={() => setOffset(offset + PAGE)}>Next</Button>
@@ -57,17 +57,17 @@ const TableBrowser = ({ tables }: { tables: ReturnType<typeof useResource<TableS
         </div>
         <Async resource={data} isEmpty={(d) => d.data.length === 0} empty={<EmptyState icon="table_rows" title="Empty table" />}>
           {(d) => (
-            <div className="-mx-4 -mb-4 max-h-[460px] overflow-auto">
+            <div className="-mx-5 -mb-5 max-h-[460px] overflow-auto sm:-mx-6 sm:-mb-6">
               <table className="w-full text-left text-xs">
-                <thead className="sticky top-0 bg-white dark:bg-[#161514]">
-                  <tr className="border-b border-slate-900/[0.06] dark:border-white/[0.06]">
-                    {columns.map((c) => <th key={c} className="whitespace-nowrap px-3 py-2 text-[10px] font-bold uppercase tracking-[0.12em] text-slate-400">{c}</th>)}
+                <thead className="sticky top-0 bg-white/90 backdrop-blur-md dark:bg-stone-900/90">
+                  <tr>
+                    {columns.map((c) => <th key={c} className="whitespace-nowrap px-3 py-3 text-xs font-medium text-stone-400 first:pl-6">{c}</th>)}
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-900/[0.04] dark:divide-white/[0.04]">
+                <tbody>
                   {d.data.map((row, i) => (
-                    <tr key={i} className="hover:bg-slate-900/[0.02] dark:hover:bg-white/[0.02]">
-                      {columns.map((c) => <td key={c} className="max-w-[260px] truncate whitespace-nowrap px-3 py-1.5 font-mono text-slate-600 dark:text-slate-300" title={cell(row[c])}>{cell(row[c])}</td>)}
+                    <tr key={i} className="transition-colors duration-200 hover:bg-stone-50 dark:hover:bg-white/[0.02]">
+                      {columns.map((c) => <td key={c} className="max-w-[260px] truncate whitespace-nowrap px-3 py-2.5 font-mono text-stone-600 first:pl-6 dark:text-stone-400" title={cell(row[c])}>{cell(row[c])}</td>)}
                     </tr>
                   ))}
                 </tbody>
@@ -116,19 +116,19 @@ const BacktestLedger = () => {
         <Button type="submit" variant="primary" icon="play_circle" busy={busy} disabled={!smallcaseId}>Run backtest</Button>
       </form>
       {!smallcases.data?.length && smallcases.data && <p className="mb-3 text-xs text-amber-600">No smallcases yet: bootstrap the engine from Core first.</p>}
-      <p className="mb-3 text-[11px] text-slate-400">The engine replays each pipeline against synthetic markets drawn per day in the range (no historical results are stored to replay).</p>
+      <p className="mb-3 text-[11px] text-stone-400">The engine replays each pipeline against synthetic markets drawn per day in the range (no historical results are stored to replay).</p>
       <Async resource={backtests} isEmpty={(r) => r.length === 0} empty={<EmptyState icon="history" title="No backtests yet" />}>
         {(rows) => (
           <ul className="flex flex-col gap-2">
             {rows.map((b) => (
-              <li key={b.id} className="grid grid-cols-2 items-center gap-3 rounded-xl bg-slate-50 px-3 py-2.5 sm:grid-cols-[1.4fr_repeat(3,0.7fr)_auto] dark:bg-white/[0.03]">
+              <li key={b.id} className="grid grid-cols-2 items-center gap-3 rounded-xl bg-stone-50 px-3 py-2.5 sm:grid-cols-[1.4fr_repeat(3,0.7fr)_auto] dark:bg-white/[0.03]">
                 <span className="min-w-0">
-                  <span className="block truncate text-sm font-semibold text-slate-800 dark:text-slate-100">{names.get(b.smallcase_id) ?? b.smallcase_id.slice(0, 8)}</span>
-                  <span className="text-[11px] text-slate-400">{formatDate(b.start_date)} → {formatDate(b.end_date)} · {formatInt(b.total_matches_simulated)} matches</span>
+                  <span className="block truncate text-sm font-semibold text-stone-800 dark:text-stone-100">{names.get(b.smallcase_id) ?? b.smallcase_id.slice(0, 8)}</span>
+                  <span className="text-[11px] text-stone-400">{formatDate(b.start_date)} → {formatDate(b.end_date)} · {formatInt(b.total_matches_simulated)} matches</span>
                 </span>
-                <span className={`text-sm font-semibold tabular-nums ${(b.roi_pct ?? 0) >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`}>{b.roi_pct === null ? '—' : `${b.roi_pct >= 0 ? '+' : ''}${formatPct(b.roi_pct)}`}<span className="block text-[10px] font-normal text-slate-400">ROI</span></span>
-                <span className="text-sm tabular-nums">{b.accuracy_pct === null ? '—' : formatPct(b.accuracy_pct)}<span className="block text-[10px] text-slate-400">accuracy</span></span>
-                <span className="text-sm tabular-nums">{b.max_drawdown_pct === null ? '—' : formatPct(b.max_drawdown_pct)}<span className="block text-[10px] text-slate-400">max DD</span></span>
+                <span className={`text-sm font-semibold tabular-nums ${(b.roi_pct ?? 0) >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`}>{b.roi_pct === null ? '—' : `${b.roi_pct >= 0 ? '+' : ''}${formatPct(b.roi_pct)}`}<span className="block text-[10px] font-normal text-stone-400">ROI</span></span>
+                <span className="text-sm tabular-nums">{b.accuracy_pct === null ? '—' : formatPct(b.accuracy_pct)}<span className="block text-[10px] text-stone-400">accuracy</span></span>
+                <span className="text-sm tabular-nums">{b.max_drawdown_pct === null ? '—' : formatPct(b.max_drawdown_pct)}<span className="block text-[10px] text-stone-400">max DD</span></span>
                 <StatusBadge status={b.status} />
               </li>
             ))}
@@ -175,7 +175,7 @@ export const TheArchive = () => {
             ]} />
           )}
         </Async>
-        {o && !o.last_backup_at && <p className="mt-3 text-[11px] text-slate-400">Set ARCHIVE_BACKUP_DIR to the directory scripts/backup.sh writes to and the newest archive's time appears here.</p>}
+        {o && !o.last_backup_at && <p className="mt-3 text-[11px] text-stone-400">Set ARCHIVE_BACKUP_DIR to the directory scripts/backup.sh writes to and the newest archive's time appears here.</p>}
       </Panel>
       <Panel title="Storage by table" icon="dns" className="lg:col-span-7" updatedAt={tables.updatedAt} subtitle="largest 10">
         <Async resource={tables} isEmpty={() => largest.length === 0} empty={<EmptyState icon="dns" title="No tables" />}>
@@ -185,7 +185,7 @@ export const TheArchive = () => {
       <TableBrowser tables={tables} />
       <BacktestLedger />
       <Panel title="Retention notes" icon="info" className="lg:col-span-5">
-        <ul className="list-disc space-y-2 pl-4 text-xs leading-relaxed text-slate-600 dark:text-slate-300">
+        <ul className="list-disc space-y-2 pl-4 text-xs leading-relaxed text-stone-600 dark:text-stone-300">
           <li>The bet ledger is append-only and idempotent: an order key can never be written twice.</li>
           <li>Odds snapshots keep every bookmaker update, which powers the Lab's drift reports and the Oracle consensus.</li>
           <li>Exports download exactly what is on screen (one page of {PAGE} rows) as CSV.</li>

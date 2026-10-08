@@ -57,7 +57,7 @@ export const CommandPalette = ({ commands }: { commands: PaletteCommand[] }) => 
     <AnimatePresence>
       {open && (
         <motion.div
-          className="fixed inset-0 z-[70] flex items-start justify-center bg-slate-900/30 px-4 pt-[14vh] backdrop-blur-sm dark:bg-black/50"
+          className="fixed inset-0 z-[70] flex items-start justify-center bg-stone-900/30 px-4 pt-[14vh] backdrop-blur-sm dark:bg-black/50"
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
@@ -71,10 +71,10 @@ export const CommandPalette = ({ commands }: { commands: PaletteCommand[] }) => 
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: -8, scale: 0.98 }}
             transition={{ type: "spring", stiffness: 420, damping: 34 }}
-            className="w-full max-w-xl overflow-hidden rounded-2xl bg-white shadow-2xl ring-1 ring-slate-900/10 dark:bg-[#1a1918] dark:ring-white/10"
+            className="w-full max-w-xl overflow-hidden rounded-2xl bg-white shadow-2xl ring-1 ring-stone-900/10 dark:bg-[#1c1917] dark:ring-white/10"
           >
-            <div className="flex items-center gap-3 border-b border-slate-900/[0.06] px-4 dark:border-white/[0.06]">
-              <span className="material-symbols-outlined text-slate-400">search</span>
+            <div className="flex items-center gap-3 px-5">
+              <span className="material-symbols-outlined text-stone-400">search</span>
               <input
                 ref={inputRef}
                 value={query}
@@ -92,13 +92,13 @@ export const CommandPalette = ({ commands }: { commands: PaletteCommand[] }) => 
                   } else if (e.key === "Enter") run(results[index]);
                 }}
                 placeholder="Jump to a section or run an action…"
-                className="h-12 flex-1 bg-transparent text-sm text-slate-900 outline-none placeholder:text-slate-400 dark:text-slate-100"
+                className="h-12 flex-1 bg-transparent text-sm text-stone-900 outline-none placeholder:text-stone-400 dark:text-stone-100"
                 aria-label="Search commands"
               />
-              <kbd className="rounded-md bg-slate-100 px-1.5 py-0.5 text-[10px] font-semibold text-slate-500 dark:bg-white/10 dark:text-slate-400">ESC</kbd>
+              <kbd className="rounded-lg bg-stone-100 px-1.5 py-0.5 text-[10px] font-semibold text-stone-500 dark:bg-white/10 dark:text-stone-400">ESC</kbd>
             </div>
             <ul className="max-h-[50vh] overflow-y-auto p-2" role="listbox">
-              {results.length === 0 && <li className="px-3 py-6 text-center text-sm text-slate-500">No matching command</li>}
+              {results.length === 0 && <li className="px-3 py-6 text-center text-sm text-stone-500">No matching command</li>}
               {results.map((cmd, i) => (
                 <li key={cmd.id} role="option" aria-selected={i === index}>
                   <button
@@ -106,13 +106,13 @@ export const CommandPalette = ({ commands }: { commands: PaletteCommand[] }) => 
                     onMouseEnter={() => setIndex(i)}
                     onClick={() => run(cmd)}
                     className={`flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm ${
-                      i === index ? "bg-slate-900/[0.05] dark:bg-white/[0.07]" : ""
+                      i === index ? "bg-stone-900/[0.05] dark:bg-white/[0.07]" : ""
                     }`}
                   >
                     <span className="material-symbols-outlined text-[18px] text-accent">{cmd.icon}</span>
-                    <span className="flex-1 text-slate-800 dark:text-slate-100">{cmd.label}</span>
-                    {cmd.hint && <span className="text-[11px] text-slate-400">{cmd.hint}</span>}
-                    <span className="text-[10px] uppercase tracking-wider text-slate-400">{cmd.group}</span>
+                    <span className="flex-1 text-stone-800 dark:text-stone-100">{cmd.label}</span>
+                    {cmd.hint && <span className="text-[11px] text-stone-400">{cmd.hint}</span>}
+                    <span className="text-xs text-stone-400">{cmd.group}</span>
                   </button>
                 </li>
               ))}

@@ -5,7 +5,7 @@ import { formatAgo, formatINR, formatRatioPct, humanize } from '../lib/format';
 import { runMutation, useResource } from '../lib/resource';
 import { useSystemStore } from '../store/useSystemStore';
 import { CommanderHero, MOTIFS } from '../ui/hero';
-import { Async, Button, ConfirmButton, EmptyState, Field, KeyValues, NumberInput, Page, Panel, Pill, Select, StatusBadge, TextInput, Toggle, num } from '../ui/kit';
+import { Async, Button, ConfirmButton, EmptyState, Field, KeyValues, NumberInput, Page, Panel, Segmented, Pill, Select, StatusBadge, TextInput, Toggle, num } from '../ui/kit';
 
 // ---------------------------------------------------------------------------
 // CONTRACTS
@@ -48,10 +48,10 @@ const GlobalOverrides = ({ settings }: { settings: ControlSettings }) => {
         <Field label="Global stop-loss ₹"><NumberInput min="0" value={d.global_stop_loss} onChange={(e) => setD({ ...d, global_stop_loss: e.target.value })} /></Field>
         <Field label="Default Kelly fraction" hint="Used by the terminal and the Oracle allocator."><NumberInput min="0" max="1" step="0.05" value={d.default_kelly_fraction} onChange={(e) => setD({ ...d, default_kelly_fraction: e.target.value })} /></Field>
         <Field label="Research cadence (min)"><NumberInput min="1" value={d.research_frequency_minutes} onChange={(e) => setD({ ...d, research_frequency_minutes: e.target.value })} /></Field>
-        <div className="flex items-center justify-between gap-3 rounded-xl bg-slate-50 px-3 py-2 dark:bg-white/[0.03]">
+        <div className="flex items-center justify-between gap-3 rounded-xl bg-stone-50 px-3 py-2 dark:bg-white/[0.03]">
           <div>
-            <p className="text-sm font-semibold text-slate-800 dark:text-slate-100">Automated bots</p>
-            <p className="text-[11px] text-slate-500 dark:text-slate-400">Commander automation (manual orders unaffected).</p>
+            <p className="text-sm font-semibold text-stone-800 dark:text-stone-100">Automated bots</p>
+            <p className="text-[11px] text-stone-500 dark:text-stone-400">Commander automation (manual orders unaffected).</p>
           </div>
           <Toggle label="Automated bots" checked={d.bots_enabled} onChange={(v) => setD({ ...d, bots_enabled: v })} />
         </div>
@@ -114,8 +114,8 @@ const ExchangeAccounts = () => {
           {(rows) => (
             <ul className="flex flex-col gap-2">
               {rows.map((a) => (
-                <li key={a.id} className="flex items-center justify-between gap-3 rounded-xl bg-slate-50 px-3 py-2.5 dark:bg-white/[0.03]">
-                  <span className="flex items-center gap-2"><span className="text-sm font-semibold text-slate-800 dark:text-slate-100">{a.exchange_name}</span><Pill tone="info">paper</Pill></span>
+                <li key={a.id} className="flex items-center justify-between gap-3 rounded-xl bg-stone-50 px-3 py-2.5 dark:bg-white/[0.03]">
+                  <span className="flex items-center gap-2"><span className="text-sm font-semibold text-stone-800 dark:text-stone-100">{a.exchange_name}</span><Pill tone="info">paper</Pill></span>
                   <span className="flex items-center gap-2">
                     <StatusBadge status={a.is_active ? 'CONNECTED' : 'DISABLED'} />
                     {a.is_active && (
@@ -163,8 +163,8 @@ const Bookmakers = () => {
           {(rows) => (
             <ul className="flex flex-col gap-2">
               {[...rows].sort((a, b) => a.priority_rank - b.priority_rank).map((b) => (
-                <li key={b.id} className="flex items-center justify-between gap-3 rounded-xl bg-slate-50 px-3 py-2 dark:bg-white/[0.03]">
-                  <span className="min-w-0"><span className="block truncate text-sm font-semibold text-slate-800 dark:text-slate-100">{b.name}</span><span className="text-[11px] text-slate-400">priority {b.priority_rank}{b.has_api_key ? ' · key stored' : ''}</span></span>
+                <li key={b.id} className="flex items-center justify-between gap-3 rounded-xl bg-stone-50 px-3 py-2 dark:bg-white/[0.03]">
+                  <span className="min-w-0"><span className="block truncate text-sm font-semibold text-stone-800 dark:text-stone-100">{b.name}</span><span className="text-[11px] text-stone-400">priority {b.priority_rank}{b.has_api_key ? ' · key stored' : ''}</span></span>
                   <Toggle label={`${b.name} active`} checked={b.is_active} onChange={() => void toggle(b)} />
                 </li>
               ))}
@@ -214,26 +214,22 @@ const SportsEngine = () => {
   return (
     <Panel title="Multi-sport engine" icon="sports" className="lg:col-span-12" updatedAt={cfg.updatedAt}>
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-        <div className="flex gap-1.5" role="tablist">
-          {SPORTS.map((s) => (
-            <button key={s} type="button" role="tab" aria-selected={sport === s} onClick={() => setSport(s)} className={`rounded-lg px-3 py-1.5 text-xs font-semibold capitalize ${sport === s ? 'bg-[var(--accent)] text-[var(--accent-ink)]' : 'bg-slate-100 text-slate-600 dark:bg-white/[0.05] dark:text-slate-300'}`}>{s}</button>
-          ))}
-        </div>
-        {cfg.data && <span className="flex items-center gap-2 text-xs text-slate-500">Model active <Toggle label={`${sport} active`} checked={cfg.data.is_active} onChange={(v) => toggle(v)} /></span>}
+        <Segmented label="Sport" value={sport} onChange={setSport} options={SPORTS.map((s) => ({ value: s, label: <span className="capitalize">{s}</span> }))} />
+        {cfg.data && <span className="flex items-center gap-2 text-xs text-stone-500">Model active <Toggle label={`${sport} active`} checked={cfg.data.is_active} onChange={(v) => toggle(v)} /></span>}
       </div>
       <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
         <Async resource={cfg}>
           {() => (
             <div className="flex flex-col gap-2">
               <Field label="Model parameters (JSON)">
-                <textarea value={json} onChange={(e) => setJson(e.target.value)} rows={9} spellCheck={false} className="w-full rounded-xl bg-white px-3 py-2 font-mono text-xs text-slate-800 ring-1 ring-inset ring-slate-900/10 focus:outline-none focus:ring-2 focus:ring-[var(--accent)] dark:bg-white/[0.04] dark:text-slate-100 dark:ring-white/10" />
+                <textarea value={json} onChange={(e) => setJson(e.target.value)} rows={9} spellCheck={false} className="w-full rounded-xl bg-white px-3 py-2 font-mono text-xs text-stone-800 ring-1 ring-inset ring-stone-900/10 focus:outline-none focus:ring-2 focus:ring-[var(--accent)] dark:bg-white/[0.04] dark:text-stone-100 dark:ring-white/10" />
               </Field>
               <Button icon="save" onClick={saveConfig}>Save parameters</Button>
             </div>
           )}
         </Async>
-        <div className="flex flex-col gap-3 rounded-xl bg-slate-50 p-4 dark:bg-white/[0.03]">
-          <p className="text-sm font-semibold capitalize text-slate-800 dark:text-slate-100">{sport === 'cricket' ? 'DLS par score' : sport === 'basketball' ? 'Pace-adjusted spread' : 'Service game probability'}</p>
+        <div className="flex flex-col gap-3 rounded-xl bg-stone-50 p-4 dark:bg-white/[0.03]">
+          <p className="text-sm font-semibold capitalize text-stone-800 dark:text-stone-100">{sport === 'cricket' ? 'DLS par score' : sport === 'basketball' ? 'Pace-adjusted spread' : 'Service game probability'}</p>
           <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3">
             {sport === 'cricket' && [input('resources', 'Resources left %'), input('target', 'Original target')]}
             {sport === 'basketball' && [input('home_rating', 'Home rating'), input('away_rating', 'Away rating'), input('home_pace', 'Home pace'), input('away_pace', 'Away pace'), input('league_pace', 'League pace')]}
@@ -285,15 +281,15 @@ const OmniAdmin = () => {
           {health.providers.length === 0 ? <EmptyState icon="hub" title="No providers registered" detail="Register providers through POST /api/v1/admin/omni/providers." /> : (
             <ul className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
               {health.providers.map((p) => (
-                <li key={p.provider_id} className="flex items-center justify-between gap-2 rounded-xl bg-slate-50 px-3 py-2 dark:bg-white/[0.03]">
-                  <span className="min-w-0"><span className="block truncate text-sm font-semibold">{p.provider_name}</span><span className="text-[11px] text-slate-400">category {p.category_code} · breaker {p.breaker_state}</span></span>
+                <li key={p.provider_id} className="flex items-center justify-between gap-2 rounded-xl bg-stone-50 px-3 py-2 dark:bg-white/[0.03]">
+                  <span className="min-w-0"><span className="block truncate text-sm font-semibold">{p.provider_name}</span><span className="text-[11px] text-stone-400">category {p.category_code} · breaker {p.breaker_state}</span></span>
                   <StatusBadge status={p.is_active ? p.health_status : 'DISABLED'} />
                 </li>
               ))}
             </ul>
           )}
         </div>
-      ) : !error && <p className="text-xs text-slate-400">Provider status, circuit breakers and Redis availability for the ingestion workers.</p>}
+      ) : !error && <p className="text-xs text-stone-400">Provider status, circuit breakers and Redis availability for the ingestion workers.</p>}
     </Panel>
   );
 };

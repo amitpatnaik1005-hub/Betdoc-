@@ -11,7 +11,7 @@ export function CommanderSkeleton({ commander, className, ...rest }: CommanderSk
     <div
       role="status"
       aria-label="Loading commander scene"
-      className={["relative aspect-square w-full animate-pulse rounded-2xl border bg-slate-900/60", className].filter(Boolean).join(" ")}
+      className={["relative aspect-square w-full animate-pulse rounded-2xl border bg-stone-900/60", className].filter(Boolean).join(" ")}
       style={{ borderColor: tint ? `${tint}40` : undefined }}
       {...rest}
     >

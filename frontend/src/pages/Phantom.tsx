@@ -1,11 +1,11 @@
 import { useMemo, useState, type ReactNode } from 'react';
 import { apiClient } from '../api/client';
 import { PhantomHologramScene } from '../components/bots/PhantomHologramScene';
-import { type MatchOdds, type Side, useLiveOdds } from '../lib/api';
+import { type MatchOdds, type Side, matchOddsMarket, outcomeSide, useLiveOdds } from '../lib/api';
 import { formatAgo, formatINR, formatOdds, formatPct, humanize } from '../lib/format';
 import { runMutation, useResource } from '../lib/resource';
 import { CommanderHero, MOTIFS } from '../ui/hero';
-import { Async, Button, type Column, DataTable, EmptyState, Field, KeyValues, NumberInput, Page, Panel, Pill, Select, StatusBadge, TextInput, num } from '../ui/kit';
+import { Async, Button, type Column, DataTable, EmptyState, Field, KeyValues, NumberInput, Page, Panel, Segmented, Pill, Select, StatusBadge, TextInput, num } from '../ui/kit';
 
 // ---------------------------------------------------------------------------
 // CONTRACTS
@@ -68,12 +68,8 @@ const Toolkit = () => {
 
   return (
     <Panel title="Quant toolkit" icon="construction" className="lg:col-span-7" subtitle="every run is logged to the audit trail">
-      <div className="mb-4 flex flex-wrap gap-1.5" role="tablist">
-        {TOOLS.map((t) => (
-          <button key={t.key} type="button" role="tab" aria-selected={tool === t.key} onClick={() => { setTool(t.key); setResult(null); }} className={`inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-xs font-semibold transition-colors ${tool === t.key ? 'bg-[var(--accent)] text-[var(--accent-ink)]' : 'bg-slate-100 text-slate-600 hover:bg-slate-200 dark:bg-white/[0.05] dark:text-slate-300'}`}>
-            <span className="material-symbols-outlined text-[14px]">{t.icon}</span>{t.label}
-          </button>
-        ))}
+      <div className="mb-6">
+        <Segmented label="Tool" value={tool} onChange={(t) => { setTool(t); setResult(null); }} options={TOOLS.map((t) => ({ value: t.key, label: t.label, icon: t.icon }))} />
       </div>
       <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
         <div className="grid grid-cols-2 content-start gap-2.5">
@@ -116,7 +112,7 @@ const Toolkit = () => {
           )}
           <Button variant="primary" icon="calculate" busy={busy} onClick={() => void run()} className="col-span-2">Calculate</Button>
         </div>
-        <div className="rounded-xl bg-slate-50 p-3 dark:bg-white/[0.03]">
+        <div className="rounded-xl bg-stone-50 p-3 dark:bg-white/[0.03]">
           {result ? (
             <div className="flex flex-col gap-3">
               {'is_arbitrage' in result && <StatusBadge status={result.is_arbitrage ? 'ONLINE' : 'IDLE'} label={result.is_arbitrage ? 'Arbitrage locked' : 'No arbitrage'} />}
@@ -143,10 +139,9 @@ const OddsRouter = ({ fixtures }: { fixtures: MatchOdds[] }) => {
 
   const prices = useMemo(() => {
     if (!match) return {} as Record<string, number>;
-    const name = side === 'HOME' ? match.home_team : side === 'AWAY' ? match.away_team : 'Draw';
     const out: Record<string, number> = {};
     for (const b of match.bookmakers) {
-      const o = b.markets.find((m) => m.key === 'h2h')?.outcomes.find((x) => x.name === name);
+      const o = matchOddsMarket(b)?.outcomes.find((x) => outcomeSide(x.name, match) === side);
       if (o && o.price > 1) out[b.title] = o.price;
     }
     return out;
@@ -171,10 +166,10 @@ const OddsRouter = ({ fixtures }: { fixtures: MatchOdds[] }) => {
           </Field>
           <div className="grid grid-cols-3 gap-1.5">
             {(['HOME', 'DRAW', 'AWAY'] as const).map((s) => (
-              <button key={s} type="button" onClick={() => { setSide(s); setResult(null); }} className={`rounded-lg py-1.5 text-xs font-bold ${side === s ? 'bg-[var(--accent)] text-[var(--accent-ink)]' : 'bg-slate-100 text-slate-600 dark:bg-white/[0.05] dark:text-slate-300'}`}>{s}</button>
+              <button key={s} type="button" onClick={() => { setSide(s); setResult(null); }} className={`rounded-xl py-1.5 text-xs font-bold ${side === s ? 'bg-[var(--accent)] text-[var(--accent-ink)]' : 'bg-stone-100 text-stone-600 dark:bg-white/[0.05] dark:text-stone-300'}`}>{s}</button>
             ))}
           </div>
-          <p className="text-[11px] text-slate-500 dark:text-slate-400">{Object.keys(prices).length} books quote this side. Bookmakers disabled in the Control Panel are ignored.</p>
+          <p className="text-[11px] text-stone-500 dark:text-stone-400">{Object.keys(prices).length} books quote this side. Bookmakers disabled in the Control Panel are ignored.</p>
           <Button variant="primary" icon="alt_route" disabled={Object.keys(prices).length < 2} onClick={() => void route()}>Route</Button>
           {result && (
             <KeyValues items={[
@@ -184,7 +179,7 @@ const OddsRouter = ({ fixtures }: { fixtures: MatchOdds[] }) => {
               { label: 'Ignored', value: result.ignored_bookmakers.length ? result.ignored_bookmakers.join(', ') : 'none' },
             ]} />
           )}
-          {result && <p className="text-xs text-slate-600 dark:text-slate-300">{result.placement_instruction}</p>}
+          {result && <p className="text-xs text-stone-600 dark:text-stone-300">{result.placement_instruction}</p>}
         </div>
       )}
     </Panel>
@@ -205,11 +200,11 @@ export const Phantom = () => {
   const found = active.length > 0 || Boolean(best);
 
   const oppColumns: Column<Opportunity>[] = [
-    { key: 'event', header: 'Event', render: (o) => <span><span className="font-medium">{o.event_name}</span> <span className="text-xs text-slate-400">· {o.market_type}</span></span> },
+    { key: 'event', header: 'Event', render: (o) => <span><span className="font-medium">{o.event_name}</span> <span className="text-xs text-stone-400">· {o.market_type}</span></span> },
     { key: 'profit', header: 'Locked profit', align: 'right', render: (o) => <span className="font-semibold text-emerald-600 dark:text-emerald-400">{formatPct(o.guaranteed_profit_pct, 2)}</span> },
     { key: 'stakes', header: 'Stake split', align: 'right', render: (o) => <span className="font-mono text-xs">{o.stakes.map((s) => formatINR(s)).join(' / ')}</span> },
     { key: 'status', header: 'Status', render: (o) => <StatusBadge status={o.is_active ? 'ACTIVE' : 'EXPIRED'} /> },
-    { key: 'when', header: 'Found', align: 'right', render: (o) => <span className="text-xs text-slate-500">{formatAgo(o.created_at)}</span> },
+    { key: 'when', header: 'Found', align: 'right', render: (o) => <span className="text-xs text-stone-500">{formatAgo(o.created_at)}</span> },
   ];
 
   return (
@@ -234,12 +229,12 @@ export const Phantom = () => {
           {(rows) => (
             <ul className="flex flex-col gap-2">
               {rows.slice(0, 8).map((s) => (
-                <li key={`${s.match_id}-${s.market_type}`} className="rounded-xl bg-slate-50 p-3 dark:bg-white/[0.03]">
+                <li key={`${s.match_id}-${s.market_type}`} className="rounded-xl bg-stone-50 p-3 dark:bg-white/[0.03]">
                   <div className="flex items-center justify-between gap-2">
-                    <span className="truncate font-mono text-xs text-slate-700 dark:text-slate-200">{s.match_id} · {s.market_type}</span>
+                    <span className="truncate font-mono text-xs text-stone-700 dark:text-stone-200">{s.match_id} · {s.market_type}</span>
                     <Pill tone="good">{formatPct(s.profit_pct, 2)}</Pill>
                   </div>
-                  <p className="mt-1 text-[11px] text-slate-500 dark:text-slate-400">{s.legs.map((l) => `${l.selection_id} ${formatOdds(l.odds)} @ ${l.bookmaker_id} (${formatPct(l.recommended_stake_pct, 0)})`).join(' · ')}</p>
+                  <p className="mt-1 text-[11px] text-stone-500 dark:text-stone-400">{s.legs.map((l) => `${l.selection_id} ${formatOdds(l.odds)} @ ${l.bookmaker_id} (${formatPct(l.recommended_stake_pct, 0)})`).join(' · ')}</p>
                 </li>
               ))}
             </ul>
@@ -260,9 +255,9 @@ export const Phantom = () => {
               rowKey={(r) => r.id}
               columns={[
                 { key: 'type', header: 'Type', render: (r) => <Pill tone="accent">{humanize(r.calc_type)}</Pill> },
-                { key: 'in', header: 'Inputs', render: (r) => <span className="font-mono text-[11px] text-slate-500">{JSON.stringify(r.inputs).slice(0, 90)}</span> },
-                { key: 'out', header: 'Outputs', render: (r) => <span className="font-mono text-[11px] text-slate-500">{JSON.stringify(r.outputs).slice(0, 90)}</span> },
-                { key: 'at', header: 'When', align: 'right', render: (r) => <span className="text-xs text-slate-500">{formatAgo(r.created_at)}</span> },
+                { key: 'in', header: 'Inputs', render: (r) => <span className="font-mono text-[11px] text-stone-500">{JSON.stringify(r.inputs).slice(0, 90)}</span> },
+                { key: 'out', header: 'Outputs', render: (r) => <span className="font-mono text-[11px] text-stone-500">{JSON.stringify(r.outputs).slice(0, 90)}</span> },
+                { key: 'at', header: 'When', align: 'right', render: (r) => <span className="text-xs text-stone-500">{formatAgo(r.created_at)}</span> },
               ]}
             />
           )}

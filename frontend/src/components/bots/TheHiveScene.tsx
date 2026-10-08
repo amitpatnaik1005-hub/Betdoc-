@@ -36,9 +36,9 @@ const bossGlowMap: Record<KautilyaState, string> = {
 };
 
 const deskActiveClassMap: Record<KautilyaState, string> = {
-  observing: "bg-sky-500/70 shadow-[0_0_14px_rgba(14,165,233,0.7)]",
-  directing: "bg-amber-400/80 shadow-[0_0_14px_rgba(251,191,36,0.8)]",
-  alert: "bg-rose-500/80 shadow-[0_0_14px_rgba(244,63,94,0.8)]",
+  observing: "bg-sky-300/80 dark:bg-sky-400/50",
+  directing: "bg-amber-300/80 dark:bg-amber-400/50",
+  alert: "bg-rose-300/80 dark:bg-rose-400/50",
 };
 
 const linkStrokeMap: Record<KautilyaState, string> = {
@@ -80,7 +80,7 @@ export const TheHiveScene: React.FC<TheHiveSceneProps> = ({
           style={{ transform: ISOMETRIC_TRANSFORM, transformStyle: "preserve-3d" }}
         >
           <div
-            className="absolute inset-0 grid gap-[4%] rounded-sm bg-slate-900/60 p-[3%] ring-1 ring-slate-700"
+            className="absolute inset-0 grid gap-[4%] rounded-2xl bg-stone-200/60 p-[3%] dark:bg-stone-800/60"
             style={{
               gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))`,
               gridTemplateRows: `repeat(${rows}, minmax(0, 1fr))`,
@@ -97,8 +97,8 @@ export const TheHiveScene: React.FC<TheHiveSceneProps> = ({
                 <motion.div
                   key={`desk-${desk.index}`}
                   className={cx(
-                    "relative rounded-sm border border-slate-700/80",
-                    isActive ? deskActiveClassMap[kautilyaState] : "bg-slate-800/70"
+                    "relative rounded-sm border border-stone-700/80",
+                    isActive ? deskActiveClassMap[kautilyaState] : "bg-stone-300/70 dark:bg-stone-700/60"
                   )}
                   initial={{ opacity: 0, translateZ: 0 }}
                   animate={{
@@ -113,7 +113,7 @@ export const TheHiveScene: React.FC<TheHiveSceneProps> = ({
                   }}
                   style={{ transformStyle: "preserve-3d", willChange: "transform" }}
                 >
-                  <div className="absolute inset-x-[20%] top-[15%] h-[30%] rounded-sm bg-slate-950/60" />
+                  <div className="absolute inset-x-[20%] top-[15%] h-[30%] rounded-sm bg-stone-950/60" />
                 </motion.div>
               );
             })}
@@ -143,7 +143,7 @@ export const TheHiveScene: React.FC<TheHiveSceneProps> = ({
                       opacity: { duration: 0.3 },
                       strokeDashoffset: { duration: pulseSeconds, repeat: Infinity, ease: "linear" },
                     }}
-                    style={{ filter: `drop-shadow(0 0 1px ${linkStrokeMap[kautilyaState]})`, willChange: "transform" }}
+                    style={{ willChange: "transform" }}
                   />
                 ))}
             </AnimatePresence>
@@ -151,7 +151,7 @@ export const TheHiveScene: React.FC<TheHiveSceneProps> = ({
 
           <motion.div
             className={cx(
-              "absolute flex items-center justify-center rounded-md border border-amber-500/60 bg-slate-800 ring-2",
+              "absolute flex items-center justify-center rounded-md border border-amber-500/60 bg-stone-800 ring-2",
               bossRingClassMap[kautilyaState]
             )}
             style={{
@@ -180,14 +180,14 @@ export const TheHiveScene: React.FC<TheHiveSceneProps> = ({
               >
                 ♛
               </motion.span>
-              <span className="mt-0.5 h-3 w-3 rounded-full bg-slate-200 ring-1 ring-slate-400" />
+              <span className="mt-0.5 h-3 w-3 rounded-full bg-stone-200 ring-1 ring-stone-400" />
             </div>
           </motion.div>
         </div>
       </div>
 
-      <div className="pointer-events-none absolute left-3 top-3 font-mono text-[10px] uppercase tracking-widest text-slate-400">
-        <span className="text-amber-300">{bossName}</span> · {kautilyaState} · {lit}/{total} desks
+      <div className="pointer-events-none absolute left-3 top-3 text-xs text-stone-400 dark:text-stone-500">
+        <span className="font-medium text-stone-600 dark:text-stone-300">{bossName}</span> · {kautilyaState} · {lit}/{total} desks
       </div>
     </div>
   );

@@ -41,7 +41,7 @@ const statusColorMap: Record<BotStatus, string> = {
 };
 
 const statusRingClassMap: Record<BotStatus, string> = {
-  idle: "ring-slate-600",
+  idle: "ring-stone-600",
   active: "ring-sky-500/60",
   success: "ring-emerald-500/70",
   error: "ring-rose-500/70",
@@ -94,7 +94,7 @@ export const BotAvatar: React.FC<BotAvatarProps> = ({
     <div className={cx("relative inline-flex items-center justify-center", sizeMap[size], className)} {...rest}>
       <motion.div
         layoutId={"bot-avatar-" + safeName}
-        className={cx("relative flex h-full w-full items-center justify-center rounded-full bg-slate-800 ring-2", statusRingClassMap[status])}
+        className={cx("relative flex h-full w-full items-center justify-center rounded-full bg-stone-800 ring-2", statusRingClassMap[status])}
         initial={{ y: 0, x: 0, scale: 1 }}
         animate={containerAnimate}
         transition={containerTransition}

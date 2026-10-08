@@ -82,14 +82,14 @@ const ModelSandbox = () => {
       </form>
       <AnimatePresence>
         {p && result && (
-          <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} className="mt-5 flex flex-col gap-4 border-t border-slate-900/[0.06] pt-4 dark:border-white/[0.06]">
+          <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} className="mt-8 flex flex-col gap-5">
             {(['home_win_prob', 'draw_prob', 'away_win_prob'] as const).map((k, i) => (
               <div key={k}>
-                <div className="mb-1 flex justify-between text-xs text-slate-600 dark:text-slate-300">
+                <div className="mb-1 flex justify-between text-xs text-stone-600 dark:text-stone-300">
                   <span>{['Home', 'Draw', 'Away'][i]}</span>
                   <span className="font-semibold tabular-nums">{formatRatioPct(p[k])}</span>
                 </div>
-                <div className="h-2 overflow-hidden rounded-full bg-slate-900/[0.06] dark:bg-white/[0.07]">
+                <div className="h-2 overflow-hidden rounded-full bg-stone-900/[0.06] dark:bg-white/[0.07]">
                   <motion.div className="h-full rounded-full" style={{ background: ['var(--viz-series-1)', 'var(--viz-axis)', 'var(--viz-series-2)'][i] }} initial={{ width: 0 }} animate={{ width: `${p[k] * 100}%` }} />
                 </div>
               </div>
@@ -105,7 +105,7 @@ const ModelSandbox = () => {
                 ))}
               </ul>
             ) : (
-              <p className="text-xs text-slate-500">No selection clears the +2% EV threshold at those prices.</p>
+              <p className="text-xs text-stone-500">No selection clears the +2% EV threshold at those prices.</p>
             )}
           </motion.div>
         )}
@@ -123,15 +123,15 @@ const SourceHealth = ({ health }: { health: ReturnType<typeof useResource<Source
       {(rows) => (
         <ul className="flex flex-col gap-2">
           {rows.map((s) => (
-            <li key={s.source_name} className="flex items-center justify-between gap-3 rounded-xl bg-slate-50 px-3 py-2.5 dark:bg-white/[0.03]">
-              <span className="text-sm font-medium text-slate-800 dark:text-slate-100">{s.source_name}</span>
+            <li key={s.source_name} className="flex items-center justify-between gap-3 rounded-xl bg-stone-50 px-3 py-2.5 dark:bg-white/[0.03]">
+              <span className="text-sm font-medium text-stone-800 dark:text-stone-100">{s.source_name}</span>
               <span className="flex items-center gap-2">
-                <span className="text-[11px] tabular-nums text-slate-400">{s.latency_ms}ms</span>
+                <span className="text-[11px] tabular-nums text-stone-400">{s.latency_ms}ms</span>
                 <StatusBadge status={s.status} />
               </span>
             </li>
           ))}
-          <li className="pt-1 text-[11px] text-slate-400">Live HTTP probes from the API server (4s timeout). Over 1.5s or a 5xx counts as degraded.</li>
+          <li className="pt-1 text-[11px] text-stone-400">Live HTTP probes from the API server (4s timeout). Over 1.5s or a 5xx counts as degraded.</li>
         </ul>
       )}
     </Async>
@@ -183,19 +183,19 @@ const ResearchDesk = ({ research }: { research: ReturnType<typeof useResource<Re
             <ul className="flex max-h-[420px] flex-col gap-1.5 overflow-y-auto">
               {rows.map((r) => (
                 <li key={r.id}>
-                  <button type="button" onClick={() => setOpenId(r.id)} className={`w-full rounded-xl px-3 py-2 text-left transition-colors ${openId === r.id ? 'bg-[color-mix(in_srgb,var(--accent)_10%,transparent)]' : 'hover:bg-slate-900/[0.03] dark:hover:bg-white/[0.04]'}`}>
+                  <button type="button" onClick={() => setOpenId(r.id)} className={`w-full rounded-xl px-3 py-2 text-left transition-colors ${openId === r.id ? 'bg-[color-mix(in_srgb,var(--accent)_10%,transparent)]' : 'hover:bg-stone-900/[0.03] dark:hover:bg-white/[0.04]'}`}>
                     <span className="flex items-center justify-between gap-2">
-                      <span className="truncate text-sm font-medium text-slate-800 dark:text-slate-100">{r.topic}</span>
+                      <span className="truncate text-sm font-medium text-stone-800 dark:text-stone-100">{r.topic}</span>
                       <StatusBadge status={r.status} />
                     </span>
-                    <span className="text-[11px] text-slate-400">{r.category} · {formatAgo(r.created_at)}</span>
+                    <span className="text-[11px] text-stone-400">{r.category} · {formatAgo(r.created_at)}</span>
                   </button>
                 </li>
               ))}
             </ul>
           )}
         </Async>
-        <div className="min-h-[200px] rounded-xl bg-slate-50 p-4 dark:bg-white/[0.03]">
+        <div className="min-h-[200px] rounded-xl bg-stone-50 p-4 dark:bg-white/[0.03]">
           {open?.markdown_content ? (
             <Markdown source={open.markdown_content} />
           ) : open ? (
@@ -246,12 +246,12 @@ const Experiments = ({ experiments }: { experiments: ReturnType<typeof useResour
         {(rows) => (
           <ul className="flex max-h-[300px] flex-col gap-2 overflow-y-auto">
             {rows.map((x) => (
-              <li key={x.id} className="rounded-xl bg-slate-50 p-3 dark:bg-white/[0.03]">
+              <li key={x.id} className="rounded-xl bg-stone-50 p-3 dark:bg-white/[0.03]">
                 <div className="flex items-center justify-between gap-2">
-                  <span className="truncate text-sm font-semibold text-slate-800 dark:text-slate-100">{x.name}</span>
+                  <span className="truncate text-sm font-semibold text-stone-800 dark:text-stone-100">{x.name}</span>
                   <StatusBadge status={x.status} />
                 </div>
-                <p className="mt-0.5 text-[11px] text-slate-500 dark:text-slate-400">{x.model_a_name} vs {x.model_b_name} · {x.hypothesis}</p>
+                <p className="mt-0.5 text-[11px] text-stone-500 dark:text-stone-400">{x.model_a_name} vs {x.model_b_name} · {x.hypothesis}</p>
                 {x.status === 'RUNNING' ? (
                   <div className="mt-2 flex gap-1.5">
                     <ConfirmButton size="sm" variant="ghost" confirmLabel={`${x.model_a_name} wins?`} onConfirm={() => void conclude(x, x.model_a_name)}>A wins</ConfirmButton>
@@ -310,8 +310,8 @@ const HumanTouch = () => {
             <div className="flex flex-col gap-4">
               <div className="flex items-center justify-between gap-3">
                 <div>
-                  <p className="text-sm font-semibold text-slate-800 dark:text-slate-100">Blended mode</p>
-                  <p className="text-xs text-slate-500 dark:text-slate-400">When off, the pure math probability passes through untouched.</p>
+                  <p className="text-sm font-semibold text-stone-800 dark:text-stone-100">Blended mode</p>
+                  <p className="text-xs text-stone-500 dark:text-stone-400">When off, the pure math probability passes through untouched.</p>
                 </div>
                 <Toggle label="Blended mode" checked={draft.is_blended_mode_active} onChange={(v) => setDraft({ ...draft, is_blended_mode_active: v })} />
               </div>
@@ -321,8 +321,8 @@ const HumanTouch = () => {
               {slider('momentum_weight', 'Momentum weight', 1, 0.05)}
               <Button variant="primary" icon="save" onClick={() => void save()}>Save configuration</Button>
             </div>
-            <div className="flex flex-col gap-3 rounded-xl bg-slate-50 p-4 dark:bg-white/[0.03]">
-              <p className="text-sm font-semibold text-slate-800 dark:text-slate-100">Blend calculator</p>
+            <div className="flex flex-col gap-3 rounded-xl bg-stone-50 p-4 dark:bg-white/[0.03]">
+              <p className="text-sm font-semibold text-stone-800 dark:text-stone-100">Blend calculator</p>
               <div className="grid grid-cols-2 gap-2.5">
                 <Field label="Math probability (0-1)"><NumberInput value={blend.prob} onChange={(e) => setBlend({ ...blend, prob: e.target.value })} /></Field>
                 <Field label="Sentiment (-1 to 1)"><NumberInput value={blend.sentiment} onChange={(e) => setBlend({ ...blend, sentiment: e.target.value })} /></Field>
@@ -368,7 +368,7 @@ export const TheLab = () => {
         commander="PANINI"
         headline={`PANINI ACTIVE. ${running} experiment${running === 1 ? '' : 's'} running, ${compiling} report${compiling === 1 ? '' : 's'} compiling, ${online}/${health.data?.length ?? 3} sources reachable.`}
         motif={MOTIFS.hex}
-        detail={lastDone ? <>Latest report: <strong className="text-slate-800 dark:text-slate-100">{lastDone.topic}</strong> ({formatAgo(lastDone.completed_at)}).</> : 'Queue a research topic or start an A/B experiment to put the lab to work.'}
+        detail={lastDone ? <>Latest report: <strong className="text-stone-800 dark:text-stone-100">{lastDone.topic}</strong> ({formatAgo(lastDone.completed_at)}).</> : 'Queue a research topic or start an A/B experiment to put the lab to work.'}
         scene={<TheLabScene analysisState={state} activeBeakers={Math.max(1, Math.min(6, running + compiling))} statusLabel={state === 'synthesizing' ? 'Synthesizing' : state === 'complete' ? 'Report ready' : 'Standing by'} className="h-[220px]" />}
         actions={
           <>

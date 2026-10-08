@@ -58,21 +58,21 @@ const TaskCard = ({ task, onClaim }: { task: Task; onClaim: (bot: CommanderId) =
   });
 
   return (
-    <motion.li layout initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, scale: 0.96 }} className="rounded-xl bg-white p-3 shadow-sm ring-1 ring-inset ring-slate-900/[0.06] dark:bg-white/[0.04] dark:ring-white/[0.06]">
+    <motion.li layout initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, scale: 0.96 }} whileHover={{ y: -2 }} transition={{ type: "spring", stiffness: 160, damping: 22 }} className="rounded-2xl bg-white p-4 shadow-soft dark:bg-stone-800/60 dark:shadow-none">
       <div className="flex items-start justify-between gap-2">
-        <p className="text-sm font-semibold leading-snug text-slate-800 dark:text-slate-100">{task.title}</p>
+        <p className="text-sm font-semibold leading-snug text-stone-800 dark:text-stone-100">{task.title}</p>
         <Pill tone={task.priority >= 75 ? 'critical' : task.priority >= 50 ? 'warning' : 'neutral'}>P{task.priority}</Pill>
       </div>
-      {task.description && <p className="mt-1 line-clamp-2 text-[11px] text-slate-500 dark:text-slate-400">{task.description}</p>}
-      <div className="mt-2 flex flex-wrap items-center gap-1.5 text-[10px] text-slate-400">
-        {assignee && <span className="font-bold uppercase tracking-wider" style={{ color: assignee.theme.primary }}>{assignee.name}</span>}
+      {task.description && <p className="mt-1 line-clamp-2 text-[11px] text-stone-500 dark:text-stone-400">{task.description}</p>}
+      <div className="mt-2 flex flex-wrap items-center gap-1.5 text-[10px] text-stone-400">
+        {assignee && <span className="font-semibold " style={{ color: assignee.theme.primary }}>{assignee.name}</span>}
         {task.parent_task_ids.length > 0 && <span>· {task.parent_task_ids.length} dependenc{task.parent_task_ids.length === 1 ? 'y' : 'ies'}</span>}
         {task.retry_count > 0 && <span>· retry {task.retry_count}/{task.max_retries}</span>}
         <span>· {formatAgo(task.updated_at)}</span>
       </div>
       {task.status === 'BACKLOG' && (
         <div className="mt-2.5 flex gap-1.5">
-          <select value={bot} onChange={(e) => setBot(e.target.value as CommanderId)} className="min-w-0 flex-1 rounded-lg bg-slate-50 px-2 py-1 text-[11px] ring-1 ring-inset ring-slate-900/10 dark:bg-white/[0.04] dark:ring-white/10" aria-label="Commander to dispatch">
+          <select value={bot} onChange={(e) => setBot(e.target.value as CommanderId)} className="min-w-0 flex-1 rounded-full bg-stone-100 px-3 py-1.5 text-xs dark:bg-stone-700/60" aria-label="Commander to dispatch">
             {COMMANDER_IDS.map((id) => <option key={id} value={id}>{COMMANDER_REGISTRY[id].name}</option>)}
           </select>
           <Button size="sm" icon="play_arrow" onClick={() => onClaim(bot)}>Dispatch</Button>
@@ -153,25 +153,25 @@ const ScraperSwarm = ({ intel, scanning, onScan }: { intel: ReturnType<typeof us
           <div className="grid grid-cols-1 gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)]">
             <div className="flex flex-col gap-2">
               {d.bots.map((b) => (
-                <button key={b.id} type="button" onClick={() => setSite(b.target_site.split('.')[0])} className={`flex items-center justify-between gap-3 rounded-xl px-3 py-2.5 text-left transition-colors ${site === b.target_site.split('.')[0] ? 'bg-[color-mix(in_srgb,var(--accent)_10%,transparent)]' : 'bg-slate-50 hover:bg-slate-100 dark:bg-white/[0.03] dark:hover:bg-white/[0.06]'}`}>
+                <button key={b.id} type="button" onClick={() => setSite(b.target_site.split('.')[0])} className={`flex items-center justify-between gap-3 rounded-xl px-3 py-2.5 text-left transition-colors ${site === b.target_site.split('.')[0] ? 'bg-[color-mix(in_srgb,var(--accent)_10%,transparent)]' : 'bg-stone-50 hover:bg-stone-100 dark:bg-white/[0.03] dark:hover:bg-white/[0.06]'}`}>
                   <span className="min-w-0">
-                    <span className="block truncate text-sm font-semibold text-slate-800 dark:text-slate-100">{b.name}</span>
-                    <span className="text-[11px] text-slate-400">{b.target_site} · last scan {formatAgo(b.last_scan_at)}</span>
+                    <span className="block truncate text-sm font-semibold text-stone-800 dark:text-stone-100">{b.name}</span>
+                    <span className="text-[11px] text-stone-400">{b.target_site} · last scan {formatAgo(b.last_scan_at)}</span>
                   </span>
                   <StatusBadge status={b.status} />
                 </button>
               ))}
-              <p className="mt-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-400">Open gaps</p>
+              <p className="mt-1 text-[11px] font-semibold text-stone-400">Open gaps</p>
               <ul className="flex flex-col gap-1.5">
                 {d.gaps.filter((g) => !g.is_resolved).slice(0, 8).map((g) => (
                   <li key={g.id} className="flex items-center justify-between gap-2 text-xs">
-                    <span className="truncate text-slate-700 dark:text-slate-200">{g.missing_feature} <span className="text-slate-400">· {g.site_name}</span></span>
+                    <span className="truncate text-stone-700 dark:text-stone-200">{g.missing_feature} <span className="text-stone-400">· {g.site_name}</span></span>
                     <StatusBadge status={g.severity} />
                   </li>
                 ))}
               </ul>
             </div>
-            <div className="min-h-[200px] rounded-xl bg-slate-50 p-4 dark:bg-white/[0.03]">
+            <div className="min-h-[200px] rounded-xl bg-stone-50 p-4 dark:bg-white/[0.03]">
               {!site ? <EmptyState icon="article" title="Pick a competitor" detail="Opens the gap analysis report for that site." /> : (
                 <Async resource={report}>{(r) => <Markdown source={r.markdown} />}</Async>
               )}
@@ -243,18 +243,18 @@ export const TheHive = () => {
           {() => (
             <div className="grid grid-cols-[repeat(auto-fit,minmax(9.5rem,1fr))] gap-3">
               {COLUMNS.map((col, i) => (
-                <div key={col.title} className="flex min-w-0 flex-col gap-2 rounded-xl bg-slate-50 p-2 dark:bg-white/[0.02]">
+                <div key={col.title} className="flex min-w-0 flex-col gap-2 rounded-xl bg-stone-50 p-2 dark:bg-white/[0.02]">
                   <div className="flex items-center justify-between px-1">
-                    <span className="flex items-center gap-1 text-[10px] font-bold uppercase tracking-[0.14em] text-slate-500">
+                    <span className="flex items-center gap-1 text-xs font-semibold text-stone-500">
                       <span className="material-symbols-outlined text-[14px]">{col.icon}</span>{col.title}
                     </span>
-                    <span className="text-[10px] tabular-nums text-slate-400">{byColumn[i].length}</span>
+                    <span className="text-[10px] tabular-nums text-stone-400">{byColumn[i].length}</span>
                   </div>
                   <ul className="flex max-h-[460px] flex-col gap-2 overflow-y-auto">
                     <AnimatePresence initial={false}>
                       {byColumn[i].map((t) => <TaskCard key={t.id} task={t} onClaim={(bot) => void claim(bot)} />)}
                     </AnimatePresence>
-                    {byColumn[i].length === 0 && <li className="px-1 py-4 text-center text-[11px] text-slate-400">Empty</li>}
+                    {byColumn[i].length === 0 && <li className="px-1 py-4 text-center text-[11px] text-stone-400">Empty</li>}
                   </ul>
                 </div>
               ))}
@@ -269,11 +269,11 @@ export const TheHive = () => {
           {events.length === 0 ? (
             <EmptyState icon="bolt" title="Listening" detail="Task transitions stream here the moment they happen." />
           ) : (
-            <ul className="max-h-[260px] divide-y divide-slate-900/[0.05] overflow-y-auto dark:divide-white/[0.05]">
+            <ul className="max-h-[260px] flex flex-col gap-0.5 overflow-y-auto p-2.5">
               {events.map((e, i) => (
-                <li key={`${e.at}-${i}`} className="flex items-center justify-between gap-2 px-4 py-2 text-xs">
-                  <span className="text-slate-700 dark:text-slate-200">{humanize(e.event)}{e.assignee_name ? ` · ${e.assignee_name}` : ''}</span>
-                  <span className="font-mono text-[10px] text-slate-400">{formatTime(e.at)}</span>
+                <li key={`${e.at}-${i}`} className="flex items-center justify-between gap-3 px-3.5 py-3 text-sm rounded-2xl transition-colors duration-300 hover:bg-stone-50 dark:hover:bg-white/[0.025]">
+                  <span className="text-stone-700 dark:text-stone-200">{humanize(e.event)}{e.assignee_name ? ` · ${e.assignee_name}` : ''}</span>
+                  <span className="font-mono text-[11px] text-stone-400 dark:text-stone-500">{formatTime(e.at)}</span>
                 </li>
               ))}
             </ul>

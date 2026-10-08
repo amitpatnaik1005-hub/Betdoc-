@@ -81,7 +81,6 @@ const LiveOddsMatrix = ({ odds, steam }: { odds: ReturnType<typeof useLiveOdds>;
       className="lg:col-span-8"
       updatedAt={odds.updatedAt}
       subtitle={odds.data ? `${odds.data.length} fixtures · best price across books` : undefined}
-      bodyClassName="p-4"
     >
       <Async
         resource={odds}
@@ -90,16 +89,16 @@ const LiveOddsMatrix = ({ odds, steam }: { odds: ReturnType<typeof useLiveOdds>;
         empty={<EmptyState icon="sports_soccer" title="No fixtures in the odds store" detail="The odds poller writes snapshots here when ODDS_API_KEY and ODDS_SPORT_KEYS are configured." />}
       >
         {(rows) => (
-          <div className="-mx-4 -my-4 overflow-x-auto">
+          <div className="-m-5 overflow-x-auto sm:-m-6">
             <table className="w-full min-w-[620px] text-sm">
               <thead>
-                <tr className="border-b border-slate-900/[0.06] text-[10px] font-bold uppercase tracking-[0.14em] text-slate-400 dark:border-white/[0.06]">
-                  <th className="px-4 py-2.5 text-left">Fixture</th>
-                  {SIDES.map((s) => <th key={s} className="px-2 py-2.5 text-center">{s}</th>)}
-                  <th className="px-4 py-2.5 text-right">Signal</th>
+                <tr className="text-xs font-medium text-stone-400 dark:text-stone-500">
+                  <th className="py-4 pl-6 pr-3 text-left font-medium">Fixture</th>
+                  {SIDES.map((s) => <th key={s} className="px-2 py-4 text-center font-medium capitalize">{s.toLowerCase()}</th>)}
+                  <th className="py-4 pl-3 pr-6 text-right font-medium">Signal</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-900/[0.05] dark:divide-white/[0.05]">
+              <tbody>
                 {rows.slice(0, 40).map((m: MatchOdds) => {
                   const best = bestPrices(m);
                   const fair = fairProbabilities(best);
@@ -108,8 +107,8 @@ const LiveOddsMatrix = ({ odds, steam }: { odds: ReturnType<typeof useLiveOdds>;
                   return (
                     <tr key={m.id} className={draftMatchId === m.id ? 'bg-[color-mix(in_srgb,var(--accent)_6%,transparent)]' : undefined}>
                       <td className="px-4 py-2.5">
-                        <p className="font-medium text-slate-800 dark:text-slate-100">{label}</p>
-                        <p className="text-[11px] text-slate-400">{formatDateTime(m.commence_time)} · {m.bookmakers.length} books</p>
+                        <p className="font-medium text-stone-800 dark:text-stone-100">{label}</p>
+                        <p className="text-[11px] text-stone-400">{formatDateTime(m.commence_time)} · {m.bookmakers.length} books</p>
                       </td>
                       {SIDES.map((side) => {
                         const price = best[side];
@@ -121,14 +120,14 @@ const LiveOddsMatrix = ({ odds, steam }: { odds: ReturnType<typeof useLiveOdds>;
                                 onClick={() => setDraft({ matchId: m.id, selection: side, odds: price.price, trueProbability: fair[side], label, source: 'Arena · best price' })}
                                 aria-label={`Back ${side.toLowerCase()} in ${label} at ${formatOdds(price.price)}`}
                                 title={`${price.bookmaker} · fair ${(100 * (fair[side] ?? 0)).toFixed(1)}%`}
-                                className="rounded-lg px-2.5 py-1 font-mono text-sm font-semibold tabular-nums text-slate-800 ring-1 ring-inset ring-slate-900/10 transition-colors hover:bg-[var(--accent)] hover:text-[var(--accent-ink)] hover:ring-transparent dark:text-slate-100 dark:ring-white/10"
+                                className="rounded-xl bg-stone-100/80 px-3 py-1.5 font-mono text-sm font-medium tabular-nums text-stone-700 transition-[background-color,color,transform] duration-300 hover:scale-[1.04] hover:bg-[var(--accent)] hover:text-[var(--accent-ink)] active:scale-95 dark:bg-stone-800 dark:text-stone-300"
                               >
                                 {formatOdds(price.price)}
                               </button>
                             ) : (
-                              <span className="text-slate-300 dark:text-slate-600">—</span>
+                              <span className="text-stone-300 dark:text-stone-600">—</span>
                             )}
-                            {price && <p className="mt-0.5 truncate text-[10px] text-slate-400">{price.bookmaker}</p>}
+                            {price && <p className="mt-0.5 truncate text-[10px] text-stone-400">{price.bookmaker}</p>}
                           </td>
                         );
                       })}
@@ -170,25 +169,19 @@ const TacticalFeed = ({ steam, surebets }: { steam: SteamAlert[]; surebets: Sure
   }, [events, steam, surebets]);
 
   return (
-    <Panel title="Tactical feed" icon="terminal" className="lg:col-span-4" bodyClassName="p-0">
-      <div className="flex items-center gap-2 border-b border-slate-900/[0.06] px-4 py-2.5 font-mono text-[10px] text-slate-400 dark:border-white/[0.06]">
-        <span className="size-2 rounded-full bg-rose-500/70" />
-        <span className="size-2 rounded-full bg-amber-500/70" />
-        <span className="size-2 rounded-full bg-emerald-500/70" />
-        <span className="ml-1">bajirao@arena:~$ tail -f tactical.log</span>
-      </div>
+    <Panel title="Activity" icon="timeline" className="lg:col-span-4" bodyClassName="p-0">
       {lines.length === 0 ? (
-        <EmptyState icon="terminal" title="Quiet tape" detail="Executions, settlements, steam moves and arbitrage hits stream here live." />
+        <EmptyState icon="timeline" title="All quiet" detail="Executions, settlements, steam moves and arbitrage hits stream here live." />
       ) : (
-        <ul className="max-h-[440px] divide-y divide-slate-900/[0.05] overflow-y-auto dark:divide-white/[0.05]">
+        <ul className="flex max-h-[440px] flex-col gap-0.5 overflow-y-auto p-2.5">
           <AnimatePresence initial={false}>
             {lines.map((l) => (
-              <motion.li key={l.key} initial={{ opacity: 0, x: -8 }} animate={{ opacity: 1, x: 0 }} className="flex flex-col gap-1 px-4 py-2.5">
+              <motion.li key={l.key} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ type: "spring", stiffness: 140, damping: 24 }} className="flex flex-col gap-1.5 px-3.5 py-3 rounded-2xl transition-colors duration-300 hover:bg-stone-50 dark:hover:bg-white/[0.025]">
                 <div className="flex items-center gap-2">
                   <Pill tone={l.tone}>{l.tag}</Pill>
-                  <span className="font-mono text-[10px] text-slate-400">{formatTime(l.at)}</span>
+                  <span className="font-mono text-[11px] text-stone-400 dark:text-stone-500">{formatTime(l.at)}</span>
                 </div>
-                <p className="break-words font-mono text-[11px] leading-relaxed text-slate-600 dark:text-slate-300">{l.text}</p>
+                <p className="break-words text-[13px] leading-relaxed text-stone-600 dark:text-stone-400">{l.text}</p>
               </motion.li>
             ))}
           </AnimatePresence>
@@ -228,8 +221,8 @@ const OpenPositions = ({ fairByMatch }: { fairByMatch: Map<string, Partial<Recor
   const columns: Column<ActiveBet>[] = [
     { key: 'match', header: 'Position', render: (b) => (
       <div>
-        <p className="font-medium text-slate-800 dark:text-slate-100">{b.selection} <span className="font-mono text-xs text-slate-400">{b.match_id}</span></p>
-        <p className="text-[11px] text-slate-400">{b.exchange} · {b.market_type} · {formatAgo(b.placed_at)}{b.strategy_name ? ` · ${b.strategy_name}` : ''}</p>
+        <p className="font-medium text-stone-800 dark:text-stone-100">{b.selection} <span className="font-mono text-xs text-stone-400">{b.match_id}</span></p>
+        <p className="text-[11px] text-stone-400">{b.exchange} · {b.market_type} · {formatAgo(b.placed_at)}{b.strategy_name ? ` · ${b.strategy_name}` : ''}</p>
       </div>
     ) },
     { key: 'stake', header: 'Stake @ odds', align: 'right', render: (b) => `${formatINR(b.stake)} @ ${formatOdds(b.odds)}` },
@@ -258,7 +251,7 @@ const OpenPositions = ({ fairByMatch }: { fairByMatch: Map<string, Partial<Recor
       <Async
         resource={active}
         isEmpty={(rows) => rows.length === 0}
-        empty={<EmptyState icon="swords" title="No open positions" detail="Click any price in the matrix (or an Oracle value bet) to stage an order in the execution terminal." />}
+        empty={<EmptyState icon="swords" title="No open positions" detail="Click any price in the matrix (or an Oracle value bet) to add it to your bet slip." />}
       >
         {(rows) => <DataTable columns={columns} rows={rows} rowKey={(b) => b.id} />}
       </Async>

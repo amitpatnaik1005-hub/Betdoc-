@@ -7,19 +7,19 @@ export const BRAND = {
   violet: '#D97706',
   gradient: 'bg-gradient-to-tr from-[#9F7A2A] via-[#C89B3C] to-[#E3BE63]',
   gradientText: 'bg-gradient-to-tr from-[#9F7A2A] via-[#C89B3C] to-[#E3BE63] bg-clip-text text-transparent dark:from-[#C89B3C] dark:via-[#E3BE63] dark:to-[#F1D898]',
-  glow: 'shadow-[0_8px_28px_-8px_rgba(200,155,60,0.55)]',
-  glowHover: 'hover:shadow-[0_12px_32px_-8px_rgba(200,155,60,0.65)]',
-  ring: 'focus-visible:ring-2 focus-visible:ring-[#C89B3C]/40 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-[#121110]',
+  glow: 'shadow-soft',
+  glowHover: 'hover:shadow-soft-lg',
+  ring: 'focus-visible:ring-2 focus-visible:ring-[#C89B3C]/40 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-[#0c0a09]',
 } as const;
 
 export const SURFACE = {
-  card: 'bg-white ring-1 ring-inset ring-slate-900/[0.06] dark:bg-[#161514] dark:ring-white/10',
-  canvas: 'bg-[#F8F6F0] dark:bg-[#121110]',
-  divider: 'border-slate-200/60 dark:border-white/[0.06]',
-  eyebrow: 'text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-400 dark:text-slate-500',
-  primary: 'text-slate-900 dark:text-[#E8E6E3]',
-  secondary: 'text-slate-500 dark:text-[#A8A49F]',
-  muted: 'text-slate-400 dark:text-[#73706C]',
+  card: 'bg-white ring-1 ring-inset ring-stone-900/[0.06] dark:bg-[#1c1917] dark:ring-white/10',
+  canvas: 'bg-[#F8F6F0] dark:bg-[#0c0a09]',
+  divider: 'border-stone-200/60 dark:border-white/[0.06]',
+  eyebrow: 'text-xs font-medium text-stone-400 dark:text-stone-500',
+  primary: 'text-stone-900 dark:text-[#E8E6E3]',
+  secondary: 'text-stone-500 dark:text-[#A8A49F]',
+  muted: 'text-stone-400 dark:text-[#73706C]',
 } as const;
 
 export type LogoVariant = 'full' | 'mark';
@@ -32,7 +32,7 @@ const BetdocVector = ({
   readonly className?: string;
 }): ReactElement => {
   const lineClass =
-    variant === 'mark' ? 'stroke-[#C89B3C]' : 'stroke-slate-900 dark:stroke-[#C89B3C]';
+    variant === 'mark' ? 'stroke-[#C89B3C]' : 'stroke-stone-900 dark:stroke-[#C89B3C]';
 
   return (
     <svg viewBox="0 0 24 24" className={className} fill="none" aria-hidden="true" focusable="false">
@@ -60,11 +60,11 @@ export const BetdocLogo = ({
       <span
         role="img"
         aria-label="betdoc"
-        className={`grid size-12 shrink-0 place-items-center rounded-2xl bg-[#161514] shadow-xl shadow-black/40 ring-1 ring-white/10 ${className}`}
+        className={`grid size-12 shrink-0 place-items-center rounded-2xl bg-[#1c1917] shadow-soft ${className}`}
       >
         <BetdocVector
           variant="mark"
-          className="size-7 drop-shadow-[0_0_8px_rgba(200,155,60,0.45)]"
+          className="size-7"
         />
       </span>
     );
@@ -74,10 +74,10 @@ export const BetdocLogo = ({
     <div role="img" aria-label="betdoc" className={`flex items-center gap-2 ${className}`}>
       <BetdocVector
         variant="full"
-        className="h-9 w-9 shrink-0 dark:drop-shadow-[0_0_10px_rgba(200,155,60,0.35)]"
+        className="h-9 w-9 shrink-0"
       />
       <span className="select-none whitespace-nowrap text-2xl font-bold leading-none tracking-tight">
-        <span className="text-slate-900 dark:text-[#E8E6E3]">betd</span>
+        <span className="text-stone-900 dark:text-[#E8E6E3]">betd</span>
         <span className="text-[#C89B3C]">oc.</span>
       </span>
     </div>
@@ -159,7 +159,7 @@ export const SectionHeadline = ({
         className={`text-[18px] ${
           accent === 'brand'
             ? 'text-[#C89B3C] dark:text-[#E0B85A]'
-            : 'text-slate-500 dark:text-[#A6A39E]'
+            : 'text-stone-500 dark:text-[#A6A39E]'
         }`}
         filled
       />

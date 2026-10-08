@@ -74,7 +74,7 @@ export const CoreFactoryScene: React.FC<CoreFactorySceneProps> = ({
           </linearGradient>
         </defs>
 
-        <rect x="0" y="0" width="1000" height="1000" className="fill-slate-950" />
+        <rect x="0" y="0" width="1000" height="1000" className="fill-transparent" />
 
         {gears.map((gear, i) => (
           <motion.g
@@ -84,8 +84,8 @@ export const CoreFactoryScene: React.FC<CoreFactorySceneProps> = ({
             transition={{ duration: gearSeconds * (gear.r / 90), repeat: Infinity, ease: "linear" }}
             style={{ transformOrigin: `${gear.cx}px ${gear.cy}px`, willChange: "transform" }}
           >
-            <path d={gearPath(gear.cx, gear.cy, gear.r, gear.teeth)} style={{ fill: machineColorClass }} className="stroke-slate-900" strokeWidth="3" />
-            <circle cx={gear.cx} cy={gear.cy} r={gear.r * 0.3} className="fill-slate-900" />
+            <path d={gearPath(gear.cx, gear.cy, gear.r, gear.teeth)} style={{ fill: machineColorClass }} className="stroke-stone-900" strokeWidth="3" />
+            <circle cx={gear.cx} cy={gear.cy} r={gear.r * 0.3} className="fill-stone-900" />
           </motion.g>
         ))}
 
@@ -99,19 +99,19 @@ export const CoreFactoryScene: React.FC<CoreFactorySceneProps> = ({
           transition={{ type: "spring", stiffness: 300, damping: 10, mass: 2 }}
           style={{ willChange: "transform" }}
         >
-          <rect x="488" y="180" width="24" height="240" className="fill-slate-500" />
-          <rect x="420" y="410" width="160" height="60" rx="6" className="fill-slate-300 stroke-slate-500" strokeWidth="4" />
+          <rect x="488" y="180" width="24" height="240" className="fill-stone-500" />
+          <rect x="420" y="410" width="160" height="60" rx="6" className="fill-stone-300 stroke-stone-500" strokeWidth="4" />
           <rect x="440" y="470" width="120" height="16" rx="4" className="fill-amber-400" />
         </motion.g>
 
-        <rect x="380" y="640" width="240" height="30" rx="4" className="fill-slate-700" />
-        <rect x="60" y="670" width="880" height="40" rx="10" className="fill-slate-800 stroke-slate-600" strokeWidth="4" />
+        <rect x="380" y="640" width="240" height="30" rx="4" className="fill-stone-700" />
+        <rect x="60" y="670" width="880" height="40" rx="10" className="fill-stone-800 stroke-stone-600" strokeWidth="4" />
         <motion.line
           x1="70"
           y1="690"
           x2="930"
           y2="690"
-          className="stroke-slate-500"
+          className="stroke-stone-500"
           strokeWidth="6"
           strokeDasharray="30 30"
           initial={{ strokeDashoffset: 0 }}
@@ -124,7 +124,7 @@ export const CoreFactoryScene: React.FC<CoreFactorySceneProps> = ({
             cx={x}
             cy="730"
             r="22"
-            className="fill-slate-700 stroke-slate-500"
+            className="fill-stone-700 stroke-stone-500"
             strokeWidth="4"
             strokeDasharray="12 12"
             initial={{ rotate: 0 }}
@@ -148,8 +148,8 @@ export const CoreFactoryScene: React.FC<CoreFactorySceneProps> = ({
           </motion.g>
         ))}
 
-        <text x="500" y="860" textAnchor="middle" className="fill-slate-400 font-mono" fontSize="22" letterSpacing="6">
-          TICKETS
+        <text x="500" y="860" textAnchor="middle" className="fill-stone-400 font-sans" fontSize="24" letterSpacing="1">
+          Tickets
         </text>
         <AnimatePresence mode="popLayout">
           <motion.text
@@ -157,7 +157,7 @@ export const CoreFactoryScene: React.FC<CoreFactorySceneProps> = ({
             x="500"
             y="930"
             textAnchor="middle"
-            className="fill-amber-300 font-mono"
+            className="fill-stone-700 font-mono dark:fill-stone-300"
             fontSize="64"
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
@@ -177,7 +177,7 @@ export const CoreFactoryScene: React.FC<CoreFactorySceneProps> = ({
               return (
                 <motion.div
                   key={`spark-${i}`}
-                  className="absolute h-1.5 w-1.5 rounded-full bg-amber-300 shadow-[0_0_6px_rgba(252,211,77,0.9)]"
+                  className="absolute h-1.5 w-1.5 rounded-full bg-amber-300/80"
                   initial={{ x: 0, y: 0, opacity: 1, scale: 1 }}
                   animate={{ x: [0, offset.x], y: [0, offset.y], opacity: [1, 0], scale: [1, 0.3] }}
                   exit={{ opacity: 0 }}

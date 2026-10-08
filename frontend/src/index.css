@@ -8,7 +8,7 @@
  * --accent-ink: text ON an accent fill (white or near-black, whichever contrasts more; set by the shell).
  * --accent-text: accent-coloured text; darkened in light mode so every theme clears 4.5:1 on white.
  * --viz-*: chart roles from the validated data-viz palette (checked against these card surfaces,
- *          #ffffff light and #161514 dark: all CVD, contrast and lightness gates pass).
+ *          #ffffff light and #1c1917 dark: all CVD, contrast and lightness gates pass).
  */
 :root {
   --accent: #c89b3c;
@@ -35,6 +35,31 @@
   --viz-negative: #e66767;
   --viz-grid: rgba(255, 255, 255, 0.06);
   --viz-axis: #73706c;
+}
+
+@layer base {
+  html {
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+  }
+  body {
+    @apply bg-[#F8F6F0] font-sans text-stone-800 dark:bg-stone-950 dark:text-stone-200;
+    font-feature-settings: "cv11", "ss01";
+  }
+  h1, h2, h3 {
+    @apply font-display tracking-tight;
+  }
+  /* Figures align in columns everywhere they appear. */
+  .font-mono, .tabular-nums {
+    font-variant-numeric: tabular-nums slashed-zero;
+  }
+  ::selection {
+    background: color-mix(in srgb, var(--accent) 22%, transparent);
+  }
+  :focus-visible {
+    outline-color: var(--accent);
+  }
 }
 
 @layer utilities {

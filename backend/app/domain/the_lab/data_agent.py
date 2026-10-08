@@ -21,6 +21,8 @@ from app.models.odds import OddsSnapshot
 MAX_TEAMS_SCANNED = 5_000
 MAX_FIXTURES_REPORTED = 6
 SETTLED = ("WON", "LOST", "HALF_WON", "HALF_LOST", "CASH_OUT", "VOID")
+# The poller stores the 1X2 market as "Match Odds"; older/seeded rows use the API name "h2h".
+H2H_MARKETS = ("h2h", "Match Odds")
 
 
 def _clean(text: str) -> str:
@@ -66,7 +68,7 @@ class DataResearchAgent:
             cond = or_(*(or_(OddsSnapshot.home_team == t, OddsSnapshot.away_team == t) for t in teams))
         else:
             cond = or_(*(or_(OddsSnapshot.home_team.ilike(f"%{w}%"), OddsSnapshot.away_team.ilike(f"%{w}%")) for w in self._keywords(topic)))
-        stmt = select(OddsSnapshot).where(cond, OddsSnapshot.market_type == "h2h").order_by(OddsSnapshot.timestamp)
+        stmt = select(OddsSnapshot).where(cond, OddsSnapshot.market_type.in_(H2H_MARKETS)).order_by(OddsSnapshot.timestamp)
         return list((await db.execute(stmt.limit(20_000))).scalars().all())
 
     # ------------------------------------------------------------------ sections

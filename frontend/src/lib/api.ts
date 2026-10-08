@@ -107,13 +107,28 @@ export interface BestPrice {
   bookmaker: string;
 }
 
+// The Odds API calls the 1X2 market "h2h" with team-named outcomes; the poller stores it as
+// "Match Odds" with HOME / DRAW / AWAY. Both shapes reach the UI.
+const MATCH_ODDS_KEYS: ReadonlySet<string> = new Set(["h2h", "match odds", "match_odds", "1x2"]);
+
+/** The bookmaker's head-to-head (1X2) market, whichever name it was stored under. */
+export const matchOddsMarket = (book: OddsBookmaker) => book.markets.find((m) => MATCH_ODDS_KEYS.has(m.key.toLowerCase()));
+
+/** HOME / DRAW / AWAY for an outcome named either by team or by side. */
+export function outcomeSide(name: string, match: MatchOdds): Side | null {
+  const upper = name.toUpperCase();
+  if (upper === "HOME" || upper === "DRAW" || upper === "AWAY") return upper;
+  if (name === match.home_team) return "HOME";
+  if (name === match.away_team) return "AWAY";
+  return upper === "X" || upper === "TIE" ? "DRAW" : null;
+}
+
 /** Best head-to-head price per side across every bookmaker quoting the match. */
 export function bestPrices(match: MatchOdds): Partial<Record<Side, BestPrice>> {
   const best: Partial<Record<Side, BestPrice>> = {};
   for (const book of match.bookmakers) {
-    const h2h = book.markets.find((m) => m.key === "h2h");
-    for (const o of h2h?.outcomes ?? []) {
-      const side: Side | null = o.name === match.home_team ? "HOME" : o.name === match.away_team ? "AWAY" : o.name.toLowerCase() === "draw" ? "DRAW" : null;
+    for (const o of matchOddsMarket(book)?.outcomes ?? []) {
+      const side = outcomeSide(o.name, match);
       if (!side || !Number.isFinite(o.price)) continue;
       if (!best[side] || o.price > best[side]!.price) best[side] = { side, price: o.price, bookmaker: book.title };
     }

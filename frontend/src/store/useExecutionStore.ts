@@ -110,7 +110,7 @@ export const useExecutionStore = create<ExecutionState>()((set, get) => ({
       lastSuccess: null,
     });
     useUIStore.getState().openRight();
-    toast.info("Loaded into the execution terminal", label ? `${label} · ${selection} @ ${odds.toFixed(2)}` : undefined);
+    toast.info("Added to your bet slip", label ? `${label} · ${selection} @ ${odds.toFixed(2)}` : undefined);
   },
 
   updateDraftField: (field: keyof DraftState, value: string): void => {
