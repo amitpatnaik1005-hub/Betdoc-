@@ -1,5 +1,6 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { apiClient } from '../api/client';
+import { StakeCapPanel } from '../components/arena/StakeCapPanel';
 import { FleetCommand } from '../components/fleet/FleetCommand';
 import { type ControlSettings, emergencyStop, resumeTrading, useControls, useExchanges } from '../lib/api';
 import { formatAgo, formatINR, formatRatioPct, humanize } from '../lib/format';
@@ -332,6 +333,7 @@ export const ControlPanel = () => {
           <>
             <GlobalOverrides settings={settings} />
             <Credentials settings={settings} />
+            <StakeCapPanel settings={settings} />
           </>
         )}
       </Async>

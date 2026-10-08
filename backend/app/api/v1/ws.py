@@ -13,7 +13,9 @@ from app.core.database import AsyncSessionLocal
 from app.core.live_odds import encode_ticks, read_snapshot
 from app.core.websockets import manager
 from app.models import User
+from app.schemas.aryabhata import TradeSignal  # noqa: F401  (payload contract for /signals)
 from app.schemas.market import MarketTick  # noqa: F401  (payload contract for this channel)
+from app.services.aryabhata_pipeline import run_signal_socket
 
 logger = logging.getLogger(__name__)
 
@@ -121,6 +123,16 @@ async def live_odds(
 async def events_stream(websocket: WebSocket, user: WsUser) -> None:  # noqa: ARG001 - auth gate
     """Cross-section event bus: every section's writes, commander heartbeats, system halts."""
     await relay_channel(websocket, getattr(websocket.app.state, "redis", None), EVENTS_CHANNEL)
+
+
+@router.websocket("/signals")
+async def signals_stream(websocket: WebSocket, user: WsUser) -> None:
+    """Aryabhata's live +EV lines as ``TradeSignal``s, each staked for this user's live bankroll.
+
+    Frames: ``snapshot`` on connect and whenever the risk limits change (every live signal re-sized),
+    then ``signals`` with new or updated lines plus the ``withdrawn`` keys of edges that closed.
+    """
+    await run_signal_socket(websocket, user.id, getattr(websocket.app.state, "redis", None), AsyncSessionLocal, settings)
 
 
 @router.get("/live-odds/snapshot")

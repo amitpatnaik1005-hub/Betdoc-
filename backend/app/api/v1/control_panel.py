@@ -3,13 +3,15 @@
 import logging
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_db
+from app.core.config import settings as app_settings
 from app.domain.control_panel.errors import ControlPanelDomainError
 from app.domain.control_panel.manager import ControlPanelManager
 from app.schemas.control_panel import REDACTED, SECRET_FIELDS, SettingsRead, SettingsUpdate
+from app.services.aryabhata_pipeline import publish_risk_limits
 
 logger = logging.getLogger("betdoc.control_panel")
 
@@ -43,20 +45,23 @@ async def read_settings(db: DbSession, manager: Manager) -> SettingsRead:
 
 
 @router.patch("", response_model=SettingsRead)
-async def update_settings(payload: SettingsUpdate, db: DbSession, manager: Manager) -> SettingsRead:
+async def update_settings(payload: SettingsUpdate, request: Request, db: DbSession, manager: Manager) -> SettingsRead:
     try:
         settings = await manager.update_settings(db, updates=payload.model_dump(exclude_unset=True))
     except ControlPanelDomainError as exc:
         logger.warning("CONTROL: settings update rejected: %s", exc.message)
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=exc.message) from exc
+    # Live stake sizing reads the Redis mirror: refresh it now, not when its cache expires
+    await publish_risk_limits(getattr(request.app.state, "redis", None), settings, app_settings)
     return _redact(SettingsRead.model_validate(settings))
 
 
 @router.post("/emergency-stop", response_model=SettingsRead)
-async def emergency_stop(db: DbSession, manager: Manager) -> SettingsRead:
+async def emergency_stop(request: Request, db: DbSession, manager: Manager) -> SettingsRead:
     try:
         settings = await manager.emergency_stop(db)
     except ControlPanelDomainError as exc:
         logger.error("CONTROL: emergency stop failed: %s", exc.message)
         raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=exc.message) from exc
+    await publish_risk_limits(getattr(request.app.state, "redis", None), settings, app_settings)  # stakes drop to 0
     return _redact(SettingsRead.model_validate(settings))

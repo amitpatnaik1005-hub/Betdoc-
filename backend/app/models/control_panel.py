@@ -1,8 +1,9 @@
 """Control Panel: the global settings singleton (UI, APIs, bots, risk)."""
 
 from datetime import datetime
+from decimal import Decimal
 
-from sqlalchemy import Boolean, CheckConstraint, DateTime, Float, Integer, String
+from sqlalchemy import Boolean, CheckConstraint, DateTime, Float, Integer, Numeric, String
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.sql import func
 
@@ -19,6 +20,7 @@ class SystemSettingsModel(Base):
         CheckConstraint("global_stop_loss >= 0.0", name="ck_stop_loss"),
         CheckConstraint("max_bet_size >= 0.0", name="ck_max_bet"),
         CheckConstraint("max_daily_exposure >= 0.0", name="ck_max_exposure"),
+        CheckConstraint("max_stake_pct >= 1 AND max_stake_pct <= 10", name="ck_max_stake_pct"),
         CheckConstraint("research_frequency_minutes >= 1", name="ck_research_frequency"),
         CheckConstraint("theme IN ('light', 'dark', 'auto')", name="ck_theme"),
         CheckConstraint("length(accent_color) BETWEEN 4 AND 16", name="ck_accent_color_length"),
@@ -50,6 +52,8 @@ class SystemSettingsModel(Base):
     global_stop_loss: Mapped[float] = mapped_column(Float, default=100.0)
     max_bet_size: Mapped[float] = mapped_column(Float, default=50.0)
     max_daily_exposure: Mapped[float] = mapped_column(Float, default=500.0)
+    # Aryabhata never recommends a stake above this share of the live bankroll (Control Panel slider)
+    max_stake_pct: Mapped[Decimal] = mapped_column(Numeric(5, 2), default=Decimal("5.00"), server_default="5.00")
 
     # Telemetry
     last_emergency_stop_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

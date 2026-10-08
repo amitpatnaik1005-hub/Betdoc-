@@ -314,6 +314,7 @@ class SpecMapper:
                 return None
             kickoff = parse_timestamp(first(event, mapping.commence_time), mapping.commence_format)
             books: list[dict[str, float]] = []
+            names: list[str] = []
             for book in select(event, mapping.books) if mapping.books else [event]:
                 market = self._market(book)
                 if market is None:
@@ -328,6 +329,8 @@ class SpecMapper:
                     priced[label] = float(raw_price) if mapping.price.format == "decimal" else 1.0 / implied
                 if len(priced) >= 2:
                     books.append(priced)
+                    name = first(book, mapping.book_name) if mapping.book_name else None
+                    names.append(str(name).strip()[:64] if name is not None else "")
             suspended = bool(first(event, mapping.suspended)) if mapping.suspended else False
             return RawFixture(
                 sport=sport,
@@ -337,6 +340,7 @@ class SpecMapper:
                 kickoff=kickoff,
                 books=tuple(books),
                 suspended=suspended,
+                bookmakers=tuple(names),
             )
         except (TypeError, ValueError, KeyError, AttributeError, IndexError):
             return None

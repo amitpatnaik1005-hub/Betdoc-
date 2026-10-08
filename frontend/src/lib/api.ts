@@ -37,6 +37,8 @@ export interface ControlSettings {
   global_stop_loss: number;
   max_bet_size: number;
   max_daily_exposure: number;
+  /** Aryabhata's cap on any recommended stake, % of the live bankroll (1-10). */
+  max_stake_pct: number;
   last_emergency_stop_at: string | null;
   created_at: string;
   updated_at: string;

@@ -38,6 +38,7 @@ from app.adapters.base_adapter import StandardizedEvent
 from app.adapters.ingestion.base import IngestionBatch, SourcePayload
 from app.core.config import Settings
 from app.models.omni_vault import OmniQuarantineLog
+from app.schemas.aryabhata import BookQuote, MarketQuote
 from app.schemas.market import MarketTick, QuorumState
 from app.schemas.odds import NormalizedMatchOdds
 
@@ -496,6 +497,7 @@ def _probability(value: object) -> float | None:
 class NormalizationReport:
     source_id: str
     ticks: list[MarketTick] = field(default_factory=list)
+    quotes: list[MarketQuote] = field(default_factory=list)  # every book's prices, for the Aryabhata engine
     events_seen: int = 0
     events_normalized: int = 0
     malformed: int = 0  # events that raised while parsing: isolated, the rest of the batch still lands
@@ -522,7 +524,8 @@ class RawFixture:
     """One fixture as a bookmaker-style source quotes it, before canonical mapping.
 
     ``books`` holds one ``{HOME|DRAW|AWAY: decimal price}`` mapping per bookmaker (a single-book
-    source has one). Produced by the Odds API parser and by every config-driven provider.
+    source has one); ``bookmakers`` names them in the same order (empty or "" = the source itself).
+    Produced by the Odds API parser and by every config-driven provider.
     """
 
     sport: str
@@ -533,6 +536,7 @@ class RawFixture:
     books: tuple[Mapping[str, float], ...]
     observed_at: datetime | None = None
     suspended: bool = False
+    bookmakers: tuple[str, ...] = ()
 
 
 FixtureMapper = Callable[[SourcePayload], Sequence[RawFixture | None]]
@@ -639,9 +643,18 @@ class OmniNormalizer:
             confidence=min(0.95, 0.55 + 0.04 * priced_books),
             observed_at=(fixture.observed_at or fetched_at).astimezone(UTC),
             source_event_id=fixture.event_id,
+            fetched_at=fetched_at,
+            books=[(self._bookmaker(fixture, index, report.source_id), book) for index, book in enumerate(fixture.books) if len(book) >= 2],
         )
 
     # ---------------------------------------------------------------- shared
+    @staticmethod
+    def _bookmaker(fixture: RawFixture, index: int, source_id: str) -> str:
+        named = fixture.bookmakers[index].strip() if index < len(fixture.bookmakers) else ""
+        if named:
+            return named[:64]
+        return source_id if len(fixture.books) == 1 else f"{source_id}_{index + 1}"
+
     def _side(self, sport: str, raw: str, report: NormalizationReport) -> ResolvedName:
         resolved = self._aliases.resolve(sport, raw)
         if not resolved.canonical:
@@ -661,6 +674,8 @@ class OmniNormalizer:
         confidence: float,
         observed_at: datetime,
         source_event_id: str,
+        fetched_at: datetime,
+        books: Sequence[tuple[str, Mapping[str, float]]] = (),
     ) -> None:
         labels = [label for label in (HOME, DRAW, AWAY) if label in quotes]
         fair = remove_vig([quotes[label].fair_input for label in labels])
@@ -688,7 +703,42 @@ class OmniNormalizer:
                     quorum="single_source",
                 )
             )
+        self._quote(report, sport, home, away, kickoff, match_id, fetched_at, observed_at, suspended, books)
         report.events_normalized += 1
+
+    @staticmethod
+    def _quote(
+        report: NormalizationReport,
+        sport: str,
+        home: ResolvedName,
+        away: ResolvedName,
+        kickoff: datetime,
+        match_id: str,
+        fetched_at: datetime,
+        observed_at: datetime,
+        suspended: bool,
+        books: Sequence[tuple[str, Mapping[str, float]]],
+    ) -> None:
+        """The same fixture as one Aryabhata frame: every book's own prices, not just the best."""
+        quoted: list[BookQuote] = []
+        for bookmaker, prices in books:
+            clean = {label: Decimal(str(price)) for label, price in prices.items() if math.isfinite(price) and price > 1.0}
+            if len(clean) == len(prices) >= 2:
+                quoted.append(BookQuote(bookmaker_id=bookmaker, prices=clean, observed_at=observed_at, is_suspended=suspended))
+        if quoted:
+            report.quotes.append(
+                MarketQuote(
+                    match_id=match_id,
+                    market_type="Match Odds",
+                    home_team=home.name,
+                    away_team=away.name,
+                    sport_key=sport,
+                    commence_time=kickoff,
+                    source=report.source_id,
+                    fetched_at=fetched_at.astimezone(UTC),
+                    books=tuple(quoted),
+                )
+            )
 
     # ---------------------------------------------------------------- The Odds API
     def _odds_api(self, payload: SourcePayload, batch: IngestionBatch, report: NormalizationReport, method: DevigMethod) -> None:
@@ -700,6 +750,7 @@ class OmniNormalizer:
                 report.malformed += 1
                 continue
             books: list[dict[str, float]] = []
+            names: list[str] = []
             latest: datetime | None = None
             for bookmaker in event.bookmakers:
                 market = next((m for m in bookmaker.markets if m.key == "h2h"), None)
@@ -720,6 +771,7 @@ class OmniNormalizer:
                 if len(priced) < 2:
                     continue
                 books.append(priced)
+                names.append(bookmaker.key)
                 stamp = market.last_update or bookmaker.last_update
                 if latest is None or stamp > latest:
                     latest = stamp
@@ -731,6 +783,7 @@ class OmniNormalizer:
                 kickoff=event.commence_time,
                 books=tuple(books),
                 observed_at=latest,
+                bookmakers=tuple(names),
             )
             self.emit_fixture(report, fixture, batch.fetched_at, method)
 
@@ -798,6 +851,8 @@ class OmniNormalizer:
             confidence=min(0.95, max(0.2, 0.35 + 0.1 * math.log10(1.0 + liquidity) - 2.0 * spread)),
             observed_at=max(stamps) if stamps else batch.fetched_at,
             source_event_id=event_id,
+            fetched_at=batch.fetched_at,
+            books=[(report.source_id, {label: quote.price for label, quote in quotes.items()})],
         )
 
     def _same_side(self, sport: str, a: str, b: str) -> bool:

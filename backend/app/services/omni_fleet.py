@@ -59,6 +59,7 @@ from app.core.security_vault import VaultCrypto, VaultDecryptionError
 from app.models.canonical import CanonicalEntity
 from app.models.omni_vault import OmniFleetSource
 from app.schemas.market import MarketTick
+from app.services.aryabhata_pipeline import publish_market_quotes
 from app.services.odds_poller import store_snapshots
 from app.services.omni_normalizer import (
     AliasDictionary,
@@ -699,6 +700,7 @@ async def _run_locked(
                 f"({report.malformed} malformed): the provider's format may have changed"
             )
         await publish_fleet_ticks(deps, report.ticks)
+        await publish_market_quotes(deps.redis, report.quotes, settings)  # Aryabhata prices them off this path
         events = [(t.board_key, tick_to_event(t, now)) for t in report.ticks]
         try:
             await buffer_events(deps.redis, fleet_keys(settings), events, settings.omni_quorum_max_age_seconds)

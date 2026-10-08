@@ -25,6 +25,7 @@ from app.services.commander_supervisor import ProbeContext, run_supervisor
 from app.services.omni_fleet import FleetDeps, run_inprocess_fallback
 from app.domain.the_hive import HiveOrchestrator
 from app.core.live_odds import run_live_odds_relay
+from app.services.aryabhata_pipeline import run_aryabhata
 from app.core.websockets import manager as live_odds_manager
 
 logger = logging.getLogger(__name__)
@@ -74,6 +75,9 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         # Every worker relays the Redis live-odds channel to the sockets it holds (cross-worker fan-out)
         asyncio.create_task(run_live_odds_relay(redis, live_odds_manager), name="live-odds-relay"),
     ]
+    if settings.ARYABHATA_ENABLED:
+        # Each worker joins the Aryabhata consumer group: every frame is priced once, wherever it lands
+        background.append(asyncio.create_task(run_aryabhata(redis, settings), name="aryabhata"))
     if settings.OMNI_FLEET_INPROCESS_FALLBACK:
         # Runs ingestion here only while no Celery worker heartbeats; replaces the old odds poller loop
         background.append(asyncio.create_task(run_inprocess_fallback(app.state.fleet_deps), name="fleet-fallback"))

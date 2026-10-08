@@ -39,6 +39,7 @@ class SettingsRead(ControlPanelSchema):
     global_stop_loss: float
     max_bet_size: float
     max_daily_exposure: float
+    max_stake_pct: float
     last_emergency_stop_at: datetime | None
     created_at: datetime
     updated_at: datetime
@@ -62,6 +63,7 @@ class SettingsUpdate(ControlPanelSchema):
     global_stop_loss: float | None = Field(default=None, ge=0.0, allow_inf_nan=False)
     max_bet_size: float | None = Field(default=None, ge=0.0, allow_inf_nan=False)
     max_daily_exposure: float | None = Field(default=None, ge=0.0, allow_inf_nan=False)
+    max_stake_pct: float | None = Field(default=None, ge=1.0, le=10.0, allow_inf_nan=False)
 
     @field_validator("odds_api_key", "news_api_key", "omniroute_url")
     @classmethod

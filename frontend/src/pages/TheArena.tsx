@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { apiClient } from '../api/client';
+import { OpportunityQueue } from '../components/arena/OpportunityQueue';
 import { bestPrices, emergencyStop, fairProbabilities, resumeTrading, type MatchOdds, type Side, useLiveOdds } from '../lib/api';
 import { formatAgo, formatDateTime, formatINR, formatOdds, formatPct, formatSignedINR, formatTime } from '../lib/format';
 import { invalidate, runMutation, useResource } from '../lib/resource';
@@ -331,6 +332,7 @@ export const TheArena = () => {
           </>
         }
       />
+      <OpportunityQueue />
       <LiveOddsMatrix odds={odds} steam={steam.data ?? []} />
       <TacticalFeed steam={steam.data ?? []} surebets={surebets.data ?? []} />
       <OpenPositions fairByMatch={fairByMatch} />

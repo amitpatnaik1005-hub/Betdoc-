@@ -11,6 +11,7 @@ from app.core.config import settings
 from app.core.live_odds import publish_board_ticks
 from app.core.websockets import manager
 from app.schemas.market import MarketTick
+from app.services.aryabhata_pipeline import publish_market_quotes, quotes_from_ticks
 
 logger = logging.getLogger(__name__)
 
@@ -52,6 +53,7 @@ async def process_ticks(ticks: list[MarketTick], redis: Redis | None = None) -> 
     latest = [t.model_copy(update={"source": t.source or "ingest"}) for t in _latest_per_market(ticks)]
     async with _broadcast_lock:
         if await publish_board_ticks(redis, latest):
+            await publish_market_quotes(redis, quotes_from_ticks(latest), settings)
             return
         try:
             await manager.broadcast_market_ticks(latest)
