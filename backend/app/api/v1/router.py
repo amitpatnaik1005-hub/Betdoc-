@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends
 
 from app.api.deps import get_current_user
 from app.api.v1 import auth, bet, exchange, ingestion, ws, execution, admin, odds, engine, capital, bet_calculator, oracle, vault, arena, market_signals, dashboard, the_wire, the_lab, the_hive, the_core, popular_picks, competitive_intel, oracle_scout, archive, control_panel
-from app.api.v1 import bookmakers, cfo, human_touch, omni, omni_admin, phantom, sports
+from app.api.v1 import bookmakers, cfo, human_touch, omni, omni_admin, omni_fleet, phantom, sports
 
 api_router = APIRouter(prefix="/api/v1")
 
@@ -43,3 +43,4 @@ api_router.include_router(phantom.router, prefix='/phantom', dependencies=_authe
 api_router.include_router(sports.router, dependencies=_authenticated)  # /sports
 api_router.include_router(omni.router)  # /omni/ws/stream: token-checked in the handshake
 api_router.include_router(omni_admin.router)  # /admin/omni: X-Omni-Admin-Token
+api_router.include_router(omni_fleet.router)  # /omni/fleet: Fleet Command (reads: user, writes: admin)

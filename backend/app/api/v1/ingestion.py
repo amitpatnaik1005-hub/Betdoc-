@@ -3,10 +3,12 @@ import logging
 import secrets
 from typing import Annotated
 
-from fastapi import APIRouter, BackgroundTasks, Body, Depends, HTTPException, Security, status
+from fastapi import APIRouter, BackgroundTasks, Body, Depends, HTTPException, Request, Security, status
 from fastapi.security import APIKeyHeader
+from redis.asyncio import Redis
 
 from app.core.config import settings
+from app.core.live_odds import publish_board_ticks
 from app.core.websockets import manager
 from app.schemas.market import MarketTick
 
@@ -44,19 +46,18 @@ def _latest_per_market(ticks: list[MarketTick]) -> list[MarketTick]:
     return list(latest.values())
 
 
-async def process_ticks(ticks: list[MarketTick]) -> None:
+async def process_ticks(ticks: list[MarketTick], redis: Redis | None = None) -> None:
+    """Publish through Redis so every API worker's sockets get the batch. Only when Redis is down
+    does this worker broadcast on its own (its clients still update; other workers' clients don't)."""
+    latest = [t.model_copy(update={"source": t.source or "ingest"}) for t in _latest_per_market(ticks)]
     async with _broadcast_lock:
-        for tick in _latest_per_market(ticks):
-            try:
-                await manager.broadcast_market_tick(tick)
-            except Exception:
-                # A background task has no caller to report to. Log and keep going,
-                # so one bad tick doesn't drop the rest of the batch.
-                logger.exception(
-                    "Broadcast failed for match_id=%s market_type=%s",
-                    tick.match_id,
-                    tick.market_type,
-                )
+        if await publish_board_ticks(redis, latest):
+            return
+        try:
+            await manager.broadcast_market_ticks(latest)
+        except Exception:
+            # A background task has no caller to report to: log, never raise.
+            logger.exception("Local broadcast failed for %d tick(s)", len(latest))
 
 
 # Body(...) instead of pydantic Field(...): FastAPI only reads request-parameter metadata
@@ -70,6 +71,7 @@ async def process_ticks(ticks: list[MarketTick]) -> None:
 async def ingest_ticks(
     ticks: Annotated[list[MarketTick], Body(min_length=1, max_length=MAX_TICKS_PER_BATCH)],
     background_tasks: BackgroundTasks,
+    request: Request,
 ) -> dict[str, str | int]:
-    background_tasks.add_task(process_ticks, ticks)
+    background_tasks.add_task(process_ticks, ticks, getattr(request.app.state, "redis", None))
     return {"status": "ingested", "count": len(ticks)}

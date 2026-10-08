@@ -20,6 +20,7 @@ celery[redis]>=5.4
 
 # Production server (gunicorn.conf.py)
 gunicorn>=22.0
+uvicorn-worker>=0.2  # gunicorn.conf.py worker_class: uvicorn_worker.UvicornWorker
 psutil>=5.9  # Core engine telemetry (process CPU / memory)
 
 numpy>=1.26.0

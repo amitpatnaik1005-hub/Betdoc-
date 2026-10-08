@@ -189,6 +189,7 @@ const STATUS_MAP: Record<string, [Tone, string]> = {
   ONLINE: ["good", "check_circle"], OK: ["good", "check_circle"], ACCEPTED: ["good", "check_circle"],
   WON: ["good", "trending_up"], COMPLETED: ["good", "task_alt"], DONE: ["good", "task_alt"], ACTIVE: ["good", "bolt"],
   CONCLUDED: ["good", "flag"], SUCCESS: ["good", "check_circle"], STABLE: ["good", "check_circle"], CONNECTED: ["good", "link"],
+  HEALTHY: ["good", "check_circle"], NEEDS_KEY: ["warning", "key"],
   WORKING: ["info", "sync"], RUNNING: ["info", "sync"], IN_PROGRESS: ["info", "sync"], SCANNING: ["info", "radar"],
   QUEUED: ["neutral", "schedule"], PENDING: ["neutral", "schedule"], PENDING_NETWORK: ["warning", "hourglass_top"],
   BACKLOG: ["neutral", "inbox"], REVIEW: ["info", "rate_review"], STANDBY: ["neutral", "pause_circle"],

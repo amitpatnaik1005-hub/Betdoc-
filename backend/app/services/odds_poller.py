@@ -1,33 +1,24 @@
-import asyncio
+"""Odds API responses -> odds_snapshots rows. Fetching lives in the ingestion fleet
+(app.adapters.ingestion.odds_api_adapter, scheduled by app.services.omni_fleet)."""
+
 import logging
 import math
-import re
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime
 from typing import Any, Iterator
 
 from pydantic import ValidationError
-from sqlalchemy import func, insert, select
+from sqlalchemy import insert
+from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.config import settings
-from app.core.database import AsyncSessionLocal
 from app.models.odds import OddsSnapshot
 from app.schemas.odds import NormalizedMatchOdds
-from app.services.odds_client import (
-    OddsAPIAuthError,
-    OddsAPIClient,
-    OddsAPIError,
-    QuotaExceededError,
-)
 
 drona = logging.getLogger("betdoc.drona")  # snapshot storage (backtests)
 panini = logging.getLogger("betdoc.panini")  # normalisation
 
 # Postgres caps a statement at 65,535 bind params; 11 columns/row -> <= 5,957 rows.
 INSERT_CHUNK_ROWS: int = 2000
-# Cluster-wide lock so N uvicorn workers don't each poll (and each burn quota).
-POLL_ADVISORY_LOCK_KEY: int = 0x0DD5_0001
-_SPORT_KEY_RE = re.compile(r"^[a-z0-9_]+$")
 
 
 def _chunks(rows: list[dict[str, Any]], size: int) -> Iterator[list[dict[str, Any]]]:
@@ -96,85 +87,12 @@ def _flatten(raw: list[dict[str, Any]], sport: str, snapshot_ts: datetime) -> li
     return rows
 
 
-async def _poll_sport(sport: str) -> None:
-    interval: int = settings.ODDS_POLLING_INTERVAL_SEC
-
-    async with AsyncSessionLocal() as db:
-        locked: bool = bool(
-            (await db.execute(select(func.pg_try_advisory_xact_lock(POLL_ADVISORY_LOCK_KEY)))).scalar_one()
-        )
-        if not locked:
-            return  # another worker is polling right now
-
-        # Freshness check under the lock: skip if another worker polled recently.
-        last_ts: datetime | None = (
-            await db.execute(
-                select(func.max(OddsSnapshot.timestamp)).where(OddsSnapshot.sport_key == sport)
-            )
-        ).scalar_one_or_none()
-        now: datetime = datetime.now(timezone.utc)
-        if last_ts is not None and (now - last_ts).total_seconds() < interval * 0.9:
-            await db.rollback()
-            return
-
-        raw: list[dict[str, Any]] = await OddsAPIClient.fetch_odds(sport)
-        rows: list[dict[str, Any]] = _flatten(raw, sport, now)
-
-        if not rows:
-            await db.rollback()
-            drona.info("DRONA: No odds for sport=%s; nothing stored.", sport)
-            return
-
-        for chunk in _chunks(rows, INSERT_CHUNK_ROWS):
-            await db.execute(insert(OddsSnapshot).values(chunk))
-        await db.commit()  # also releases the advisory lock
-
-    drona.info(
-        "DRONA: Snapshot stored. sport=%s rows=%d quota_remaining=%s",
-        sport,
-        len(rows),
-        OddsAPIClient.requests_remaining(),
-    )
-
-
-async def poll_and_store_odds() -> None:
-    """Long-running poll loop. Never raises: failures are logged, never crash the app.
-
-    asyncio.CancelledError is a BaseException, so it bypasses `except Exception`
-    and shutdown cancellation still works.
-    """
-    try:
-        if settings.ODDS_API_KEY is None:
-            drona.warning("DRONA: ODDS_API_KEY not set; odds poller disabled.")
-            return
-
-        sports: list[str] = [s for s in settings.odds_sport_keys if _SPORT_KEY_RE.match(s)]
-        if not sports:
-            drona.error("DRONA: No valid ODDS_SPORT_KEYS configured; poller disabled.")
-            return
-
-        interval: int = max(10, settings.ODDS_POLLING_INTERVAL_SEC)
-        loop = asyncio.get_running_loop()
-        drona.info("DRONA: Poller online. sports=%s interval=%ss", sports, interval)
-
-        while True:
-            started: float = loop.time()
-            for sport in sports:
-                try:
-                    await _poll_sport(sport)
-                except QuotaExceededError as exc:
-                    drona.critical("DRONA: %s. Poller halted.", exc)
-                    return
-                except OddsAPIAuthError as exc:
-                    drona.critical("DRONA: %s. Poller halted.", exc)
-                    return
-                except OddsAPIError as exc:
-                    drona.error("DRONA: Poll failed: %s", exc)  # sanitised message
-                except Exception:
-                    drona.exception("DRONA: Unexpected poll failure for sport=%s", sport)
-
-            elapsed: float = loop.time() - started
-            await asyncio.sleep(max(1.0, interval - elapsed))
-
-    except Exception:
-        drona.exception("DRONA: Poller crashed; odds ingestion stopped.")
+async def store_snapshots(db: AsyncSession, raw: list[dict[str, Any]], sport: str, snapshot_ts: datetime) -> int:
+    """Flatten one Odds API response into odds_snapshots rows (DRONA's backtests, the Arena board,
+    steam detection). The caller owns the transaction and the scheduling: the ingestion fleet's
+    per-source distributed lock replaces the advisory lock this module used to take."""
+    rows: list[dict[str, Any]] = _flatten(raw, sport, snapshot_ts)
+    for chunk in _chunks(rows, INSERT_CHUNK_ROWS):
+        await db.execute(insert(OddsSnapshot).values(chunk))
+    drona.info("DRONA: Snapshot staged. sport=%s rows=%d", sport, len(rows))
+    return len(rows)

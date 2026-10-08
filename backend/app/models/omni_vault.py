@@ -152,6 +152,34 @@ class OmniQuarantineLog(Base):
     resolution_note: Mapped[str | None] = mapped_column(Text, nullable=True)
 
 
+class OmniFleetSource(Base):
+    """Operator state for one code-defined fleet ingestor (``app.adapters.ingestion.INGESTORS``).
+
+    Fleet Command writes ``is_enabled``, ``interval_seconds`` and the vault-encrypted API key; the
+    workers write the run bookkeeping. ``paused_at`` is the dead-letter state: set after
+    ``OMNI_FLEET_FAILURE_THRESHOLD`` consecutive failures, cleared when an operator re-enables it.
+    """
+
+    __tablename__ = "omni_fleet_sources"
+    __table_args__ = (
+        CheckConstraint("interval_seconds IS NULL OR interval_seconds >= 5", name="interval_floor"),
+        CheckConstraint("consecutive_failures >= 0", name="failures_non_negative"),
+    )
+
+    source_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    is_enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+    encrypted_api_key: Mapped[str | None] = mapped_column(Text, nullable=True)
+    api_key_hint: Mapped[str | None] = mapped_column(String(64), nullable=True)  # pre-masked; never decrypt to display
+    interval_seconds: Mapped[float | None] = mapped_column(Float, nullable=True)  # None: the adapter's default
+    consecutive_failures: Mapped[int] = mapped_column(Integer, default=0)
+    paused_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    last_attempt_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_success_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+
+
 # ---- Immutability: DB-level (authoritative) + ORM-level (fast fail) ----
 _IMMUTABLE_FN = DDL(
     """

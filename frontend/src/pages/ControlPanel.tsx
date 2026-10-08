@@ -1,5 +1,6 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { apiClient } from '../api/client';
+import { FleetCommand } from '../components/FleetCommand';
 import { type ControlSettings, emergencyStop, resumeTrading, useControls, useExchanges } from '../lib/api';
 import { formatAgo, formatINR, formatRatioPct, humanize } from '../lib/format';
 import { runMutation, useResource } from '../lib/resource';
@@ -65,7 +66,7 @@ const GlobalOverrides = ({ settings }: { settings: ControlSettings }) => {
 // CREDENTIALS (write-only)
 // ---------------------------------------------------------------------------
 const Credentials = ({ settings }: { settings: ControlSettings }) => {
-  const [keys, setKeys] = useState({ odds_api_key: '', news_api_key: '', omniroute_url: '' });
+  const [keys, setKeys] = useState({ news_api_key: '', omniroute_url: '' });
   const save = (field: keyof typeof keys) => {
     const value = keys[field].trim();
     if (!value) return;
@@ -84,9 +85,12 @@ const Credentials = ({ settings }: { settings: ControlSettings }) => {
   return (
     <Panel title="Integrations" icon="key" className="lg:col-span-5" subtitle="write-only; never echoed back">
       <div className="flex flex-col gap-1">
-        {row('odds_api_key', 'Odds API key', settings.odds_api_key, 'paste to replace')}
         {row('news_api_key', 'News API key', settings.news_api_key, 'paste to replace')}
         {row('omniroute_url', 'OmniRoute URL', settings.omniroute_url, 'https://…')}
+        <p className="flex items-center gap-1.5 text-[11px] text-stone-400 dark:text-stone-500">
+          <span className="material-symbols-outlined text-[14px]">hub</span>
+          Data-source keys (The Odds API) live in Fleet Command below, vault-encrypted and used by ingestion.
+        </p>
       </div>
     </Panel>
   );
@@ -331,6 +335,7 @@ export const ControlPanel = () => {
           </>
         )}
       </Async>
+      <FleetCommand />
       <ExchangeAccounts />
       <Bookmakers />
       <SportsEngine />

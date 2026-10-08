@@ -1,4 +1,13 @@
-"""Celery 5 application: Redis broker, dedicated Omni queues, JSON-only, at-least-once semantics."""
+"""Celery 5 application: Redis broker, dedicated Omni queues, JSON-only, at-least-once semantics.
+
+Processes (docker-compose runs each as its own service):
+
+* worker: ``celery -A app.core.celery_app:celery_app worker -l info``
+* beat:   ``celery -A app.core.celery_app:celery_app beat -l info -s /tmp/celerybeat-schedule``
+
+Beat drives two things: the ingestion fleet tick (which enqueues each due source; per-source
+intervals live in Fleet Command, so the schedule itself stays fixed) and the quorum sweep.
+"""
 
 from __future__ import annotations
 
@@ -11,10 +20,13 @@ from app.core.logging import setup_json_logging
 
 _settings = get_settings()
 
+# Fleet tick cadence: the finest interval granularity a source can have
+FLEET_TICK_SECONDS = 5.0
+
 celery_app = Celery(
     "betdoc_omni",
     broker=_settings.celery_broker_url.get_secret_value(),
-    include=["app.workers.omni_poller"],
+    include=["app.workers.omni_poller", "app.workers.omni_quorum"],
 )
 
 celery_app.conf.update(
@@ -34,6 +46,19 @@ celery_app.conf.update(
     task_soft_time_limit=_settings.omni_task_soft_time_limit_seconds,
     timezone="UTC",
     enable_utc=True,
+    beat_schedule={
+        "omni-fleet-tick": {
+            "task": "omni.fleet.tick",
+            "schedule": FLEET_TICK_SECONDS,
+            # A tick nobody ran in time is worthless: the next one is seconds away
+            "options": {"expires": FLEET_TICK_SECONDS},
+        },
+        "omni-quorum-sweep": {
+            "task": "omni.run_scheduled_quorum",
+            "schedule": _settings.omni_quorum_interval_seconds,
+            "options": {"expires": _settings.omni_quorum_interval_seconds},
+        },
+    },
 )
 
 

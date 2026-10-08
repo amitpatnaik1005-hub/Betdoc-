@@ -1,8 +1,10 @@
 import asyncio
 import logging
+from collections.abc import Sequence
 
 from fastapi import WebSocket
 
+from app.core.live_odds import encode_ticks
 from app.schemas.market import MarketTick
 
 logger = logging.getLogger(__name__)
@@ -16,22 +18,24 @@ SLOW_CONSUMER_CLOSE_CODE = 1013  # "Try Again Later"
 
 
 class ConnectionManager:
+    """The sockets held by THIS worker. Ticks reach it through the Redis relay (app.core.live_odds),
+    so every worker delivers every tick; it never needs to know about the others."""
+
     def __init__(self) -> None:
         self.active_connections: set[WebSocket] = set()
         self._send_locks: dict[WebSocket, asyncio.Lock] = {}
-        self._cache: dict[tuple[str, str, str], MarketTick] = {}
+        # Last tick per board cell seen by this worker: the snapshot when Redis can't provide one
+        self._cache: dict[str, MarketTick] = {}
 
-    async def connect(self, websocket: WebSocket) -> None:
+    async def connect(self, websocket: WebSocket, snapshot: Sequence[MarketTick] | None = None) -> None:
+        """Accept, register, then send the current board (Redis snapshot, else this worker's cache)."""
         await websocket.accept()
         self._send_locks[websocket] = asyncio.Lock()
         self.active_connections.add(websocket)
-        # Send a snapshot of the current state immediately
-        if self._cache:
-            snapshot = list(self._cache.values())
-            # Convert to camelCase payload (by_alias=True)
-            payload_str = "[" + ",".join(t.model_dump_json(by_alias=True) for t in snapshot) + "]"
+        board = list(snapshot) if snapshot is not None else list(self._cache.values())
+        if board:
             try:
-                await asyncio.wait_for(self._send(websocket, payload_str), timeout=SEND_TIMEOUT_SECONDS)
+                await asyncio.wait_for(self._send(websocket, encode_ticks(board)), timeout=SEND_TIMEOUT_SECONDS)
             except Exception:
                 pass
 
@@ -57,15 +61,20 @@ class ConnectionManager:
             pass
 
     async def broadcast_market_tick(self, tick: MarketTick) -> None:
-        # Update the cache
-        key = (tick.match_id, tick.market_type, tick.selection)
-        self._cache[key] = tick
+        await self.broadcast_market_ticks([tick])
+
+    async def broadcast_market_ticks(self, ticks: Sequence[MarketTick]) -> None:
+        """One frame (a JSON array) per batch to every local client; unresponsive clients are evicted."""
+        if not ticks:
+            return
+        for tick in ticks:
+            self._cache[tick.board_key] = tick
 
         if not self.active_connections:
             return
 
         # Serialize once for every client. by_alias sends camelCase keys to the frontend.
-        payload_str = tick.model_dump_json(by_alias=True)
+        payload_str = encode_ticks(ticks)
 
         # Snapshot: connect/disconnect can change the set while we await
         connections = list(self.active_connections)

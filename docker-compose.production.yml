@@ -18,6 +18,21 @@ x-healthcheck-timing: &healthcheck-timing
   retries: ${HEALTHCHECK_RETRIES:-3}
   start_period: ${HEALTHCHECK_START_PERIOD:-40s}
 
+# One image for every Python process (API, Celery worker, beat, Omni dispatcher). Each service
+# overrides the image's default command (migrations + gunicorn) with its own.
+x-backend: &backend
+  <<: *service-defaults
+  image: betdoc-backend:${BETDOC_IMAGE_TAG:-latest}
+  build:
+    context: ./backend
+    dockerfile: Dockerfile
+  env_file: .env
+
+x-backend-env: &backend-env
+  DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres_db:5432/${POSTGRES_DB}
+  REDIS_URL: redis://:${REDIS_PASSWORD}@redis_cache:6379/0
+  ENVIRONMENT: production
+
 services:
   postgres_db:
     <<: *service-defaults
@@ -47,18 +62,14 @@ services:
       test: ["CMD-SHELL", "redis-cli -a $$REDIS_PASSWORD ping | grep -q PONG"]
 
   backend_api:
-    <<: *service-defaults
-    build:
-      context: ./backend
-      dockerfile: Dockerfile
-    env_file: .env
+    <<: *backend
     environment:
-      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres_db:5432/${POSTGRES_DB}
-      REDIS_URL: redis://:${REDIS_PASSWORD}@redis_cache:6379/0
+      <<: *backend-env
       # Trust Nginx proxy IP
       FORWARDED_ALLOW_IPS: "*"
       MAX_WORKERS: 4
-      ENVIRONMENT: production
+      # Ingestion runs on celery_worker; API workers only serve requests (and relay live odds)
+      OMNI_FLEET_INPROCESS_FALLBACK: "false"
     depends_on:
       postgres_db:
         condition: service_healthy
@@ -68,6 +79,61 @@ services:
       <<: *healthcheck-timing
       # Using our deep health endpoint
       test: ["CMD-SHELL", "curl -f http://127.0.0.1:8000/health/ || exit 1"]
+
+  # Executes the ingestion fleet, the quorum sweep and DB-configured provider polls.
+  # Scale horizontally (docker compose up --scale celery_worker=N): per-source Redis locks keep
+  # each data source to one run at a time across every replica.
+  celery_worker:
+    <<: *backend
+    command:
+      - celery
+      - -A
+      - app.core.celery_app:celery_app
+      - worker
+      - --loglevel=INFO
+      - --concurrency=${CELERY_CONCURRENCY:-4}
+      - --hostname=omni@%h
+    environment: *backend-env
+    depends_on:
+      # The API container applies migrations on start; workers need the schema in place
+      backend_api:
+        condition: service_healthy
+      redis_cache:
+        condition: service_healthy
+    healthcheck:
+      <<: *healthcheck-timing
+      test: ["CMD-SHELL", "celery -A app.core.celery_app:celery_app inspect ping -d omni@$$HOSTNAME --timeout 10 | grep -q pong"]
+
+  # The scheduler: fleet tick every 5s, quorum sweep every 15s. Run exactly ONE replica;
+  # two beats would double-enqueue (harmless thanks to the locks, but wasteful).
+  celery_beat:
+    <<: *backend
+    command:
+      - celery
+      - -A
+      - app.core.celery_app:celery_app
+      - beat
+      - --loglevel=INFO
+      - --schedule=/tmp/celerybeat-schedule
+    environment: *backend-env
+    deploy:
+      replicas: 1
+    depends_on:
+      redis_cache:
+        condition: service_healthy
+      celery_worker:
+        condition: service_started
+
+  # Rate-aware dispatcher for providers registered through /api/v1/admin/omni (idles when none are).
+  omni_dispatcher:
+    <<: *backend
+    command: ["python", "-m", "app.workers.omni_dispatcher"]
+    environment: *backend-env
+    depends_on:
+      backend_api:
+        condition: service_healthy
+      redis_cache:
+        condition: service_healthy
 
   frontend_web:
     <<: *service-defaults

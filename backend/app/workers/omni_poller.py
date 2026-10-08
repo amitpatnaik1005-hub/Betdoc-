@@ -1,4 +1,12 @@
-"""Celery task: poll one provider endpoint, land the raw payload immutably, publish live."""
+"""Celery tasks for Omni ingestion.
+
+* ``omni.poll_provider_endpoint``: poll one DB-configured provider endpoint, land the raw payload
+  immutably, publish it live (driven by ``app.workers.omni_dispatcher``).
+* ``omni.fleet.tick`` / ``omni.fleet.ingest``: the Group 60 ingestion fleet. Beat fires the tick
+  every few seconds; it enqueues an ingest for each code-defined source that is due
+  (``app.adapters.ingestion.INGESTORS``), honouring the per-source interval and pause state Fleet
+  Command keeps in Redis. The ingest itself is ``app.services.omni_fleet.run_source``.
+"""
 
 from __future__ import annotations
 
@@ -17,17 +25,28 @@ from uuid import UUID
 import httpx
 from celery.signals import worker_process_init, worker_process_shutdown
 from redis import Redis
+from redis.asyncio import Redis as AsyncRedis
 from redis.exceptions import RedisError
 from sqlalchemy import update
 from sqlalchemy.exc import SQLAlchemyError
-from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.pool import NullPool
 
 from app.adapters.base_adapter import AdapterError, StandardizedEvent, build_adapter, parse_http_date
+from app.adapters.ingestion import INGESTORS
 from app.core.celery_app import celery_app
 from app.core.config import get_settings
 from app.core.omni_keys import OmniRedisKeys
-from app.core.security_vault import UnsafeTargetError, VaultCrypto, VaultDecryptionError, assert_public_target, get_vault_crypto
+from app.core.security_vault import (
+    UnsafeTargetError,
+    VaultConfigurationError,
+    VaultCrypto,
+    VaultDecryptionError,
+    assert_public_target,
+    get_vault_crypto,
+)
+from app.services.omni_fleet import FleetDeps, is_due, run_source
+from app.services.omni_quorum_buffer import buffer_event_sync
 from app.models.omni_vault import (
     WS_STRATEGIES,
     OmniAuthStrategy,
@@ -61,6 +80,16 @@ class _WorkerResources:
 
 
 _resources: _WorkerResources | None = None
+# App-data Redis (REDIS_URL): fleet schedule/health keys and the quorum buffer live here, where
+# the API reads them. The broker may be a different instance.
+_app_redis: Redis | None = None
+
+
+def _get_app_redis() -> Redis:
+    global _app_redis
+    if _app_redis is None:
+        _app_redis = Redis.from_url(_settings.REDIS_URL.get_secret_value(), decode_responses=True)
+    return _app_redis
 
 
 def _build_resources() -> _WorkerResources:
@@ -83,11 +112,14 @@ def _init_worker(**_: object) -> None:
 
 @worker_process_shutdown.connect
 def _shutdown_worker(**_: object) -> None:
-    global _resources
+    global _resources, _app_redis
     if _resources is not None:
         _resources.http.close()
         _resources.redis.close()
         _resources = None
+    if _app_redis is not None:
+        _app_redis.close()
+        _app_redis = None
 
 
 def _get_resources() -> _WorkerResources:
@@ -395,6 +427,8 @@ def poll_provider_endpoint(provider_id: str | UUID, endpoint: str) -> TaskSummar
                 logger.warning("Normalisation failed provider=%s path=%s: %s", provider.name, ep.path, exc)
 
         _publish(res.redis, provider, ep, record, raw_id, payload, event)
+        if event is not None:
+            _buffer_for_quorum(ep.topic or event.entity_id, event)
         summary["status"] = "published"
         return summary
 
@@ -450,3 +484,68 @@ def _publish(
         redis.publish(_settings.omni_live_channel, message)
     except RedisError:
         logger.exception("Publish to %s failed (payload %s is persisted)", _settings.omni_live_channel, raw_id)
+
+
+def _buffer_for_quorum(topic: str, event: StandardizedEvent) -> None:
+    """Every provider's latest event per topic feeds omni.run_scheduled_quorum."""
+    try:
+        buffer_event_sync(_get_app_redis(), _keys, topic, event, _settings.omni_quorum_max_age_seconds)
+    except RedisError:
+        logger.warning("Quorum buffer write failed for topic=%s", topic)
+
+
+# ---------------------------------------------------------------- ingestion fleet (Group 60)
+@celery_app.task(name="omni.fleet.tick", ignore_result=True)
+def fleet_tick() -> dict[str, list[str]]:
+    """Beat-driven: heartbeat, then enqueue an ingest for every source that is due and not already queued."""
+    redis = _get_app_redis()
+    redis.set(_keys.fleet_heartbeat(), "1", ex=int(_settings.OMNI_FLEET_HEARTBEAT_SECONDS))
+    now = time.time()
+    dispatched: list[str] = []
+    for source_id, ingestor in INGESTORS.items():
+        last, interval_raw, state = redis.hmget(_keys.fleet_metrics(source_id), ["last_attempt_at", "interval_seconds", "state"])
+        interval = float(interval_raw) if interval_raw else ingestor.interval_seconds(_settings)
+        if not is_due(float(last) if last else None, interval, state, now):
+            continue
+        # The claim stops a run that is queued but not started from being queued again
+        if not redis.set(_keys.fleet_claim(source_id), "1", nx=True, ex=max(5, int(interval))):
+            continue
+        # expires: a run no worker picks up within one interval is dropped, never burst later
+        ingest_source.apply_async(args=[source_id], expires=interval)
+        dispatched.append(source_id)
+    return {"dispatched": dispatched}
+
+
+@celery_app.task(name="omni.fleet.ingest", acks_late=True, max_retries=0)
+def ingest_source(source_id: str, force: bool = False) -> dict[str, Any]:
+    """Run one fleet ingestor end to end. Failures are counted (and dead-lettered) by run_source,
+    never retried by Celery: the next beat tick is the retry."""
+    return asyncio.run(_ingest(source_id, force))
+
+
+async def _ingest(source_id: str, force: bool) -> dict[str, Any]:
+    # asyncio.run gives every task a fresh loop, so loop-bound clients are created per run.
+    redis = AsyncRedis.from_url(_settings.REDIS_URL.get_secret_value(), decode_responses=True)
+    engine = create_async_engine(_settings.DATABASE_URL.get_secret_value(), poolclass=NullPool)
+    http = httpx.AsyncClient(
+        timeout=_settings.omni_http_timeout_seconds,
+        follow_redirects=False,
+        limits=httpx.Limits(max_connections=_settings.omni_http_max_connections),
+    )
+    try:
+        vault: VaultCrypto | None = get_vault_crypto()
+    except VaultConfigurationError:
+        vault = None
+    try:
+        deps = FleetDeps(
+            redis=redis,
+            session_factory=async_sessionmaker(engine, expire_on_commit=False),
+            http=http,
+            vault=vault,
+            settings=_settings,
+        )
+        return (await run_source(source_id, deps, runner="celery", force=force)).as_dict()
+    finally:
+        await http.aclose()
+        await redis.aclose()
+        await engine.dispose()

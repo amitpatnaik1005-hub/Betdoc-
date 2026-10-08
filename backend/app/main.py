@@ -2,6 +2,7 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 import contextlib
 
+import httpx
 from fastapi import FastAPI, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from redis.asyncio import Redis
@@ -20,10 +21,10 @@ from app.api.deps import DbSession, get_current_user
 from app.api.endpoints import health as deep_health
 from app.api.endpoints import telemetry
 from app.api.v1.router import api_router
-from app.services.odds_client import OddsAPIClient
-from app.services.odds_poller import poll_and_store_odds
 from app.services.commander_supervisor import ProbeContext, run_supervisor
+from app.services.omni_fleet import FleetDeps, run_inprocess_fallback
 from app.domain.the_hive import HiveOrchestrator
+from app.core.live_odds import run_live_odds_relay
 from app.core.websockets import manager as live_odds_manager
 
 logger = logging.getLogger(__name__)
@@ -54,7 +55,23 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     app.state.vault = _build_vault()
     limiter.initialize(redis)
 
-    background = [asyncio.create_task(poll_and_store_odds(), name="odds-poller")]
+    # Ingestion fleet: shared HTTP client for in-process runs (fallback loop, Fleet Command "Run now")
+    fleet_http = httpx.AsyncClient(
+        timeout=settings.omni_http_timeout_seconds,
+        follow_redirects=False,
+        limits=httpx.Limits(max_connections=settings.omni_http_max_connections),
+    )
+    app.state.fleet_deps = FleetDeps(
+        redis=redis, session_factory=AsyncSessionLocal, http=fleet_http, vault=app.state.vault, settings=settings
+    )
+
+    background = [
+        # Every worker relays the Redis live-odds channel to the sockets it holds (cross-worker fan-out)
+        asyncio.create_task(run_live_odds_relay(redis, live_odds_manager), name="live-odds-relay"),
+    ]
+    if settings.OMNI_FLEET_INPROCESS_FALLBACK:
+        # Runs ingestion here only while no Celery worker heartbeats; replaces the old odds poller loop
+        background.append(asyncio.create_task(run_inprocess_fallback(app.state.fleet_deps), name="fleet-fallback"))
     if settings.HIVE_SUPERVISOR_INTERVAL_SECONDS > 0:
         probe_ctx = ProbeContext(
             redis=redis,
@@ -76,7 +93,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             with contextlib.suppress(asyncio.CancelledError):
                 await task
 
-        await OddsAPIClient.aclose()
+        await fleet_http.aclose()
         await redis.aclose()
         # Close pooled DB connections cleanly on shutdown
         await engine.dispose()

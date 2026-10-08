@@ -1,5 +1,7 @@
+from datetime import datetime
 from decimal import Decimal
 from typing import Annotated, Literal
+from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, PlainSerializer
 from pydantic.alias_generators import to_camel
@@ -13,8 +15,17 @@ WireDecimal = Annotated[
     PlainSerializer(float, return_type=float, when_used="json"),
 ]
 
+QuorumState = Literal["single_source", "consensus", "quarantined"]
+
 
 class MarketTick(BaseModel):
+    """One price on the live board (``/ws/live-odds``).
+
+    The first eight fields are the original wire contract. The optional ones are filled by the
+    Omni ingestion fleet: canonical BetDoc ids from the alias dictionary, where the price came
+    from, and whether the probability is a cross-source consensus.
+    """
+
     model_config = ConfigDict(
         alias_generator=to_camel,
         populate_by_name=True,
@@ -30,3 +41,20 @@ class MarketTick(BaseModel):
     odds: Annotated[WireDecimal, Field(ge=0, allow_inf_nan=False)]
     true_probability: Annotated[WireDecimal, Field(ge=0, le=1, allow_inf_nan=False)]
     is_suspended: bool
+
+    sport_key: str | None = Field(default=None, max_length=64)
+    home_team_id: UUID | None = None
+    away_team_id: UUID | None = None
+    commence_time: datetime | None = None
+    # Fleet source id ("odds_api", "polymarket", "ingest"), or "consensus" for a merged board tick
+    source: str | None = Field(default=None, max_length=64)
+    sources: tuple[str, ...] = ()
+    source_event_id: str | None = Field(default=None, max_length=128)
+    confidence: float | None = Field(default=None, ge=0, le=1)
+    observed_at: datetime | None = None
+    quorum: QuorumState | None = None
+
+    @property
+    def board_key(self) -> str:
+        """One board cell: the same match/market/selection from every source lands here."""
+        return f"{self.match_id}|{self.market_type}|{self.selection}"

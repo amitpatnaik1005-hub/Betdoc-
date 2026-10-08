@@ -1,0 +1,989 @@
+{
+ "version": 1,
+ "description": "Predefined alias dictionary: canonical BetDoc entities with frozen UUIDs and every external spelling the fleet adapters have been seen to use. Ids never change once published; add aliases freely. Synced into the canonical_entities table by the fleet.",
+ "namespace": "38174907-caad-5d9e-ba62-1d21cb70af7f",
+ "sports": {
+  "soccer_epl": {
+   "name": "English Premier League",
+   "polymarket": "epl",
+   "has_draw": true
+  },
+  "americanfootball_nfl": {
+   "name": "NFL",
+   "polymarket": "nfl",
+   "has_draw": false
+  },
+  "basketball_nba": {
+   "name": "NBA",
+   "polymarket": "nba",
+   "has_draw": false
+  }
+ },
+ "entities": [
+  {
+   "id": "a5a74ab8-059b-523b-8500-d117c4100059",
+   "kind": "team",
+   "sport": "soccer_epl",
+   "name": "Arsenal",
+   "aliases": [
+    "Arsenal FC",
+    "ARS"
+   ]
+  },
+  {
+   "id": "2bc4d3d2-6eef-5144-8575-d66355b9c869",
+   "kind": "team",
+   "sport": "soccer_epl",
+   "name": "Aston Villa",
+   "aliases": [
+    "Aston Villa FC",
+    "Villa",
+    "AVL"
+   ]
+  },
+  {
+   "id": "e4198363-7123-5f76-92fb-c50989535175",
+   "kind": "team",
+   "sport": "soccer_epl",
+   "name": "AFC Bournemouth",
+   "aliases": [
+    "Bournemouth",
+    "BOU"
+   ]
+  },
+  {
+   "id": "b35bda24-0193-5761-9eb2-57b360cb46da",
+   "kind": "team",
+   "sport": "soccer_epl",
+   "name": "Brentford",
+   "aliases": [
+    "Brentford FC",
+    "BRE"
+   ]
+  },
+  {
+   "id": "0ea2b0e3-a150-529e-af93-bc08ad23f20f",
+   "kind": "team",
+   "sport": "soccer_epl",
+   "name": "Brighton & Hove Albion",
+   "aliases": [
+    "Brighton and Hove Albion",
+    "Brighton & Hove Albion FC",
+    "Brighton",
+    "BHA"
+   ]
+  },
+  {
+   "id": "f89a15a1-1fd0-5a0f-8fca-878dd00424b3",
+   "kind": "team",
+   "sport": "soccer_epl",
+   "name": "Burnley",
+   "aliases": [
+    "Burnley FC",
+    "BUR"
+   ]
+  },
+  {
+   "id": "13a40c99-7ddc-5b7e-8fae-3bce55fbb1cc",
+   "kind": "team",
+   "sport": "soccer_epl",
+   "name": "Chelsea",
+   "aliases": [
+    "Chelsea FC",
+    "CHE"
+   ]
+  },
+  {
+   "id": "20f6eb84-8145-5912-b228-79371ec7389a",
+   "kind": "team",
+   "sport": "soccer_epl",
+   "name": "Coventry City",
+   "aliases": [
+    "Coventry City FC",
+    "Coventry",
+    "COV"
+   ]
+  },
+  {
+   "id": "6560bcc6-462c-5e59-8985-7a8de95a6381",
+   "kind": "team",
+   "sport": "soccer_epl",
+   "name": "Crystal Palace",
+   "aliases": [
+    "Crystal Palace FC",
+    "Palace",
+    "CRY"
+   ]
+  },
+  {
+   "id": "33e40414-8376-57f0-90f2-3689805528fb",
+   "kind": "team",
+   "sport": "soccer_epl",
+   "name": "Everton",
+   "aliases": [
+    "Everton FC",
+    "EVE"
+   ]
+  },
+  {
+   "id": "ae069f49-e060-5608-8c85-2c91f7c6b189",
+   "kind": "team",
+   "sport": "soccer_epl",
+   "name": "Fulham",
+   "aliases": [
+    "Fulham FC",
+    "FUL"
+   ]
+  },
+  {
+   "id": "446f03c6-70fe-5012-8e0a-0d370ecea312",
+   "kind": "team",
+   "sport": "soccer_epl",
+   "name": "Hull City",
+   "aliases": [
+    "Hull City AFC",
+    "Hull",
+    "HUL"
+   ]
+  },
+  {
+   "id": "14386e7d-cf5c-5c19-bd27-5325c6576fb5",
+   "kind": "team",
+   "sport": "soccer_epl",
+   "name": "Ipswich Town",
+   "aliases": [
+    "Ipswich Town FC",
+    "Ipswich",
+    "IPS"
+   ]
+  },
+  {
+   "id": "b6de1ae6-6c2b-54e2-9c18-048d23eded5e",
+   "kind": "team",
+   "sport": "soccer_epl",
+   "name": "Leeds United",
+   "aliases": [
+    "Leeds United FC",
+    "Leeds",
+    "LEE"
+   ]
+  },
+  {
+   "id": "a3f3755e-fc8b-5ed7-913f-f7520940e6dc",
+   "kind": "team",
+   "sport": "soccer_epl",
+   "name": "Leicester City",
+   "aliases": [
+    "Leicester City FC",
+    "Leicester",
+    "LEI"
+   ]
+  },
+  {
+   "id": "aa2a7a07-179f-5e0b-bf9f-853a01557912",
+   "kind": "team",
+   "sport": "soccer_epl",
+   "name": "Liverpool",
+   "aliases": [
+    "Liverpool FC",
+    "LIV"
+   ]
+  },
+  {
+   "id": "125c5977-d3aa-5a9d-ba8f-7d9ce05e656d",
+   "kind": "team",
+   "sport": "soccer_epl",
+   "name": "Luton Town",
+   "aliases": [
+    "Luton Town FC",
+    "Luton",
+    "LUT"
+   ]
+  },
+  {
+   "id": "3355b289-476d-5798-af6f-72c2ca334ea2",
+   "kind": "team",
+   "sport": "soccer_epl",
+   "name": "Manchester City",
+   "aliases": [
+    "Manchester City FC",
+    "Man City",
+    "MCI"
+   ]
+  },
+  {
+   "id": "27a04b46-bd8c-542e-9a23-851dbeb89144",
+   "kind": "team",
+   "sport": "soccer_epl",
+   "name": "Manchester United",
+   "aliases": [
+    "Manchester United FC",
+    "Man United",
+    "Man Utd",
+    "MUN"
+   ]
+  },
+  {
+   "id": "5a32a7be-aeb4-5c2c-b2df-a3d6cee8f857",
+   "kind": "team",
+   "sport": "soccer_epl",
+   "name": "Middlesbrough",
+   "aliases": [
+    "Middlesbrough FC",
+    "Boro",
+    "MID"
+   ]
+  },
+  {
+   "id": "bf64d182-519d-5f8c-a9bd-cf7b6cd56174",
+   "kind": "team",
+   "sport": "soccer_epl",
+   "name": "Newcastle United",
+   "aliases": [
+    "Newcastle United FC",
+    "Newcastle",
+    "NEW"
+   ]
+  },
+  {
+   "id": "69514cca-ccbb-53be-aa9d-49b345465280",
+   "kind": "team",
+   "sport": "soccer_epl",
+   "name": "Norwich City",
+   "aliases": [
+    "Norwich City FC",
+    "Norwich",
+    "NOR"
+   ]
+  },
+  {
+   "id": "7368fed5-f955-51f4-abf9-fb3ba9726655",
+   "kind": "team",
+   "sport": "soccer_epl",
+   "name": "Nottingham Forest",
+   "aliases": [
+    "Nottingham Forest FC",
+    "Nott'm Forest",
+    "Forest",
+    "NFO"
+   ]
+  },
+  {
+   "id": "901ad39d-e283-585e-b899-3b332c8cf089",
+   "kind": "team",
+   "sport": "soccer_epl",
+   "name": "Sheffield United",
+   "aliases": [
+    "Sheffield United FC",
+    "Sheffield Utd",
+    "SHU"
+   ]
+  },
+  {
+   "id": "febe56dc-89c5-5029-9adc-050d7aa6c5fe",
+   "kind": "team",
+   "sport": "soccer_epl",
+   "name": "Southampton",
+   "aliases": [
+    "Southampton FC",
+    "SOU"
+   ]
+  },
+  {
+   "id": "188e5b42-da06-5ec4-8cfc-4f256e1467c8",
+   "kind": "team",
+   "sport": "soccer_epl",
+   "name": "Sunderland",
+   "aliases": [
+    "Sunderland AFC",
+    "SUN"
+   ]
+  },
+  {
+   "id": "5741dd85-8516-56d2-9a10-34783b13f0f7",
+   "kind": "team",
+   "sport": "soccer_epl",
+   "name": "Tottenham Hotspur",
+   "aliases": [
+    "Tottenham Hotspur FC",
+    "Tottenham",
+    "Spurs",
+    "TOT"
+   ]
+  },
+  {
+   "id": "cda49215-308f-5eaf-b664-00bc322b9f9b",
+   "kind": "team",
+   "sport": "soccer_epl",
+   "name": "Watford",
+   "aliases": [
+    "Watford FC",
+    "WAT"
+   ]
+  },
+  {
+   "id": "8dc3ca40-289a-550c-b84b-80901d370f82",
+   "kind": "team",
+   "sport": "soccer_epl",
+   "name": "West Bromwich Albion",
+   "aliases": [
+    "West Brom",
+    "WBA"
+   ]
+  },
+  {
+   "id": "17f3107b-49cb-5b94-b23c-8afb05bd92c4",
+   "kind": "team",
+   "sport": "soccer_epl",
+   "name": "West Ham United",
+   "aliases": [
+    "West Ham United FC",
+    "West Ham",
+    "WHU"
+   ]
+  },
+  {
+   "id": "fba7cb45-08b9-56f3-bc63-fe1827675d56",
+   "kind": "team",
+   "sport": "soccer_epl",
+   "name": "Wolverhampton Wanderers",
+   "aliases": [
+    "Wolverhampton Wanderers FC",
+    "Wolves",
+    "WOL"
+   ]
+  },
+  {
+   "id": "d91dd646-9108-5407-bba0-42841be6f3ef",
+   "kind": "team",
+   "sport": "americanfootball_nfl",
+   "name": "Arizona Cardinals",
+   "aliases": [
+    "Cardinals",
+    "ARI"
+   ]
+  },
+  {
+   "id": "f8d45099-d507-5f77-aebf-f1128532f08d",
+   "kind": "team",
+   "sport": "americanfootball_nfl",
+   "name": "Atlanta Falcons",
+   "aliases": [
+    "Falcons",
+    "ATL"
+   ]
+  },
+  {
+   "id": "aa8b0e53-4319-5578-99ce-8bf98747c6e1",
+   "kind": "team",
+   "sport": "americanfootball_nfl",
+   "name": "Baltimore Ravens",
+   "aliases": [
+    "Ravens",
+    "BAL"
+   ]
+  },
+  {
+   "id": "6443f3a5-bedf-5415-8572-274bda28226c",
+   "kind": "team",
+   "sport": "americanfootball_nfl",
+   "name": "Buffalo Bills",
+   "aliases": [
+    "Bills",
+    "BUF"
+   ]
+  },
+  {
+   "id": "cf7fb43a-4084-52e6-a0eb-64a704094834",
+   "kind": "team",
+   "sport": "americanfootball_nfl",
+   "name": "Carolina Panthers",
+   "aliases": [
+    "Panthers",
+    "CAR"
+   ]
+  },
+  {
+   "id": "6fad1b3b-5c79-5703-99f4-a9d338344a7b",
+   "kind": "team",
+   "sport": "americanfootball_nfl",
+   "name": "Chicago Bears",
+   "aliases": [
+    "Bears",
+    "CHI"
+   ]
+  },
+  {
+   "id": "17eda4d2-4f39-57a5-b914-f8f62028c19f",
+   "kind": "team",
+   "sport": "americanfootball_nfl",
+   "name": "Cincinnati Bengals",
+   "aliases": [
+    "Bengals",
+    "CIN"
+   ]
+  },
+  {
+   "id": "1c84cd9a-b4df-5c45-a1bc-aa3e3d51c00c",
+   "kind": "team",
+   "sport": "americanfootball_nfl",
+   "name": "Cleveland Browns",
+   "aliases": [
+    "Browns",
+    "CLE"
+   ]
+  },
+  {
+   "id": "df7a4d83-89f4-5596-9f64-4f80a37b3102",
+   "kind": "team",
+   "sport": "americanfootball_nfl",
+   "name": "Dallas Cowboys",
+   "aliases": [
+    "Cowboys",
+    "DAL"
+   ]
+  },
+  {
+   "id": "63ac06ae-d7ee-5531-85f3-5c3a023c2777",
+   "kind": "team",
+   "sport": "americanfootball_nfl",
+   "name": "Denver Broncos",
+   "aliases": [
+    "Broncos",
+    "DEN"
+   ]
+  },
+  {
+   "id": "6d2d8f18-1c85-520a-a154-8d677f1a40e3",
+   "kind": "team",
+   "sport": "americanfootball_nfl",
+   "name": "Detroit Lions",
+   "aliases": [
+    "Lions",
+    "DET"
+   ]
+  },
+  {
+   "id": "d00b0835-d540-5320-8c12-9582788b4e7f",
+   "kind": "team",
+   "sport": "americanfootball_nfl",
+   "name": "Green Bay Packers",
+   "aliases": [
+    "Packers",
+    "GB"
+   ]
+  },
+  {
+   "id": "ddd6d621-0b71-5375-8eca-3e5b8f804b01",
+   "kind": "team",
+   "sport": "americanfootball_nfl",
+   "name": "Houston Texans",
+   "aliases": [
+    "Texans",
+    "HOU"
+   ]
+  },
+  {
+   "id": "29494bd0-f7e1-5489-8093-189bd1d6a0d1",
+   "kind": "team",
+   "sport": "americanfootball_nfl",
+   "name": "Indianapolis Colts",
+   "aliases": [
+    "Colts",
+    "IND"
+   ]
+  },
+  {
+   "id": "162e0ff4-0975-5266-b650-153c45ce740f",
+   "kind": "team",
+   "sport": "americanfootball_nfl",
+   "name": "Jacksonville Jaguars",
+   "aliases": [
+    "Jaguars",
+    "Jags",
+    "JAX"
+   ]
+  },
+  {
+   "id": "4c48fbc1-0bf0-5c26-a326-ef50858d80b0",
+   "kind": "team",
+   "sport": "americanfootball_nfl",
+   "name": "Kansas City Chiefs",
+   "aliases": [
+    "Chiefs",
+    "KC"
+   ]
+  },
+  {
+   "id": "bf51c207-33d0-5c3d-8f04-40f084b1d359",
+   "kind": "team",
+   "sport": "americanfootball_nfl",
+   "name": "Las Vegas Raiders",
+   "aliases": [
+    "Raiders",
+    "LV"
+   ]
+  },
+  {
+   "id": "740044a1-71a9-5bca-ad0b-dc167b5103f6",
+   "kind": "team",
+   "sport": "americanfootball_nfl",
+   "name": "Los Angeles Chargers",
+   "aliases": [
+    "Chargers",
+    "LA Chargers",
+    "LAC"
+   ]
+  },
+  {
+   "id": "81ff62dc-9ca1-5f32-96f7-1c5d903cea7f",
+   "kind": "team",
+   "sport": "americanfootball_nfl",
+   "name": "Los Angeles Rams",
+   "aliases": [
+    "Rams",
+    "LA Rams",
+    "LAR"
+   ]
+  },
+  {
+   "id": "d4171c90-b2ef-521b-b398-8d7e1e8a55cb",
+   "kind": "team",
+   "sport": "americanfootball_nfl",
+   "name": "Miami Dolphins",
+   "aliases": [
+    "Dolphins",
+    "MIA"
+   ]
+  },
+  {
+   "id": "79cd49fc-3f4e-561b-af86-07d19e652d50",
+   "kind": "team",
+   "sport": "americanfootball_nfl",
+   "name": "Minnesota Vikings",
+   "aliases": [
+    "Vikings",
+    "MIN"
+   ]
+  },
+  {
+   "id": "e9435504-ca99-5e25-9ac8-2f4f85ab2535",
+   "kind": "team",
+   "sport": "americanfootball_nfl",
+   "name": "New England Patriots",
+   "aliases": [
+    "Patriots",
+    "NE"
+   ]
+  },
+  {
+   "id": "31481f92-1324-5f64-acd7-bc7e10a64c50",
+   "kind": "team",
+   "sport": "americanfootball_nfl",
+   "name": "New Orleans Saints",
+   "aliases": [
+    "Saints",
+    "NO"
+   ]
+  },
+  {
+   "id": "01da6f7a-67af-58a3-ae04-5e26821eb593",
+   "kind": "team",
+   "sport": "americanfootball_nfl",
+   "name": "New York Giants",
+   "aliases": [
+    "Giants",
+    "NYG"
+   ]
+  },
+  {
+   "id": "a5c735da-4d8f-5f49-aabc-6b1ecf60548e",
+   "kind": "team",
+   "sport": "americanfootball_nfl",
+   "name": "New York Jets",
+   "aliases": [
+    "Jets",
+    "NYJ"
+   ]
+  },
+  {
+   "id": "c90a466d-3641-5ebd-80dc-3e25e98cd73d",
+   "kind": "team",
+   "sport": "americanfootball_nfl",
+   "name": "Philadelphia Eagles",
+   "aliases": [
+    "Eagles",
+    "PHI"
+   ]
+  },
+  {
+   "id": "315646dc-e90d-5701-8b75-53b1827e93d1",
+   "kind": "team",
+   "sport": "americanfootball_nfl",
+   "name": "Pittsburgh Steelers",
+   "aliases": [
+    "Steelers",
+    "PIT"
+   ]
+  },
+  {
+   "id": "6caa0907-d7dd-5b85-b88e-4411c89d215e",
+   "kind": "team",
+   "sport": "americanfootball_nfl",
+   "name": "San Francisco 49ers",
+   "aliases": [
+    "49ers",
+    "Niners",
+    "SF"
+   ]
+  },
+  {
+   "id": "e9144a8b-1834-51d4-bc8d-8ff00964e9c8",
+   "kind": "team",
+   "sport": "americanfootball_nfl",
+   "name": "Seattle Seahawks",
+   "aliases": [
+    "Seahawks",
+    "SEA"
+   ]
+  },
+  {
+   "id": "4a31b4c8-4413-5bce-ad3c-072a1fc9b517",
+   "kind": "team",
+   "sport": "americanfootball_nfl",
+   "name": "Tampa Bay Buccaneers",
+   "aliases": [
+    "Buccaneers",
+    "Bucs",
+    "TB"
+   ]
+  },
+  {
+   "id": "cec332dc-8547-5499-bc6f-9edfe20620d2",
+   "kind": "team",
+   "sport": "americanfootball_nfl",
+   "name": "Tennessee Titans",
+   "aliases": [
+    "Titans",
+    "TEN"
+   ]
+  },
+  {
+   "id": "a6005153-ace0-595e-9c55-50c691bfa056",
+   "kind": "team",
+   "sport": "americanfootball_nfl",
+   "name": "Washington Commanders",
+   "aliases": [
+    "Commanders",
+    "WAS"
+   ]
+  },
+  {
+   "id": "943adacc-f384-5c79-a31e-e7de23508fb9",
+   "kind": "team",
+   "sport": "basketball_nba",
+   "name": "Atlanta Hawks",
+   "aliases": [
+    "Hawks",
+    "ATL"
+   ]
+  },
+  {
+   "id": "76b6e680-ff26-5010-b427-91f1c564c9e4",
+   "kind": "team",
+   "sport": "basketball_nba",
+   "name": "Boston Celtics",
+   "aliases": [
+    "Celtics",
+    "BOS"
+   ]
+  },
+  {
+   "id": "f3c0f4b6-1eea-5a93-bce1-5c7669c2d171",
+   "kind": "team",
+   "sport": "basketball_nba",
+   "name": "Brooklyn Nets",
+   "aliases": [
+    "Nets",
+    "BKN"
+   ]
+  },
+  {
+   "id": "cf5dd955-0272-5418-9937-da3696c00556",
+   "kind": "team",
+   "sport": "basketball_nba",
+   "name": "Charlotte Hornets",
+   "aliases": [
+    "Hornets",
+    "CHA"
+   ]
+  },
+  {
+   "id": "625a839c-e23a-557c-8193-a4e4ff9987ce",
+   "kind": "team",
+   "sport": "basketball_nba",
+   "name": "Chicago Bulls",
+   "aliases": [
+    "Bulls",
+    "CHI"
+   ]
+  },
+  {
+   "id": "7ed64d7c-6169-538e-8fbb-eca9af819482",
+   "kind": "team",
+   "sport": "basketball_nba",
+   "name": "Cleveland Cavaliers",
+   "aliases": [
+    "Cavaliers",
+    "Cavs",
+    "CLE"
+   ]
+  },
+  {
+   "id": "f7fa2993-0e61-53eb-8316-ade5633d7264",
+   "kind": "team",
+   "sport": "basketball_nba",
+   "name": "Dallas Mavericks",
+   "aliases": [
+    "Mavericks",
+    "Mavs",
+    "DAL"
+   ]
+  },
+  {
+   "id": "ecdd5a43-7b96-5a15-913e-39e3e65f0e56",
+   "kind": "team",
+   "sport": "basketball_nba",
+   "name": "Denver Nuggets",
+   "aliases": [
+    "Nuggets",
+    "DEN"
+   ]
+  },
+  {
+   "id": "8fa3b15a-8f72-5f0c-8fb7-2ef0dfa2496f",
+   "kind": "team",
+   "sport": "basketball_nba",
+   "name": "Detroit Pistons",
+   "aliases": [
+    "Pistons",
+    "DET"
+   ]
+  },
+  {
+   "id": "c9ddc659-e326-562e-8d4b-18ea92f238a2",
+   "kind": "team",
+   "sport": "basketball_nba",
+   "name": "Golden State Warriors",
+   "aliases": [
+    "Warriors",
+    "GSW"
+   ]
+  },
+  {
+   "id": "33ac1daa-71f2-566d-9c5f-a55292ee22c2",
+   "kind": "team",
+   "sport": "basketball_nba",
+   "name": "Houston Rockets",
+   "aliases": [
+    "Rockets",
+    "HOU"
+   ]
+  },
+  {
+   "id": "eae662b5-b8d4-5380-bb81-25f2bbfdc8ca",
+   "kind": "team",
+   "sport": "basketball_nba",
+   "name": "Indiana Pacers",
+   "aliases": [
+    "Pacers",
+    "IND"
+   ]
+  },
+  {
+   "id": "eba06555-2a34-5f72-9827-e030ec90e520",
+   "kind": "team",
+   "sport": "basketball_nba",
+   "name": "Los Angeles Clippers",
+   "aliases": [
+    "Clippers",
+    "LA Clippers",
+    "LAC"
+   ]
+  },
+  {
+   "id": "316b87e0-c20d-50d0-a950-8b95b20c7822",
+   "kind": "team",
+   "sport": "basketball_nba",
+   "name": "Los Angeles Lakers",
+   "aliases": [
+    "Lakers",
+    "LA Lakers",
+    "LAL"
+   ]
+  },
+  {
+   "id": "1f6cea4a-5c54-5dac-9566-96030448fb48",
+   "kind": "team",
+   "sport": "basketball_nba",
+   "name": "Memphis Grizzlies",
+   "aliases": [
+    "Grizzlies",
+    "MEM"
+   ]
+  },
+  {
+   "id": "4c09c5a2-1b71-5e31-a0fa-26058de190df",
+   "kind": "team",
+   "sport": "basketball_nba",
+   "name": "Miami Heat",
+   "aliases": [
+    "Heat",
+    "MIA"
+   ]
+  },
+  {
+   "id": "d87b2f52-8ac9-5612-b35f-1ec6ffea5936",
+   "kind": "team",
+   "sport": "basketball_nba",
+   "name": "Milwaukee Bucks",
+   "aliases": [
+    "Bucks",
+    "MIL"
+   ]
+  },
+  {
+   "id": "8670c4e3-25c7-5549-a7ae-3c2c5aa84410",
+   "kind": "team",
+   "sport": "basketball_nba",
+   "name": "Minnesota Timberwolves",
+   "aliases": [
+    "Timberwolves",
+    "Wolves",
+    "MIN"
+   ]
+  },
+  {
+   "id": "395f7880-02ba-5886-b887-1b81e7ceed08",
+   "kind": "team",
+   "sport": "basketball_nba",
+   "name": "New Orleans Pelicans",
+   "aliases": [
+    "Pelicans",
+    "NOP"
+   ]
+  },
+  {
+   "id": "42dded50-cd25-5303-81ec-df0652001e1e",
+   "kind": "team",
+   "sport": "basketball_nba",
+   "name": "New York Knicks",
+   "aliases": [
+    "Knicks",
+    "NYK"
+   ]
+  },
+  {
+   "id": "ec852fe7-424a-5397-b2b4-facf4b0c0592",
+   "kind": "team",
+   "sport": "basketball_nba",
+   "name": "Oklahoma City Thunder",
+   "aliases": [
+    "Thunder",
+    "OKC"
+   ]
+  },
+  {
+   "id": "78a0cbfa-af92-515b-995b-57c2d1f1de3d",
+   "kind": "team",
+   "sport": "basketball_nba",
+   "name": "Orlando Magic",
+   "aliases": [
+    "Magic",
+    "ORL"
+   ]
+  },
+  {
+   "id": "a753523e-78b7-558f-97ab-3768f72c1ac9",
+   "kind": "team",
+   "sport": "basketball_nba",
+   "name": "Philadelphia 76ers",
+   "aliases": [
+    "76ers",
+    "Sixers",
+    "PHI"
+   ]
+  },
+  {
+   "id": "ad98d98e-1792-52bc-bf6b-128738939e97",
+   "kind": "team",
+   "sport": "basketball_nba",
+   "name": "Phoenix Suns",
+   "aliases": [
+    "Suns",
+    "PHX"
+   ]
+  },
+  {
+   "id": "9883e722-6236-54bc-9a43-9dfdb84291d0",
+   "kind": "team",
+   "sport": "basketball_nba",
+   "name": "Portland Trail Blazers",
+   "aliases": [
+    "Trail Blazers",
+    "Blazers",
+    "POR"
+   ]
+  },
+  {
+   "id": "2ad9cada-a407-507e-8457-607043c3fd75",
+   "kind": "team",
+   "sport": "basketball_nba",
+   "name": "Sacramento Kings",
+   "aliases": [
+    "Kings",
+    "SAC"
+   ]
+  },
+  {
+   "id": "fb90d136-6e3d-56b0-af63-a35972394214",
+   "kind": "team",
+   "sport": "basketball_nba",
+   "name": "San Antonio Spurs",
+   "aliases": [
+    "Spurs",
+    "SAS"
+   ]
+  },
+  {
+   "id": "d7df1356-5bad-5413-a851-acd09a5dfad4",
+   "kind": "team",
+   "sport": "basketball_nba",
+   "name": "Toronto Raptors",
+   "aliases": [
+    "Raptors",
+    "TOR"
+   ]
+  },
+  {
+   "id": "ae3320b0-50d2-588d-8311-c5f4def5c864",
+   "kind": "team",
+   "sport": "basketball_nba",
+   "name": "Utah Jazz",
+   "aliases": [
+    "Jazz",
+    "UTA"
+   ]
+  },
+  {
+   "id": "26597deb-ad77-535b-9fbc-5e48e9fdc0f0",
+   "kind": "team",
+   "sport": "basketball_nba",
+   "name": "Washington Wizards",
+   "aliases": [
+    "Wizards",
+    "WAS"
+   ]
+  }
+ ]
+}

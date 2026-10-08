@@ -1,4 +1,26 @@
-version: '3.8'
+# Local development stack: Postgres, Redis, and the Omni ingestion workers (Celery worker + beat).
+# The API and the Vite dev server usually run on the host; while celery_worker is up, the API's
+# in-process ingestion fallback stands down automatically (it watches the worker heartbeat).
+#
+#   docker compose up -d                      # everything
+#   docker compose logs -f celery_worker      # watch the fleet ingest
+
+x-backend: &backend
+  build:
+    context: ./backend
+    dockerfile: Dockerfile
+  image: betdoc-backend:dev
+  env_file: ./backend/.env
+  environment:
+    # Containers reach the databases by service name, not localhost
+    DATABASE_URL: postgresql+asyncpg://postgres:password@postgres:5432/betdoc
+    REDIS_URL: redis://redis:6379/0
+  depends_on:
+    postgres:
+      condition: service_healthy
+    redis:
+      condition: service_healthy
+  restart: unless-stopped
 
 services:
   postgres:
@@ -12,7 +34,38 @@ services:
       - "5432:5432"
     volumes:
       - betdoc_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d betdoc"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
     restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    container_name: betdoc_redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - betdoc_redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+
+  celery_worker:
+    <<: *backend
+    container_name: betdoc_celery_worker
+    # Migrations first (idempotent), then the worker: it needs the fleet tables
+    command: ["sh", "-c", "alembic upgrade head && celery -A app.core.celery_app:celery_app worker --loglevel=INFO --concurrency=2 --hostname=omni@%h"]
+
+  celery_beat:
+    <<: *backend
+    container_name: betdoc_celery_beat
+    command: ["celery", "-A", "app.core.celery_app:celery_app", "beat", "--loglevel=INFO", "--schedule=/tmp/celerybeat-schedule"]
 
 volumes:
   betdoc_postgres_data:
+  betdoc_redis_data:

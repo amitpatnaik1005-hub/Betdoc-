@@ -28,6 +28,8 @@ const SECTION_FANOUT: Record<string, string[]> = {
   core: ["core", "archive", "commanders"],
   exchanges: ["exchanges", "control-panel"],
   signals: ["signals", "arena"],
+  // Fleet Command writes (toggles, keys, run now) under /api/v1/omni/fleet
+  omni: ["fleet"],
 };
 
 function handleBusEvent(data: unknown): void {
@@ -38,6 +40,11 @@ function handleBusEvent(data: unknown): void {
 
   if (event.type === "commanders") {
     invalidate("commanders");
+    return;
+  }
+  if (event.type === "fleet") {
+    // A worker finished a run, a source changed state, or a quorum sweep settled
+    invalidate("fleet");
     return;
   }
   if (event.type === "mutation" && event.section) {

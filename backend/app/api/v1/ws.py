@@ -10,6 +10,7 @@ from app.api.deps import WsUser
 from app.core.config import settings
 from app.core.events import EVENTS_CHANNEL, relay_channel
 from app.core.database import AsyncSessionLocal
+from app.core.live_odds import read_snapshot
 from app.core.websockets import manager
 from app.models import User
 from app.schemas.market import MarketTick  # noqa: F401  (payload contract for this channel)
@@ -65,7 +66,6 @@ async def live_odds(
     websocket: WebSocket,
     token: str | None = Query(default=None),
 ) -> None:
-    
     # FIX: Check CORS explicitly since WebSockets bypass standard browser CORS checks
     origin = websocket.headers.get("origin")
     if origin and origin not in settings.BACKEND_CORS_ORIGINS:
@@ -78,7 +78,9 @@ async def live_odds(
         await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
         return
 
-    await manager.connect(websocket)
+    # Ticks arrive through the Redis relay (app.core.live_odds), so this socket sees every tick
+    # whichever worker produced it; the snapshot is the whole board, not just this worker's view.
+    await manager.connect(websocket, snapshot=await read_snapshot(getattr(websocket.app.state, "redis", None)))
 
     try:
         while True:

@@ -37,7 +37,31 @@ class Settings(BaseSettings):
     ODDS_POLLING_INTERVAL_SEC: int = 60
     ODDS_API_BASE_URL: str = "https://api.the-odds-api.com/v4"
     ODDS_SPORT_KEYS: str = "soccer_epl"
+    ODDS_API_REGIONS: str = "uk,eu"
     ODDS_QUOTA_FLOOR: int = 10
+
+    # Polymarket public Gamma API (no key). Leagues are Polymarket sport codes from GET /sports.
+    POLYMARKET_GAMMA_BASE_URL: str = "https://gamma-api.polymarket.com"
+    POLYMARKET_LEAGUES: str = "epl,nfl,nba"
+    POLYMARKET_POLL_INTERVAL_SEC: int = Field(default=30, ge=5)
+
+    # ---- /ws/live-odds: Redis pub/sub fan-out across API workers -------------
+    LIVE_ODDS_CHANNEL: str = "betdoc:live_odds"
+    LIVE_ODDS_SNAPSHOT_TTL_SECONDS: int = Field(default=900, gt=0)  # board cells idle longer are dropped
+
+    # ---- Omni ingestion fleet (Celery) --------------------------------------
+    # Run due ingestors inside the API process while no Celery worker is heartbeating (dev without a
+    # worker). Production compose turns this off so API workers only serve requests.
+    OMNI_FLEET_INPROCESS_FALLBACK: bool = True
+    OMNI_FLEET_FAILURE_THRESHOLD: int = Field(default=3, ge=1)  # consecutive failures -> FATAL + paused
+    OMNI_FLEET_SUCCESS_WINDOW: int = Field(default=50, ge=1)  # runs behind the success-rate figure
+    OMNI_FLEET_HEARTBEAT_SECONDS: float = Field(default=45.0, gt=0)  # beat ticks every 5s; this long without one = no worker
+    OMNI_FLEET_FALLBACK_TICK_SECONDS: float = Field(default=5.0, gt=0)
+    OMNI_FLEET_LOCK_TIMEOUT_SECONDS: float = Field(default=120.0, gt=0)  # lock auto-expires if a worker dies
+    OMNI_FLEET_MAX_ATTEMPTS: int = Field(default=4, ge=1)  # per request, on 429 / 5xx / transport errors
+    OMNI_FLEET_BACKOFF_BASE_SECONDS: float = Field(default=1.0, gt=0)
+    OMNI_FLEET_BACKOFF_MAX_SECONDS: float = Field(default=30.0, gt=0)
+    OMNI_FLEET_DEADLETTER_MAX: int = Field(default=200, ge=1)
 
     # The Wire: public sports RSS feeds (no key needed)
     WIRE_NEWS_FEEDS: List[str] = [
@@ -49,6 +73,10 @@ class Settings(BaseSettings):
     @property
     def odds_sport_keys(self) -> List[str]:
         return [s.strip() for s in self.ODDS_SPORT_KEYS.split(",") if s.strip()]
+
+    @property
+    def polymarket_leagues(self) -> List[str]:
+        return [s.strip().lower() for s in self.POLYMARKET_LEAGUES.split(",") if s.strip()]
 
     # Literal type: an env var can't downgrade the algorithm (e.g. to "none")
     ALGORITHM: Literal["HS256"] = "HS256"
@@ -108,10 +136,14 @@ class Settings(BaseSettings):
     omni_user_agent: str = "BetDoc-Omni/1.0"
 
     # ---- Omni-Ingestion engine: quorum consensus ----------------------------
+    # Ages are sized for REST sources polled every 30-60s: an Odds API price is still a valid vote
+    # when the next Polymarket poll lands, at half weight after one half-life.
     omni_quorum_variance_threshold: float = Field(default=0.05, ge=0)
-    omni_quorum_half_life_seconds: float = Field(default=10.0, gt=0)
-    omni_quorum_max_age_seconds: float = Field(default=30.0, gt=0)
+    omni_quorum_half_life_seconds: float = Field(default=60.0, gt=0)
+    omni_quorum_max_age_seconds: float = Field(default=300.0, gt=0)
     omni_quorum_zero_tolerance: float = Field(default=1e-9, gt=0)
+    omni_quorum_interval_seconds: float = Field(default=15.0, gt=0)  # beat cadence of omni.run_scheduled_quorum
+    omni_quorum_min_providers: int = Field(default=2, ge=2)  # a single source is not a quorum
 
     # ---- Omni-Ingestion engine: provider WebSocket client -------------------
     omni_ws_queue_max: int = Field(default=10_000, gt=0)

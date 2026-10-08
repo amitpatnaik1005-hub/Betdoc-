@@ -147,7 +147,7 @@ export default function MarketBoard(): JSX.Element {
           <EmptyState
             icon="stream"
             title={isConnected ? "Waiting for the first tick" : "Live tick feed not connected"}
-            detail="Prices stream here as the ingestion pipeline pushes ticks to /api/v1/ingest. Click any price to add it to your bet slip."
+            detail="Prices stream here as the Omni fleet (Control Panel, Fleet Command) ingests Polymarket and The Odds API. Click any price to add it to your bet slip."
           />
         ) : (
           <table className="w-full min-w-[480px] text-left text-sm">
