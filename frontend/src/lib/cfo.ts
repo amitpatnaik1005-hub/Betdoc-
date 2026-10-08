@@ -2,7 +2,7 @@
 import { apiClient } from "../api/client";
 import { useResource } from "./resource";
 
-export type LedgerStatus = "PENDING" | "WON" | "LOST" | "REJECTED" | "VOID";
+export type LedgerStatus = "PENDING" | "WON" | "LOST" | "REJECTED" | "VOID" | "REQUIRES_MANUAL_INTERVENTION";
 
 export interface Position {
   id: string;
@@ -10,13 +10,16 @@ export interface Position {
   market: string;
   selection: string;
   bookmaker_id: string;
-  bookmaker_ref: string | null;
+  remote_bet_id: string | null;
   stake_inr: number;
   odds: number;
   potential_pnl: number;
   realized_pnl: number | null;
   status: LedgerStatus;
   reconcile_required: boolean;
+  commence_time?: string | null;
+  resolve_attempts?: number;
+  last_resolve_error?: string | null;
   created_at: string;
   settled_at: string | null;
 }
@@ -26,6 +29,7 @@ export interface RiskSettings {
   max_market_exposure_pct: number;
   max_loss_streak: number;
   velocity_max_cv_pct: number;
+  max_slippage_pct: number;
 }
 
 export interface Bankroll {
@@ -48,7 +52,7 @@ export interface ExecutionReceipt {
   status: "EXECUTED" | "UNKNOWN";
   message: string;
   ledger_id: string;
-  bookmaker_ref: string | null;
+  remote_bet_id: string | null;
   bookmaker_id: string;
   fixture_id: string;
   selection: string;
@@ -75,6 +79,12 @@ export const REFUSALS: Record<string, string> = {
   SIGNAL_EXPIRED: "Signal expired",
   PRICE_MOVED: "Price moved",
   RISK_SERVICES_UNAVAILABLE: "Risk checks unavailable",
+  UNMAPPED_FIXTURE: "Bookmaker doesn't list this match",
+  UNMAPPED_SELECTION: "Bookmaker doesn't list this selection",
+  NO_EXECUTION_VENUE: "No execution venue for this bookmaker",
+  SLIPPAGE_REJECTED: "Price dropped below your floor",
+  OUTBOUND_THROTTLED: "Outbound rate limit: try again",
+  AUTH_FAILED: "Bookmaker refused the session",
 };
 
 export const useBankroll = () => useResource("cfo:bankroll", () => apiClient.get<Bankroll>("/omni/bankroll"), { intervalMs: 15_000 });

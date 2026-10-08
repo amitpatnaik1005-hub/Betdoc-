@@ -26,7 +26,8 @@ from app.services.omni_fleet import FleetDeps, run_inprocess_fallback
 from app.domain.the_hive import HiveOrchestrator
 from app.core.live_odds import run_live_odds_relay
 from app.services.aryabhata_pipeline import run_aryabhata
-from app.services.bookmaker_gateway import BookmakerConfigurationError, build_gateway
+from app.services.bookmaker_gateway import PaperBookmaker
+from app.services.sniper_runtime import build_sniper_runtime, ensure_sandbox_venue
 from app.core.websockets import manager as live_odds_manager
 
 logger = logging.getLogger(__name__)
@@ -72,13 +73,14 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         local_sink=live_odds_manager,  # Redis down: in-process runs still reach this worker's sockets
     )
 
-    # CFO two-phase execution: the bookmaker leg (paper unless CFO_EXECUTION_MODE=live is configured)
-    cfo_http = httpx.AsyncClient(follow_redirects=False, limits=httpx.Limits(max_connections=20))
+    # CFO two-phase execution: the bookmaker leg. paper fills in-process; live is the Omni-Sniper,
+    # routing each order to its bookmaker's execution venue (the sandbox venue in development)
+    app.state.sniper = build_sniper_runtime(AsyncSessionLocal, redis, settings, app.state.vault)
     try:
-        app.state.bookmaker = build_gateway(settings, cfo_http)
-    except BookmakerConfigurationError as exc:
-        app.state.bookmaker = None  # /omni/execute-trade answers 503 instead of guessing
-        logger.error("CFO execution disabled: %s", exc)
+        await ensure_sandbox_venue(AsyncSessionLocal, app.state.vault, settings)
+    except Exception:  # noqa: BLE001 - a missing table before migrations must not stop the API
+        logger.warning("Sandbox venue registration skipped", exc_info=True)
+    app.state.bookmaker = app.state.sniper.gateway if settings.CFO_EXECUTION_MODE == "live" else PaperBookmaker()
 
     background = [
         # Every worker relays the Redis live-odds channel to the sockets it holds (cross-worker fan-out)
@@ -112,7 +114,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
                 await task
 
         await fleet_http.aclose()
-        await cfo_http.aclose()
+        await app.state.sniper.aclose()
         await redis.aclose()
         # Close pooled DB connections cleanly on shutdown
         await engine.dispose()

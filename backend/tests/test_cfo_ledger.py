@@ -15,9 +15,11 @@ import uuid
 from collections.abc import AsyncIterator, Callable
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal, localcontext
+from dataclasses import dataclass
 from typing import Any
 
 import httpx
+from cryptography.fernet import Fernet
 import pytest
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
@@ -54,7 +56,10 @@ from app.services.aryabhata_engine import (
     is_steam_move,
     update_ema,
 )
-from app.services.bookmaker_gateway import HttpBookmaker, PaperBookmaker
+from app.core.security_vault import VaultCrypto
+from app.models.execution import EntityMapping, ExecutionVenue
+from app.services.bookmaker_gateway import PaperBookmaker
+from app.services.sniper import SniperGateway
 from app.services.cfo_execution import TradeExecutor
 from app.services.cfo_ledger import (
     BankrollLockedError,
@@ -86,6 +91,8 @@ TABLES = [
     AuditLog.__table__,
     RiskGuardSettings.__table__,
     MarketResult.__table__,
+    ExecutionVenue.__table__,
+    EntityMapping.__table__,
 ]
 TEST_REDIS_URL = os.environ.get("TEST_REDIS_URL", "redis://localhost:6379/15")
 TEST_POSTGRES_URL = os.environ.get("TEST_POSTGRES_URL")
@@ -229,8 +236,37 @@ class Bookmaker:
         self.calls.append(json.loads(request.content))
         return self.respond(request)
 
-    def gateway(self) -> HttpBookmaker:
-        return HttpBookmaker(httpx.AsyncClient(transport=httpx.MockTransport(self)), "https://partner.example/api", "test-key", 2.0)
+    def gateway(self, wire: Wire) -> SniperGateway:
+        """The live Omni-Sniper path, pointed at this mock bookmaker's execution venue."""
+        return SniperGateway(wire.sessions, wire.redis, wire.settings, wire.vault, httpx.AsyncClient(transport=httpx.MockTransport(self)))
+
+
+@dataclass(frozen=True)
+class Wire:
+    sessions: async_sessionmaker[AsyncSession]
+    redis: Redis
+    settings: Settings
+    vault: VaultCrypto
+
+
+@pytest_asyncio.fixture
+async def wire(sessions: async_sessionmaker[AsyncSession], redis: Redis, settings: Settings) -> Wire:
+    """A partner venue for "smarkets" (static key, generous rate limit) with every test fixture mapped."""
+    vault = VaultCrypto(Fernet.generate_key().decode())
+    async with sessions() as session:
+        session.add(
+            ExecutionVenue(
+                id="smarkets", display_name="Partner book", adapter="generic_json", base_url="https://partner.example/api",
+                auth_type="static_bearer", place_path="/bets", status_path="/bets", bets_per_second=D("50"), burst=50,
+                routes=[], selection_codes={"HOME": "1", "DRAW": "X", "AWAY": "2"},
+                encrypted_credentials=vault.encrypt_key(json.dumps({"api_key": "test-key-0001"})), is_enabled=True, is_sandbox=False,
+            )
+        )
+        await session.flush()  # the venue row first: its mappings reference it
+        for fixture in ("fx-ars-lee", "fx-other"):
+            session.add(EntityMapping(venue_id="smarkets", kind="fixture", canonical_key=fixture, remote_id=f"EV-{fixture}", source="manual", detail={}))
+        await session.commit()
+    return Wire(sessions, redis, settings, vault)
 
 
 def status(code: int, body: Any = None) -> Callable[[httpx.Request], httpx.Response]:
@@ -344,11 +380,11 @@ async def test_the_audit_log_and_journal_are_append_only(sessions: async_session
 @pytest.mark.asyncio
 async def test_bookmaker_500_rolls_back_and_returns_every_rupee(
     sessions: async_sessionmaker[AsyncSession], opened: uuid.UUID, redis: Redis, settings: Settings
-) -> None:
+, wire: Wire) -> None:
     """The brief's proof: the bookmaker fails after the stake was reserved under the lock. The
     rollback must put the money back in AVAILABLE and leave no ghost bet in EXPOSURE."""
     book = Bookmaker(status(500))
-    executor = TradeExecutor(sessions, redis, settings, book.gateway())
+    executor = TradeExecutor(sessions, redis, settings, book.gateway(wire))
     with pytest.raises(CfoError) as caught:
         await executor.execute(opened, order(stake="250.00"))
     assert caught.value.reason == "BOOKMAKER_HTTP_500" and caught.value.status_code == 502
@@ -366,8 +402,8 @@ async def test_bookmaker_500_rolls_back_and_returns_every_rupee(
 @pytest.mark.asyncio
 async def test_an_order_that_never_left_is_rolled_back(
     sessions: async_sessionmaker[AsyncSession], opened: uuid.UUID, redis: Redis, settings: Settings, failure: type[Exception], reason: str
-) -> None:
-    executor = TradeExecutor(sessions, redis, settings, Bookmaker(fail(failure)).gateway())
+, wire: Wire) -> None:
+    executor = TradeExecutor(sessions, redis, settings, Bookmaker(fail(failure)).gateway(wire))
     with pytest.raises(CfoError) as caught:
         await executor.execute(opened, order())
     assert caught.value.reason == reason
@@ -376,17 +412,17 @@ async def test_an_order_that_never_left_is_rolled_back(
 
 
 @pytest.mark.asyncio
-async def test_an_accepted_order_commits(sessions: async_sessionmaker[AsyncSession], opened: uuid.UUID, redis: Redis, settings: Settings) -> None:
+async def test_an_accepted_order_commits(sessions: async_sessionmaker[AsyncSession], opened: uuid.UUID, redis: Redis, settings: Settings, wire: Wire) -> None:
     book = Bookmaker(status(200, {"bet_id": "BK-77"}))
     request = order(stake="250.00", odds="2.50")
-    receipt = await TradeExecutor(sessions, redis, settings, book.gateway()).execute(opened, request)
-    assert receipt.status == "EXECUTED" and receipt.bookmaker_ref == "BK-77"
+    receipt = await TradeExecutor(sessions, redis, settings, book.gateway(wire)).execute(opened, request)
+    assert receipt.status == "EXECUTED" and receipt.remote_bet_id == "BK-77"
     assert receipt.available_balance == D("9750.00") and receipt.exposure_balance == D("250.00") and receipt.potential_pnl == D("375.00")
     assert book.calls[0]["stake"] == "250.00" and book.calls[0]["client_ref"] == str(request.idempotency_key)
     assert await balances(sessions, opened) == (D("9750.00"), D("250.00"), D("10000.00"))
     async with sessions() as session:
         entry = await session.get(PhantomLedger, receipt.ledger_id)
-        assert entry is not None and entry.bookmaker_ref == "BK-77" and not entry.reconcile_required
+        assert entry is not None and entry.remote_bet_id == "BK-77" and not entry.reconcile_required
 
 
 @pytest.mark.parametrize(
@@ -396,10 +432,10 @@ async def test_an_accepted_order_commits(sessions: async_sessionmaker[AsyncSessi
 @pytest.mark.asyncio
 async def test_an_unconfirmed_order_keeps_its_stake_in_exposure(
     sessions: async_sessionmaker[AsyncSession], opened: uuid.UUID, redis: Redis, settings: Settings, respond: Any, reason: str
-) -> None:
+, wire: Wire) -> None:
     """The order went out and no trustworthy answer came back: the bet may be live, so the money
     must not return to AVAILABLE until reconciliation says so."""
-    receipt = await TradeExecutor(sessions, redis, settings, Bookmaker(respond).gateway()).execute(opened, order(stake="250.00"))
+    receipt = await TradeExecutor(sessions, redis, settings, Bookmaker(respond).gateway(wire)).execute(opened, order(stake="250.00"))
     assert receipt.status == "UNKNOWN"
     assert await balances(sessions, opened) == (D("9750.00"), D("250.00"), D("10000.00"))
     async with sessions() as session:
@@ -412,10 +448,10 @@ async def test_an_unconfirmed_order_keeps_its_stake_in_exposure(
 @pytest.mark.asyncio
 async def test_reconciliation_resolves_an_unconfirmed_order(
     sessions: async_sessionmaker[AsyncSession], opened: uuid.UUID, redis: Redis, settings: Settings, placed: bool, available: str, exposure: str, final: LedgerStatus
-) -> None:
-    receipt = await TradeExecutor(sessions, redis, settings, Bookmaker(fail(httpx.ReadTimeout)).gateway()).execute(opened, order(stake="250.00"))
+, wire: Wire) -> None:
+    receipt = await TradeExecutor(sessions, redis, settings, Bookmaker(fail(httpx.ReadTimeout)).gateway(wire)).execute(opened, order(stake="250.00"))
     async with sessions() as session:
-        entry = await reconcile(session, settings, receipt.ledger_id, placed=placed, bookmaker_ref="BK-9" if placed else None, actor=None)
+        entry = await reconcile(session, settings, receipt.ledger_id, placed=placed, remote_bet_id="BK-9" if placed else None, actor=None)
         await session.commit()
         assert entry.status is final and not entry.reconcile_required
         await verify_account(session, opened)
@@ -423,9 +459,9 @@ async def test_reconciliation_resolves_an_unconfirmed_order(
 
 
 @pytest.mark.asyncio
-async def test_a_double_click_executes_once(sessions: async_sessionmaker[AsyncSession], opened: uuid.UUID, redis: Redis, settings: Settings) -> None:
+async def test_a_double_click_executes_once(sessions: async_sessionmaker[AsyncSession], opened: uuid.UUID, redis: Redis, settings: Settings, wire: Wire) -> None:
     book = Bookmaker(status(200, {"bet_id": "BK-1"}))
-    executor = TradeExecutor(sessions, redis, settings, book.gateway())
+    executor = TradeExecutor(sessions, redis, settings, book.gateway(wire))
     request = order()
     results = await asyncio.gather(executor.execute(opened, request), executor.execute(opened, request), return_exceptions=True)
     assert sum(1 for r in results if not isinstance(r, BaseException)) == 1
@@ -473,9 +509,9 @@ async def test_expired_or_moved_signals_never_execute(sessions: async_sessionmak
 
 # ================================================================ the five pillars
 @pytest.mark.asyncio
-async def test_kill_switch_blocks_before_anything_else(sessions: async_sessionmaker[AsyncSession], opened: uuid.UUID, redis: Redis, settings: Settings) -> None:
+async def test_kill_switch_blocks_before_anything_else(sessions: async_sessionmaker[AsyncSession], opened: uuid.UUID, redis: Redis, settings: Settings, wire: Wire) -> None:
     book = Bookmaker(status(200, {"bet_id": "x"}))
-    executor = TradeExecutor(sessions, redis, settings, book.gateway())
+    executor = TradeExecutor(sessions, redis, settings, book.gateway(wire))
     await redis.set(settings.CFO_KILL_SWITCH_KEY, "true")
     with pytest.raises(RiskGuardViolation) as caught:
         await executor.execute(opened, order())
@@ -752,7 +788,7 @@ def test_edges_on_a_steam_move_are_flagged() -> None:
 
 # ================================================================ the API
 @pytest.mark.asyncio
-async def test_execute_trade_endpoint(sessions: async_sessionmaker[AsyncSession], opened: uuid.UUID, redis: Redis, settings: Settings) -> None:
+async def test_execute_trade_endpoint(sessions: async_sessionmaker[AsyncSession], opened: uuid.UUID, redis: Redis, settings: Settings, wire: Wire) -> None:
     from fastapi import FastAPI
 
     from app.api.deps import get_current_user
@@ -761,7 +797,7 @@ async def test_execute_trade_endpoint(sessions: async_sessionmaker[AsyncSession]
     app = FastAPI()
     app.include_router(cfo_execution.router, prefix="/api/v1")
     app.state.redis = redis
-    app.state.bookmaker = Bookmaker(status(500)).gateway()
+    app.state.bookmaker = Bookmaker(status(500)).gateway(wire)
     async with sessions() as session:
         user = await session.get(User, opened)
     app.dependency_overrides[get_current_user] = lambda: user
@@ -791,3 +827,27 @@ async def test_execute_trade_endpoint(sessions: async_sessionmaker[AsyncSession]
         saved = await client.put("/api/v1/omni/risk-settings", json={"daily_drawdown_pct": "7.5", "max_loss_streak": 3})
         assert saved.status_code == 200 and saved.json()["daily_drawdown_pct"] == 7.5 and saved.json()["max_loss_streak"] == 3
         assert (await client.put("/api/v1/omni/risk-settings", json={"max_market_exposure_pct": "60"})).status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_simultaneous_orders_queue_behind_the_bankroll_lock(
+    sessions: async_sessionmaker[AsyncSession], opened: uuid.UUID, redis: Redis, settings: Settings, wire: Wire, request: pytest.FixtureRequest
+) -> None:
+    """Group 63: three edges hit at once for one user. FOR UPDATE NOWAIT refuses the losers at the
+    database, and the executor queues them micro-sequentially instead of failing them."""
+    if request.node.callspec.params.get("sessions") != "postgres":
+        pytest.skip("row locks need PostgreSQL (TEST_POSTGRES_URL)")
+
+    async def slow(request_: httpx.Request) -> httpx.Response:
+        await asyncio.sleep(0.25)  # the bookmaker takes a moment: the bankroll row is held meanwhile
+        return httpx.Response(200, json={"remote_bet_id": f"BK-{uuid.uuid4().hex[:6]}", "matched_odds": "2.50"})
+
+    gateway = SniperGateway(wire.sessions, wire.redis, wire.settings, wire.vault, httpx.AsyncClient(transport=httpx.MockTransport(slow)))
+    executor = TradeExecutor(sessions, redis, settings, gateway)
+    receipts = await asyncio.gather(
+        executor.execute(opened, order(stake="100.00")),
+        executor.execute(opened, order(stake="100.00", fixture="fx-other")),
+        executor.execute(opened, order(stake="100.00")),
+    )
+    assert [r.status for r in receipts] == ["EXECUTED"] * 3
+    assert await balances(sessions, opened) == (D("9700.00"), D("300.00"), D("10000.00"))

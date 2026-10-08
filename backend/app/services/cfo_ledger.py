@@ -30,7 +30,7 @@ from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from decimal import ROUND_DOWN, Decimal, InvalidOperation
-from typing import Any
+from typing import Any, Literal
 
 from redis.asyncio import Redis
 from redis.exceptions import RedisError
@@ -42,6 +42,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.core.config import Settings
 from app.models.cfo_vault import (
+    OPEN_STATUSES,
     AuditEvent,
     AuditLog,
     BankrollAccount,
@@ -248,6 +249,7 @@ class OrderTicket:
     odds: Decimal
     true_prob: Decimal | None = None
     signal_id: uuid.UUID | None = None
+    commence_time: datetime | None = None
 
 
 async def reserve(session: AsyncSession, account: BankrollAccount, ticket: OrderTicket) -> PhantomLedger:
@@ -283,6 +285,7 @@ async def reserve(session: AsyncSession, account: BankrollAccount, ticket: Order
         true_prob=ticket.true_prob,
         potential_pnl=potential_profit(stake, ticket.odds),
         status=LedgerStatus.PENDING,
+        commence_time=ticket.commence_time,
     )
     session.add(entry)
     try:
@@ -296,8 +299,8 @@ async def reserve(session: AsyncSession, account: BankrollAccount, ticket: Order
 
 def release(session: AsyncSession, account: BankrollAccount, entry: PhantomLedger, status: LedgerStatus, now: datetime | None = None) -> None:
     """Return a stake to AVAILABLE (a definitive rejection found by reconciliation, or a void market)."""
-    if entry.status is not LedgerStatus.PENDING:
-        raise LedgerInvariantError("NOT_PENDING", "Only a pending bet can be released")
+    if entry.status not in OPEN_STATUSES:
+        raise LedgerInvariantError("NOT_PENDING", "Only an open bet can be released")
     if status not in (LedgerStatus.REJECTED, LedgerStatus.VOID):
         raise LedgerInvariantError("BAD_RELEASE", "A release ends a bet as REJECTED or VOID")
     _post(session, account, PostingKind.RELEASE, {LedgerAccount.EXPOSURE: -entry.stake_inr, LedgerAccount.AVAILABLE: entry.stake_inr}, entry.id)
@@ -307,8 +310,8 @@ def release(session: AsyncSession, account: BankrollAccount, entry: PhantomLedge
 def settle(session: AsyncSession, account: BankrollAccount, entry: PhantomLedger, won: bool, now: datetime | None = None) -> Decimal:
     """Grade a pending bet. WON credits stake + profit to AVAILABLE; LOST books the stake to PNL.
     Either way its exposure clears. Returns the realised P&L."""
-    if entry.status is not LedgerStatus.PENDING:
-        raise LedgerInvariantError("NOT_PENDING", "Only a pending bet can be settled")
+    if entry.status not in OPEN_STATUSES:
+        raise LedgerInvariantError("NOT_PENDING", "Only an open bet can be settled")
     stake = entry.stake_inr
     if won:
         profit = entry.potential_pnl
@@ -428,18 +431,51 @@ class SettlementSummary:
         return {"users": self.users, "won": self.won, "lost": self.lost, "void": self.void, "skipped_locked": self.skipped_locked, "failed": self.failed, "pnl": str(self.pnl)}
 
 
+Grade = Literal["WON", "LOST", "VOID"]
+
+
+@dataclass(frozen=True, slots=True)
+class BookmakerGrade:
+    """A bookmaker's own statement of how one bet ended (the order resolver reads "my bets")."""
+
+    grade: Grade
+    venue_id: str
+
+
+def _grade_entry(
+    session: AsyncSession, account: BankrollAccount, entry: PhantomLedger, grade: Grade, now: datetime, summary: SettlementSummary
+) -> tuple[Decimal, bool | None]:
+    if grade == "VOID":
+        release(session, account, entry, LedgerStatus.VOID, now)
+        summary.void += 1
+        return ZERO, None
+    won = grade == "WON"
+    pnl = settle(session, account, entry, won, now)
+    summary.won += int(won)
+    summary.lost += int(not won)
+    return pnl, won
+
+
 async def settle_markets(
     session_factory: async_sessionmaker[AsyncSession],
     redis: Redis | None,
     settings: Settings,
     clock: Callable[[], datetime] = _utcnow,
+    *,
+    bookmaker_grades: Mapping[uuid.UUID, BookmakerGrade] | None = None,
 ) -> SettlementSummary:
-    """Settle every PENDING bet whose market has a recorded result, one user transaction at a time.
+    """Settle pending bets, one locked transaction per user. Two sources of truth feed one engine:
+
+    * graded markets (``MarketResult``): every pending bet on the market;
+    * the bookmaker's own statement of a bet (``bookmaker_grades``, from the order resolver), which
+      wins over a market result for that bet: it is what the counterparty will actually pay.
 
     A bet whose placement is still unconfirmed (``reconcile_required``) is never graded: until the
     bookmaker confirms it exists, paying it out could pay a bet that was never struck.
     """
     summary = SettlementSummary()
+    grades = dict(bookmaker_grades or {})
+    by_user: dict[uuid.UUID, set[uuid.UUID]] = defaultdict(set)
     async with session_factory() as session:
         due = (
             await session.execute(
@@ -448,9 +484,16 @@ async def settle_markets(
                 .where(PhantomLedger.status == LedgerStatus.PENDING, PhantomLedger.reconcile_required.is_(False))
             )
         ).all()
-    by_user: dict[uuid.UUID, list[uuid.UUID]] = defaultdict(list)
+        if grades:
+            due += (
+                await session.execute(
+                    select(PhantomLedger.user_id, PhantomLedger.id).where(
+                        PhantomLedger.id.in_(list(grades)), PhantomLedger.status == LedgerStatus.PENDING, PhantomLedger.reconcile_required.is_(False)
+                    )
+                )
+            ).all()
     for user_id, ledger_id in due:
-        by_user[user_id].append(ledger_id)
+        by_user[user_id].add(ledger_id)
 
     for user_id, ids in by_user.items():
         outcomes: list[bool] = []
@@ -460,29 +503,31 @@ async def settle_markets(
                 rows = (
                     await session.execute(
                         select(PhantomLedger, MarketResult)
-                        .join(MarketResult, (MarketResult.fixture_id == PhantomLedger.fixture_id) & (MarketResult.market == PhantomLedger.market))
-                        .where(PhantomLedger.id.in_(ids), PhantomLedger.status == LedgerStatus.PENDING)  # re-checked under the lock
+                        .outerjoin(MarketResult, (MarketResult.fixture_id == PhantomLedger.fixture_id) & (MarketResult.market == PhantomLedger.market))
+                        .where(PhantomLedger.id.in_(list(ids)), PhantomLedger.status == LedgerStatus.PENDING)  # re-checked under the lock
                         .order_by(PhantomLedger.created_at)
                         .with_for_update(of=PhantomLedger)
                     )
                 ).all()
                 now = clock()
                 for entry, result in rows:
-                    if result.is_void:
-                        release(session, account, entry, LedgerStatus.VOID, now)
-                        pnl = ZERO
-                        summary.void += 1
+                    statement = grades.get(entry.id)
+                    if statement is not None:
+                        grade: Grade = statement.grade
+                        source = {"source": f"bookmaker:{statement.venue_id}", "remote_bet_id": entry.remote_bet_id}
+                    elif result is not None:
+                        grade = "VOID" if result.is_void else ("WON" if entry.selection == result.winning_selection else "LOST")
+                        source = {"source": result.source, "winning_selection": result.winning_selection}
                     else:
-                        won = entry.selection == result.winning_selection
-                        pnl = settle(session, account, entry, won, now)
+                        continue
+                    pnl, won = _grade_entry(session, account, entry, grade, now, summary)
+                    if won is not None:
                         outcomes.append(won)
-                        summary.won += int(won)
-                        summary.lost += int(not won)
                     summary.pnl += pnl
                     session.add(
                         audit_row(
                             AuditEvent.SETTLED,
-                            "SETTLED_VOID" if result.is_void else ("SETTLED_WON" if pnl > 0 else "SETTLED_LOST"),
+                            f"SETTLED_{grade}",
                             user_id=user_id,
                             ledger_id=entry.id,
                             idempotency_key=entry.idempotency_key,
@@ -491,7 +536,7 @@ async def settle_markets(
                             stake_inr=entry.stake_inr,
                             odds=entry.odds,
                             pnl_inr=pnl,
-                            detail={"result_source": result.source, "winning_selection": result.winning_selection},
+                            detail=source,
                         )
                     )
                 mark_peak(account)
@@ -512,33 +557,57 @@ async def settle_markets(
 
 
 # ---------------------------------------------------------------- reconciliation (UNKNOWN outcomes)
-async def reconcile(
+ManualOutcome = Literal["WON", "LOST", "VOID", "NOT_PLACED", "OPEN"]
+
+
+async def resolve_manually(
     session: AsyncSession,
     settings: Settings,
     ledger_id: uuid.UUID,
     *,
-    placed: bool,
-    bookmaker_ref: str | None,
+    outcome: ManualOutcome,
+    remote_bet_id: str | None,
     actor: uuid.UUID | None,
-) -> PhantomLedger:
-    """Resolve a bet whose placement was never confirmed, with the bookmaker's word on it.
+) -> tuple[PhantomLedger, bool | None]:
+    """A person's ruling on an unconfirmed or dead-lettered bet, from the bookmaker's own records.
 
-    Placed: it keeps its reserved stake and becomes an ordinary pending bet. Not placed: the stake
-    returns to AVAILABLE and the bet ends REJECTED. The caller commits.
+    WON / LOST / VOID settle it now; NOT_PLACED returns the stake (REJECTED); OPEN puts it back in
+    the resolver's queue as an ordinary pending bet. Returns the entry and, for WON/LOST, whether it
+    won (for the loss-streak counter). The caller commits.
     """
     owner = await session.scalar(select(PhantomLedger.user_id).where(PhantomLedger.id == ledger_id))
     if owner is None:
         raise CfoError("NOT_FOUND", "No such position", status_code=404)
     account = await lock_bankroll(session, owner, settings, nowait=True)
     entry = (await session.execute(select(PhantomLedger).where(PhantomLedger.id == ledger_id).with_for_update())).scalar_one()
-    if entry.status is not LedgerStatus.PENDING or not entry.reconcile_required:
-        raise CfoError("NOT_RECONCILABLE", "Only an unconfirmed pending bet can be reconciled", status_code=409)
-    if placed:
-        entry.bookmaker_ref, entry.reconcile_required = bookmaker_ref, False
-        event, reason = AuditEvent.EXECUTED, "RECONCILED_PLACED"
+    if entry.status not in OPEN_STATUSES:
+        raise CfoError("NOT_OPEN", "This bet is already settled", status_code=409)
+    if entry.status is LedgerStatus.PENDING and not entry.reconcile_required and outcome in ("NOT_PLACED", "OPEN"):
+        raise CfoError("NOT_RECONCILABLE", "This bet is confirmed and still open: nothing to reconcile", status_code=409)
+    if remote_bet_id:
+        entry.remote_bet_id = remote_bet_id
+    now = _utcnow()
+    won: bool | None = None
+    pnl: Decimal | None = None
+    if outcome == "NOT_PLACED":
+        release(session, account, entry, LedgerStatus.REJECTED, now)
+        event, reason = AuditEvent.BOOKMAKER_REJECTED, "RESOLVED_NOT_PLACED"
+    elif outcome == "OPEN":
+        if not entry.remote_bet_id:
+            raise CfoError("REMOTE_ID_REQUIRED", "An open bet needs the bookmaker's bet id", status_code=422)
+        entry.status, entry.reconcile_required = LedgerStatus.PENDING, False
+        entry.resolve_attempts, entry.last_resolve_error, entry.next_resolve_at = 0, None, now
+        event, reason = AuditEvent.EXECUTED, "RESOLVED_OPEN"
+    elif outcome == "VOID":
+        release(session, account, entry, LedgerStatus.VOID, now)
+        pnl = ZERO
+        event, reason = AuditEvent.SETTLED, "SETTLED_VOID"
     else:
-        release(session, account, entry, LedgerStatus.REJECTED)
-        event, reason = AuditEvent.BOOKMAKER_REJECTED, "RECONCILED_NOT_PLACED"
+        won = outcome == "WON"
+        pnl = settle(session, account, entry, won, now)
+        event, reason = AuditEvent.SETTLED, f"SETTLED_{outcome}"
+    entry.reconcile_required = False
+    mark_peak(account)
     session.add(
         audit_row(
             event,
@@ -550,8 +619,29 @@ async def reconcile(
             selection=entry.selection,
             stake_inr=entry.stake_inr,
             odds=entry.odds,
-            detail={"bookmaker_ref": bookmaker_ref, "reconciled_by": str(actor) if actor else None},
+            pnl_inr=pnl,
+            detail={"remote_bet_id": entry.remote_bet_id, "resolved_by": str(actor) if actor else None, "manual": True},
         )
     )
     await session.flush()
+    return entry, won
+
+
+async def reconcile(
+    session: AsyncSession,
+    settings: Settings,
+    ledger_id: uuid.UUID,
+    *,
+    placed: bool,
+    remote_bet_id: str | None,
+    actor: uuid.UUID | None,
+) -> PhantomLedger:
+    """Resolve a bet whose placement was never confirmed: placed keeps its reserved stake as an
+    ordinary pending bet; not placed returns the stake (REJECTED). The caller commits."""
+    unconfirmed = await session.scalar(select(PhantomLedger.reconcile_required).where(PhantomLedger.id == ledger_id))
+    if unconfirmed is None:
+        raise CfoError("NOT_FOUND", "No such position", status_code=404)
+    if unconfirmed is False:
+        raise CfoError("NOT_RECONCILABLE", "Only an unconfirmed pending bet can be reconciled", status_code=409)
+    entry, _ = await resolve_manually(session, settings, ledger_id, outcome="OPEN" if placed else "NOT_PLACED", remote_bet_id=remote_bet_id, actor=actor)
     return entry

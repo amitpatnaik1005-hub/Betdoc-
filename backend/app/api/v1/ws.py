@@ -135,6 +135,53 @@ async def signals_stream(websocket: WebSocket, user: WsUser) -> None:
     await run_signal_socket(websocket, user.id, getattr(websocket.app.state, "redis", None), AsyncSessionLocal, settings)
 
 
+@router.websocket("/sniper")
+async def sniper_stream(websocket: WebSocket, user: WsUser) -> None:
+    """The execution terminal, live: every step of this user's orders (an admin sees every user's)."""
+    redis = getattr(websocket.app.state, "redis", None)
+    if redis is None:
+        await websocket.close(code=status.WS_1011_INTERNAL_ERROR, reason="Live stream unavailable")
+        return
+    pubsub = redis.pubsub(ignore_subscribe_messages=True)
+    channel = f"{settings.SNIPER_PREFIX}:feed"
+    try:
+        await pubsub.subscribe(channel)
+    except Exception:  # noqa: BLE001 - Redis down: refuse the socket, the client falls back to history polling
+        await websocket.close(code=status.WS_1011_INTERNAL_ERROR, reason="Live stream unavailable")
+        return
+    await websocket.accept()
+    mine, admin = str(user.id), user.role == "ADMIN"
+    send_lock = asyncio.Lock()
+
+    async def pump() -> None:
+        async for message in pubsub.listen():
+            if message.get("type") != "message":
+                continue
+            data = message["data"]
+            if not admin and f'"user_id":"{mine}"' not in data:
+                continue  # another user's order
+            async with send_lock:
+                await websocket.send_text(data)
+
+    async def drain() -> None:
+        while True:
+            if await websocket.receive_text() == "ping":
+                async with send_lock:
+                    await websocket.send_text('{"type":"pong"}')
+
+    tasks = [asyncio.create_task(pump()), asyncio.create_task(drain())]
+    try:
+        await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
+    finally:
+        for task in tasks:
+            task.cancel()
+        try:
+            await pubsub.unsubscribe(channel)
+            await pubsub.aclose()
+        except Exception:  # noqa: BLE001
+            pass
+
+
 @router.get("/live-odds/snapshot")
 async def live_odds_snapshot(request: Request, user: CurrentUser) -> Response:  # noqa: ARG001 - auth gate
     """The whole live board over plain HTTP, in the same camelCase shape as /ws/live-odds frames.

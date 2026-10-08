@@ -202,7 +202,7 @@ export const SlideOverBetslip = () => {
                   <motion.div key="ok" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} className="mt-5 rounded-2xl bg-emerald-50 px-4 py-3 text-sm text-emerald-800 dark:bg-emerald-400/10 dark:text-emerald-200">
                     <p className="font-semibold">Placed{receipt.execution_mode === "paper" ? " (paper)" : ""}</p>
                     <p className="mt-1 text-[13px] opacity-80">
-                      {formatINR(receipt.stake_inr)} moved to exposure · ref <span className="font-mono">{receipt.bookmaker_ref}</span>
+                      {formatINR(receipt.stake_inr)} moved to exposure · ref <span className="font-mono">{receipt.remote_bet_id}</span>
                     </p>
                   </motion.div>
                 )}

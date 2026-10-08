@@ -132,6 +132,7 @@ async def bankroll(request: Request, user: CurrentUser, sessions: SessionFactory
             max_market_exposure_pct=limits.max_market_exposure_pct,
             max_loss_streak=limits.max_loss_streak,
             velocity_max_cv_pct=limits.velocity_max_cv_pct,
+            max_slippage_pct=limits.max_slippage_pct,
         ),
         open_positions=[PositionRead.model_validate(p) for p in positions],
     )
@@ -169,6 +170,7 @@ async def read_risk_settings(user: CurrentUser, sessions: SessionFactory) -> Ris
         max_market_exposure_pct=limits.max_market_exposure_pct,
         max_loss_streak=limits.max_loss_streak,
         velocity_max_cv_pct=limits.velocity_max_cv_pct,
+        max_slippage_pct=limits.max_slippage_pct,
     )
 
 
@@ -228,7 +230,7 @@ async def reconcile_position(
 ) -> PositionRead:
     async with sessions() as session:
         try:
-            entry = await reconcile(session, settings, ledger_id, placed=payload.placed, bookmaker_ref=payload.bookmaker_ref, actor=admin.id)
+            entry = await reconcile(session, settings, ledger_id, placed=payload.placed, remote_bet_id=payload.remote_bet_id, actor=admin.id)
             await session.commit()
         except CfoError as exc:
             await session.rollback()

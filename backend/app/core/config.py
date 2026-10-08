@@ -84,10 +84,9 @@ class Settings(BaseSettings):
     ARYABHATA_STEAM_PERIODS: int = Field(default=12, ge=2)
 
     # ---- CFO ledger, risk guards, two-phase execution (Group 62) -------------
-    # paper: a simulated bookmaker that fills every order (the default anywhere without a live book)
+    # paper: fills every order without leaving the process. live: the Omni-Sniper routes each order
+    # to the execution venue for its bookmaker (Group 63)
     CFO_EXECUTION_MODE: Literal["paper", "live"] = "paper"
-    CFO_BOOKMAKER_BASE_URL: str | None = None  # live: orders POST to {base}/bets (https only)
-    CFO_BOOKMAKER_API_KEY: SecretStr | None = None
     CFO_BOOKMAKER_TIMEOUT_SECONDS: float = Field(default=8.0, gt=0, le=30)  # the bankroll row stays locked this long at most
     CFO_IDEMPOTENCY_TTL_SECONDS: int = Field(default=60, ge=1)
     CFO_IDEMPOTENCY_KEY_PREFIX: str = "betdoc:idempotency"
@@ -96,6 +95,27 @@ class Settings(BaseSettings):
     CFO_VELOCITY_WINDOW_SECONDS: float = Field(default=60.0, gt=0)
     CFO_TICK_HISTORY_SECONDS: int = Field(default=180, ge=60)  # per-selection price history kept in Redis
     CFO_SETTLE_INTERVAL_SECONDS: float = Field(default=60.0, gt=0)
+
+    # ---- Omni-Sniper: venue sessions, outbound limits, order resolution (Group 63) ----
+    SNIPER_PREFIX: str = "sniper"
+    SNIPER_SESSION_REFRESH_MARGIN_SECONDS: int = Field(default=300, ge=30)  # refresh tokens this long before expiry
+    SNIPER_AUTH_TIMEOUT_SECONDS: float = Field(default=5.0, gt=0, le=30)
+    SNIPER_RATE_MAX_WAIT_SECONDS: float = Field(default=3.0, ge=0, le=10)  # queue a shot this long for an outbound token
+    SNIPER_RESOLVE_INTERVAL_SECONDS: float = Field(default=30.0, gt=0)
+    SNIPER_RESOLVE_BACKOFF_BASE_SECONDS: float = Field(default=30.0, gt=0)
+    SNIPER_RESOLVE_BACKOFF_MAX_SECONDS: float = Field(default=3600.0, gt=0)
+    SNIPER_RESOLVE_MAX_FAILURES: int = Field(default=10, ge=1)  # then the order is dead-lettered
+    SNIPER_OPEN_POLL_SECONDS: float = Field(default=300.0, gt=0)  # an accepted, unsettled bet is re-checked this often
+    SNIPER_DLQ_AFTER_HOURS: float = Field(default=24.0, gt=0)  # pending this long past kick-off -> manual intervention
+    SNIPER_FEED_LENGTH: int = Field(default=200, ge=10)  # terminal lines kept per user
+    # The in-process sandbox bookmaker (simulated venue for development); never mounted in production
+    SNIPER_SANDBOX_ENABLED: bool = True
+    SNIPER_SANDBOX_TOKEN_TTL_SECONDS: int = Field(default=600, ge=60)
+    SNIPER_SANDBOX_BETS_PER_SECOND: float = Field(default=2.0, gt=0)
+
+    @property
+    def sniper_sandbox_active(self) -> bool:
+        return self.SNIPER_SANDBOX_ENABLED and self.ENVIRONMENT != "production"
 
     # The Wire: public sports RSS feeds (no key needed)
     WIRE_NEWS_FEEDS: List[str] = [

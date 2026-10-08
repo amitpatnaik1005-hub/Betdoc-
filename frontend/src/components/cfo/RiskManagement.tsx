@@ -31,6 +31,7 @@ const SLIDERS: readonly SliderSpec[] = [
   { field: "max_market_exposure_pct", label: "Max market exposure", hint: "Open stakes on any one fixture, as a share of equity.", min: 1, max: 50, step: 0.5, format: (v) => `${v.toFixed(1)}%` },
   { field: "max_loss_streak", label: "Consecutive losses", hint: "Trading pauses after this many losses in a row; a win resets it.", min: 1, max: 20, step: 1, format: (v) => `${v}` },
   { field: "velocity_max_cv_pct", label: "Velocity lock", hint: "Blocks a bet while its price swings more than this (60s std dev ÷ mean).", min: 0.5, max: 20, step: 0.5, format: (v) => `${v.toFixed(1)}%` },
+  { field: "max_slippage_pct", label: "Max slippage", hint: "How far below the asked price a fill may land. Never below the +0.5% EV floor.", min: 0, max: 5, step: 0.25, format: (v) => `${v.toFixed(2)}%` },
 ];
 
 const position = (v: number, min: number, max: number): number => ((v - min) / (max - min)) * 100;

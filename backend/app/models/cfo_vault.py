@@ -56,6 +56,12 @@ class LedgerStatus(StrEnum):
     LOST = "LOST"
     REJECTED = "REJECTED"
     VOID = "VOID"
+    # Dead-letter queue: the resolver gave up (bookmaker unreachable, or no outcome long after
+    # kick-off). The stake stays in exposure and nothing retries it until a person resolves it.
+    REQUIRES_MANUAL_INTERVENTION = "REQUIRES_MANUAL_INTERVENTION"
+
+
+OPEN_STATUSES = (LedgerStatus.PENDING, LedgerStatus.REQUIRES_MANUAL_INTERVENTION)  # stake still in exposure
 
 
 class LedgerAccount(StrEnum):
@@ -81,11 +87,12 @@ class AuditEvent(StrEnum):
     EXECUTION_UNKNOWN = "EXECUTION_UNKNOWN"  # the bookmaker may have the bet: funds stay in exposure
     COMMIT_FAILED = "COMMIT_FAILED"  # placed at the bookmaker, ledger write failed: reconcile by hand
     SETTLED = "SETTLED"
+    DEAD_LETTERED = "DEAD_LETTERED"  # moved to REQUIRES_MANUAL_INTERVENTION by the order resolver
 
 
 def _enum(enum_cls: type[StrEnum], name: str) -> Enum:
     # VARCHAR + CHECK rather than a native type: new members never need an ALTER TYPE migration
-    return Enum(enum_cls, name=name, native_enum=False, create_constraint=True, length=24, validate_strings=True)
+    return Enum(enum_cls, name=name, native_enum=False, create_constraint=True, length=32, validate_strings=True)
 
 
 class BankrollAccount(Base):
@@ -119,12 +126,15 @@ class PhantomLedger(Base):
         CheckConstraint("odds > 1", name="odds_above_one"),
         CheckConstraint("potential_pnl >= 0", name="potential_pnl_non_negative"),
         CheckConstraint(
-            "(status = 'PENDING' AND settled_at IS NULL) OR (status <> 'PENDING' AND settled_at IS NOT NULL)",
+            "(status IN ('PENDING', 'REQUIRES_MANUAL_INTERVENTION') AND settled_at IS NULL)"
+            " OR (status NOT IN ('PENDING', 'REQUIRES_MANUAL_INTERVENTION') AND settled_at IS NOT NULL)",
             name="settlement_consistent",
         ),
+        CheckConstraint("resolve_attempts >= 0", name="resolve_attempts_non_negative"),
         Index("ix_cfo_phantom_ledger_user_status", "user_id", "status"),
         Index("ix_cfo_phantom_ledger_user_fixture_status", "user_id", "fixture_id", "status"),
         Index("ix_cfo_phantom_ledger_fixture_market_status", "fixture_id", "market", "status"),
+        Index("ix_cfo_phantom_ledger_status_next_resolve", "status", "next_resolve_at"),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
@@ -134,7 +144,7 @@ class PhantomLedger(Base):
     market: Mapped[str] = mapped_column(String(64))
     selection: Mapped[str] = mapped_column(String(64))
     bookmaker_id: Mapped[str] = mapped_column(String(64))
-    bookmaker_ref: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    remote_bet_id: Mapped[str | None] = mapped_column(String(128), nullable=True)  # the bookmaker's own bet id
     signal_id: Mapped[uuid.UUID | None] = mapped_column(Uuid(as_uuid=True), nullable=True)
     stake_inr: Mapped[Decimal] = mapped_column(MONEY)
     odds: Mapped[Decimal] = mapped_column(ODDS)
@@ -144,6 +154,11 @@ class PhantomLedger(Base):
     status: Mapped[LedgerStatus] = mapped_column(_enum(LedgerStatus, "cfo_ledger_status"), default=LedgerStatus.PENDING)
     # The bookmaker's answer never arrived: the bet may be live, so its stake stays in exposure
     reconcile_required: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
+    commence_time: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # Order resolver (sniper.resolve_pending_orders): failed polls in a row, the next poll, the last error
+    resolve_attempts: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    next_resolve_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_resolve_error: Mapped[str | None] = mapped_column(String(255), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, server_default=func.now())
     settled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
@@ -195,6 +210,7 @@ class RiskGuardSettings(Base):
         CheckConstraint("max_market_exposure_pct >= 1 AND max_market_exposure_pct <= 50", name="market_exposure_range"),
         CheckConstraint("max_loss_streak >= 1 AND max_loss_streak <= 20", name="loss_streak_range"),
         CheckConstraint("velocity_max_cv_pct >= 0.5 AND velocity_max_cv_pct <= 20", name="velocity_range"),
+        CheckConstraint("max_slippage_pct >= 0 AND max_slippage_pct <= 5", name="slippage_range"),
     )
 
     user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), primary_key=True)
@@ -203,6 +219,8 @@ class RiskGuardSettings(Base):
     max_loss_streak: Mapped[int] = mapped_column(Integer, default=5, server_default="5")
     # Odds volatility ceiling: std dev of the last 60s of prices as a % of their mean
     velocity_max_cv_pct: Mapped[Decimal] = mapped_column(PERCENT, default=Decimal("3.00"), server_default="3.00")
+    # How far below the requested odds a fill may land (never below the +EV floor): min_acceptable_odds
+    max_slippage_pct: Mapped[Decimal] = mapped_column(PERCENT, default=Decimal("0.50"), server_default="0.50")
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, onupdate=utc_now)
 
 

@@ -75,6 +75,13 @@ class VaultCrypto:
         except (InvalidToken, UnicodeError, AttributeError) as exc:
             raise VaultDecryptionError("API key ciphertext could not be decrypted.") from exc
 
+    def decrypt_into(self, cipher_text: str) -> bytearray:
+        """Plaintext as a mutable buffer the caller can wipe (``wipe``) as soon as it is used."""
+        try:
+            return bytearray(self._cipher.decrypt(cipher_text.encode("ascii")))
+        except (InvalidToken, UnicodeError, AttributeError) as exc:
+            raise VaultDecryptionError("Ciphertext could not be decrypted.") from exc
+
     def rotate(self, cipher_text: str) -> str:
         """Re-encrypt under the current primary key (use after promoting a new MASTER_VAULT_KEY)."""
         try:

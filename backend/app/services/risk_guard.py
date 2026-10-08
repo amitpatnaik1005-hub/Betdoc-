@@ -42,6 +42,7 @@ DEFAULT_LIMITS = {
     "max_market_exposure_pct": Decimal("10.00"),
     "max_loss_streak": 5,
     "velocity_max_cv_pct": Decimal("3.00"),
+    "max_slippage_pct": Decimal("0.50"),
 }
 
 
@@ -55,12 +56,19 @@ class GuardLimits:
     max_market_exposure_pct: Decimal
     max_loss_streak: int
     velocity_max_cv_pct: Decimal
+    max_slippage_pct: Decimal = Decimal("0.50")
 
     @classmethod
     def of(cls, row: RiskGuardSettings | None) -> GuardLimits:
         if row is None:
             return cls(**DEFAULT_LIMITS)  # type: ignore[arg-type]
-        return cls(Decimal(row.daily_drawdown_pct), Decimal(row.max_market_exposure_pct), int(row.max_loss_streak), Decimal(row.velocity_max_cv_pct))
+        return cls(
+            Decimal(row.daily_drawdown_pct),
+            Decimal(row.max_market_exposure_pct),
+            int(row.max_loss_streak),
+            Decimal(row.velocity_max_cv_pct),
+            Decimal(row.max_slippage_pct if row.max_slippage_pct is not None else DEFAULT_LIMITS["max_slippage_pct"]),
+        )
 
 
 @dataclass(slots=True)

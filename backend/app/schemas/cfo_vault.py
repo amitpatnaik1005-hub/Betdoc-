@@ -37,6 +37,7 @@ class ExecuteTradeRequest(BaseModel):
     true_prob: Annotated[Decimal, Field(gt=0, lt=1, allow_inf_nan=False)] | None = None
     signal_id: UUID | None = None  # set when the order comes from an Aryabhata signal
     signal_expires_at: datetime | None = None
+    commence_time: datetime | None = None  # kick-off: the order resolver dead-letters 24h past it
 
     @field_validator("idempotency_key")
     @classmethod
@@ -60,7 +61,7 @@ class ExecutionReceipt(BaseModel):
     status: Literal["EXECUTED", "UNKNOWN"]
     message: str
     ledger_id: UUID
-    bookmaker_ref: str | None
+    remote_bet_id: str | None
     bookmaker_id: str
     fixture_id: str
     selection: str
@@ -79,6 +80,7 @@ class RiskSettingsRead(BaseModel):
     max_market_exposure_pct: WireDecimal
     max_loss_streak: int
     velocity_max_cv_pct: WireDecimal
+    max_slippage_pct: WireDecimal
 
 
 class RiskSettingsUpdate(BaseModel):
@@ -88,8 +90,9 @@ class RiskSettingsUpdate(BaseModel):
     max_market_exposure_pct: Annotated[Decimal, Field(ge=1, le=50, allow_inf_nan=False)] | None = None
     max_loss_streak: Annotated[int, Field(ge=1, le=20)] | None = None
     velocity_max_cv_pct: Annotated[Decimal, Field(ge=Decimal("0.5"), le=20, allow_inf_nan=False)] | None = None
+    max_slippage_pct: Annotated[Decimal, Field(ge=0, le=5, allow_inf_nan=False)] | None = None
 
-    @field_validator("daily_drawdown_pct", "max_market_exposure_pct", "velocity_max_cv_pct")
+    @field_validator("daily_drawdown_pct", "max_market_exposure_pct", "velocity_max_cv_pct", "max_slippage_pct")
     @classmethod
     def _two_places(cls, value: Decimal | None) -> Decimal | None:
         return None if value is None else _max_places(value, 2, "percentage")
@@ -103,13 +106,16 @@ class PositionRead(BaseModel):
     market: str
     selection: str
     bookmaker_id: str
-    bookmaker_ref: str | None
+    remote_bet_id: str | None
     stake_inr: WireDecimal
     odds: WireDecimal
     potential_pnl: WireDecimal
     realized_pnl: WireDecimal | None
     status: LedgerStatus
     reconcile_required: bool
+    commence_time: datetime | None = None
+    resolve_attempts: int = 0
+    last_resolve_error: str | None = None
     created_at: datetime
     settled_at: datetime | None
 
@@ -150,11 +156,11 @@ class ReconcileRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     placed: bool  # what the bookmaker says: does this bet exist?
-    bookmaker_ref: str | None = Field(default=None, min_length=1, max_length=128)
+    remote_bet_id: str | None = Field(default=None, min_length=1, max_length=128)
 
     @model_validator(mode="after")
     def _ref_when_placed(self) -> ReconcileRequest:
-        if self.placed and self.bookmaker_ref is None:
+        if self.placed and self.remote_bet_id is None:
             raise ValueError("a placed bet needs the bookmaker's reference")
         return self
 
