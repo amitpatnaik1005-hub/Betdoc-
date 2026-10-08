@@ -227,6 +227,7 @@ const StageHeader = (): ReactElement => {
   const halted = useSystemStore((s) => s.halted);
   const busStatus = useSystemStore((s) => s.busStatus);
   const oddsLive = useMarketStore((s) => s.isConnected);
+  const oddsTransport = useMarketStore((s) => s.transport);
   const activeCommander = useCommanderStore((s) => s.activeCommander);
   const isCompact = useUIStore((s) => s.isCompact);
   const toggleLeft = useUIStore((s) => s.toggleLeft);
@@ -293,7 +294,7 @@ const StageHeader = (): ReactElement => {
             <p className={`text-[11px] font-medium tracking-wide ${socket.text}`}>
               {MOCK_AUTH ? 'Mock session' : socket.label}
               <span className="text-stone-300 dark:text-stone-700"> · </span>
-              <span className="text-stone-400 dark:text-stone-500">Odds feed {oddsLive ? 'streaming' : 'idle'}</span>
+              <span className="text-stone-400 dark:text-stone-500">Odds feed {oddsLive ? (oddsTransport === 'polling' ? 'polling' : 'streaming') : 'idle'}</span>
               <span className="text-stone-300 dark:text-stone-700"> · </span>
               <span className="text-stone-400 dark:text-stone-500">INR book</span>
             </p>

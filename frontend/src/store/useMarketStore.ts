@@ -1,7 +1,16 @@
+/**
+ * Live market board state, fed by `/ws/live-odds`.
+ *
+ * Self-healing: when the socket drops, it reconnects with jittered exponential backoff and, until it
+ * is back, polls the same board over HTTP (`/ws/live-odds/snapshot`) every 3s. Prices keep moving and
+ * the board stays usable; the switch back to the socket is silent. `transport` says which is active.
+ */
 import { create } from "zustand";
-import { wsUrl } from "../api/client";
+import { apiClient, wsUrl } from "../api/client";
 
 const LIVE_ODDS_PATH = "/ws/live-odds";
+const SNAPSHOT_PATH = "/ws/live-odds/snapshot";
+const POLL_INTERVAL_MS = 3_000;
 // The server closes sockets idle for 90s; ping well inside that window.
 const PING_INTERVAL_MS = 30_000;
 const BASE_BACKOFF_MS = 1_000;
@@ -21,6 +30,9 @@ export interface MarketTick {
   isSuspended: boolean;
 }
 
+/** connecting: first dial; ws: socket live; polling: socket down, HTTP fallback live; offline: neither. */
+export type FeedTransport = "connecting" | "ws" | "polling" | "offline";
+
 export interface MatchState {
   matchId: string;
   homeTeam: string;
@@ -30,9 +42,12 @@ export interface MatchState {
 
 interface MarketState {
   matches: Record<string, MatchState>;
+  /** Prices are live: the socket is open, or the HTTP polling fallback is succeeding. */
   isConnected: boolean;
   isReconnecting: boolean;
   connectionError: string | null;
+  transport: FeedTransport;
+  lastPollAt: number | null;
   connect: (token: string) => void;
   disconnect: () => void;
 }
@@ -46,6 +61,8 @@ let reconnectAttempts: number = 0;
 let isIntentionallyDisconnected: boolean = false;
 let currentToken: string = "";
 let pingTimer: ReturnType<typeof setInterval> | null = null;
+let pollTimer: ReturnType<typeof setInterval> | null = null;
+let pollInFlight: boolean = false;
 
 function stopPing(): void {
   if (pingTimer !== null) {
@@ -153,6 +170,40 @@ function enqueueTicks(ticks: MarketTick[]): void {
   }
 }
 
+// --------------------------------------------------------------------------- //
+// HTTP polling fallback (only while the socket is down)
+// --------------------------------------------------------------------------- //
+async function pollOnce(): Promise<void> {
+  if (pollInFlight || isIntentionallyDisconnected || !currentToken) return;
+  pollInFlight = true;
+  try {
+    const data: unknown = await apiClient.get<unknown>(SNAPSHOT_PATH);
+    if (pollTimer === null) return; // the socket came back while this request was in flight
+    const ticks: MarketTick[] = (Array.isArray(data) ? data : []).filter(isMarketTick);
+    if (ticks.length > 0) enqueueTicks(ticks);
+    useMarketStore.setState({ isConnected: true, transport: "polling", lastPollAt: Date.now(), connectionError: null });
+  } catch {
+    if (pollTimer !== null) useMarketStore.setState({ isConnected: false, transport: "offline" });
+  } finally {
+    pollInFlight = false;
+  }
+}
+
+function startPolling(): void {
+  if (pollTimer !== null || isIntentionallyDisconnected || !currentToken) return;
+  pollTimer = setInterval(() => {
+    if (document.visibilityState === "visible") void pollOnce();
+  }, POLL_INTERVAL_MS);
+  void pollOnce();
+}
+
+function stopPolling(): void {
+  if (pollTimer !== null) {
+    clearInterval(pollTimer);
+    pollTimer = null;
+  }
+}
+
 function teardownSocket(): void {
   stopPing();
   const ws: WebSocket | null = activeSocket;
@@ -177,7 +228,8 @@ function scheduleReconnect(): void {
   const delay: number = backoff + Math.random() * JITTER_MS;
   reconnectAttempts = Math.min(reconnectAttempts + 1, 30); // cap exponent growth
 
-  useMarketStore.setState({ isConnected: false, isReconnecting: true });
+  // While the polling fallback is delivering, prices are still live: don't flicker the board
+  useMarketStore.setState((state) => ({ isConnected: state.transport === "polling", isReconnecting: true }));
 
   reconnectTimeout = setTimeout(() => {
     reconnectTimeout = null;
@@ -193,6 +245,7 @@ function openSocket(): void {
   try {
     ws = new WebSocket(`${wsUrl(LIVE_ODDS_PATH)}?token=${encodeURIComponent(currentToken)}`);
   } catch {
+    startPolling(); // sockets unavailable here (blocked, proxied away): HTTP keeps the board live
     scheduleReconnect();
     return;
   }
@@ -201,7 +254,8 @@ function openSocket(): void {
   ws.onopen = (): void => {
     if (ws !== activeSocket) return;
     reconnectAttempts = 0;
-    useMarketStore.setState({ isConnected: true, isReconnecting: false, connectionError: null });
+    stopPolling(); // the socket is back: the fallback stands down silently
+    useMarketStore.setState({ isConnected: true, isReconnecting: false, connectionError: null, transport: "ws" });
     stopPing();
     pingTimer = setInterval(() => {
       if (ws === activeSocket && ws.readyState === WebSocket.OPEN) ws.send("ping");
@@ -231,17 +285,20 @@ function openSocket(): void {
     stopPing();
 
     if (isIntentionallyDisconnected) {
-      useMarketStore.setState({ isConnected: false, isReconnecting: false });
+      useMarketStore.setState({ isConnected: false, isReconnecting: false, transport: "offline" });
       return;
     }
     if (AUTH_FAILURE_CODES.has(event.code)) {
+      stopPolling();
       useMarketStore.setState({
         isConnected: false,
         isReconnecting: false,
         connectionError: "Live feed rejected credentials",
+        transport: "offline",
       });
       return;
     }
+    startPolling();
     scheduleReconnect();
   };
 }
@@ -254,6 +311,8 @@ export const useMarketStore = create<MarketState>()(() => ({
   isConnected: false,
   isReconnecting: false,
   connectionError: null,
+  transport: "offline",
+  lastPollAt: null,
 
   connect: (token: string): void => {
     // Already live (or dialling) on this token: a repeat call is a no-op.
@@ -263,12 +322,14 @@ export const useMarketStore = create<MarketState>()(() => ({
     reconnectAttempts = 0;
     clearReconnectTimer();
     if (!token) return;
+    useMarketStore.setState({ transport: "connecting" });
     openSocket();
   },
 
   disconnect: (): void => {
     isIntentionallyDisconnected = true;
     clearReconnectTimer();
+    stopPolling();
     cancelPendingFlush();
     teardownSocket();
     currentToken = "";
@@ -278,6 +339,8 @@ export const useMarketStore = create<MarketState>()(() => ({
       isConnected: false,
       isReconnecting: false,
       connectionError: null,
+      transport: "offline",
+      lastPollAt: null,
     });
   },
 }));

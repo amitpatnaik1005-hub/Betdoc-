@@ -4,13 +4,13 @@ import uuid
 from datetime import datetime, timezone
 
 import jwt
-from fastapi import APIRouter, Query, WebSocket, WebSocketDisconnect, status
+from fastapi import APIRouter, Query, Request, Response, WebSocket, WebSocketDisconnect, status
 
-from app.api.deps import WsUser
+from app.api.deps import CurrentUser, WsUser
 from app.core.config import settings
 from app.core.events import EVENTS_CHANNEL, relay_channel
 from app.core.database import AsyncSessionLocal
-from app.core.live_odds import read_snapshot
+from app.core.live_odds import encode_ticks, read_snapshot
 from app.core.websockets import manager
 from app.models import User
 from app.schemas.market import MarketTick  # noqa: F401  (payload contract for this channel)
@@ -121,3 +121,15 @@ async def live_odds(
 async def events_stream(websocket: WebSocket, user: WsUser) -> None:  # noqa: ARG001 - auth gate
     """Cross-section event bus: every section's writes, commander heartbeats, system halts."""
     await relay_channel(websocket, getattr(websocket.app.state, "redis", None), EVENTS_CHANNEL)
+
+
+@router.get("/live-odds/snapshot")
+async def live_odds_snapshot(request: Request, user: CurrentUser) -> Response:  # noqa: ARG001 - auth gate
+    """The whole live board over plain HTTP, in the same camelCase shape as /ws/live-odds frames.
+
+    The browser falls back to polling this while its socket is down, so a dropped WebSocket costs
+    seconds of freshness, never an empty board. Redis down: this worker's own view of the board.
+    """
+    snapshot = await read_snapshot(getattr(request.app.state, "redis", None))
+    ticks = snapshot if snapshot is not None else manager.snapshot()
+    return Response(content=encode_ticks(ticks), media_type="application/json", headers={"Cache-Control": "no-store"})

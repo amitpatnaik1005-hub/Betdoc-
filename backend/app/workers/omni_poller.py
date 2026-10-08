@@ -2,15 +2,17 @@
 
 * ``omni.poll_provider_endpoint``: poll one DB-configured provider endpoint, land the raw payload
   immutably, publish it live (driven by ``app.workers.omni_dispatcher``).
-* ``omni.fleet.tick`` / ``omni.fleet.ingest``: the Group 60 ingestion fleet. Beat fires the tick
-  every few seconds; it enqueues an ingest for each code-defined source that is due
-  (``app.adapters.ingestion.INGESTORS``), honouring the per-source interval and pause state Fleet
-  Command keeps in Redis. The ingest itself is ``app.services.omni_fleet.run_source``.
+* ``omni.fleet.tick`` / ``omni.fleet.ingest``: the ingestion fleet. Beat fires the tick every few
+  seconds; it computes the quota-aware failover plan over every source (built-in adapters and
+  config-driven providers) and enqueues an ingest, scoped to that source's share of the plan, for
+  each one that is due, or a quota probe for one held in reserve. The ingest itself is
+  ``app.services.omni_fleet.run_source``.
 """
 
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import hashlib
 import json
 import logging
@@ -33,7 +35,6 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 from sqlalchemy.pool import NullPool
 
 from app.adapters.base_adapter import AdapterError, StandardizedEvent, build_adapter, parse_http_date
-from app.adapters.ingestion import INGESTORS
 from app.core.celery_app import celery_app
 from app.core.config import get_settings
 from app.core.omni_keys import OmniRedisKeys
@@ -45,7 +46,7 @@ from app.core.security_vault import (
     assert_public_target,
     get_vault_crypto,
 )
-from app.services.omni_fleet import FleetDeps, is_due, run_source
+from app.services.omni_fleet import Action, FleetDeps, fleet_tick as plan_and_dispatch, run_source
 from app.services.omni_quorum_buffer import buffer_event_sync
 from app.models.omni_vault import (
     WS_STRATEGIES,
@@ -494,37 +495,10 @@ def _buffer_for_quorum(topic: str, event: StandardizedEvent) -> None:
         logger.warning("Quorum buffer write failed for topic=%s", topic)
 
 
-# ---------------------------------------------------------------- ingestion fleet (Group 60)
-@celery_app.task(name="omni.fleet.tick", ignore_result=True)
-def fleet_tick() -> dict[str, list[str]]:
-    """Beat-driven: heartbeat, then enqueue an ingest for every source that is due and not already queued."""
-    redis = _get_app_redis()
-    redis.set(_keys.fleet_heartbeat(), "1", ex=int(_settings.OMNI_FLEET_HEARTBEAT_SECONDS))
-    now = time.time()
-    dispatched: list[str] = []
-    for source_id, ingestor in INGESTORS.items():
-        last, interval_raw, state = redis.hmget(_keys.fleet_metrics(source_id), ["last_attempt_at", "interval_seconds", "state"])
-        interval = float(interval_raw) if interval_raw else ingestor.interval_seconds(_settings)
-        if not is_due(float(last) if last else None, interval, state, now):
-            continue
-        # The claim stops a run that is queued but not started from being queued again
-        if not redis.set(_keys.fleet_claim(source_id), "1", nx=True, ex=max(5, int(interval))):
-            continue
-        # expires: a run no worker picks up within one interval is dropped, never burst later
-        ingest_source.apply_async(args=[source_id], expires=interval)
-        dispatched.append(source_id)
-    return {"dispatched": dispatched}
-
-
-@celery_app.task(name="omni.fleet.ingest", acks_late=True, max_retries=0)
-def ingest_source(source_id: str, force: bool = False) -> dict[str, Any]:
-    """Run one fleet ingestor end to end. Failures are counted (and dead-lettered) by run_source,
-    never retried by Celery: the next beat tick is the retry."""
-    return asyncio.run(_ingest(source_id, force))
-
-
-async def _ingest(source_id: str, force: bool) -> dict[str, Any]:
-    # asyncio.run gives every task a fresh loop, so loop-bound clients are created per run.
+# ---------------------------------------------------------------- ingestion fleet
+@asynccontextmanager
+async def _fleet_deps() -> AsyncIterator[FleetDeps]:
+    """Loop-bound clients for one asyncio.run (each Celery task gets a fresh event loop)."""
     redis = AsyncRedis.from_url(_settings.REDIS_URL.get_secret_value(), decode_responses=True)
     engine = create_async_engine(_settings.DATABASE_URL.get_secret_value(), poolclass=NullPool)
     http = httpx.AsyncClient(
@@ -537,15 +511,46 @@ async def _ingest(source_id: str, force: bool) -> dict[str, Any]:
     except VaultConfigurationError:
         vault = None
     try:
-        deps = FleetDeps(
+        yield FleetDeps(
             redis=redis,
             session_factory=async_sessionmaker(engine, expire_on_commit=False),
             http=http,
             vault=vault,
             settings=_settings,
         )
-        return (await run_source(source_id, deps, runner="celery", force=force)).as_dict()
     finally:
         await http.aclose()
         await redis.aclose()
         await engine.dispose()
+
+
+@celery_app.task(name="omni.fleet.tick", ignore_result=True)
+def fleet_tick() -> dict[str, Any]:
+    """Beat-driven: heartbeat, plan the failover routing, enqueue what is due."""
+    return asyncio.run(_tick())
+
+
+async def _tick() -> dict[str, Any]:
+    async with _fleet_deps() as deps:
+        with contextlib.suppress(RedisError, OSError):
+            await deps.redis.set(_keys.fleet_heartbeat(), "1", ex=int(_settings.OMNI_FLEET_HEARTBEAT_SECONDS))
+
+        async def enqueue(source_id: str, scope: list[str], action: Action, interval: float) -> None:
+            # expires: a run no worker picks up within one interval is dropped, never burst later
+            ingest_source.apply_async(
+                args=[source_id], kwargs={"scope": scope or None, "probe": action == "probe"}, expires=interval
+            )
+
+        return await plan_and_dispatch(deps, enqueue)
+
+
+@celery_app.task(name="omni.fleet.ingest", acks_late=True, max_retries=0)
+def ingest_source(source_id: str, force: bool = False, scope: list[str] | None = None, probe: bool = False) -> dict[str, Any]:
+    """Run one fleet source end to end. Failures trip its breaker (and dead-letter it at the
+    threshold) inside run_source; Celery never retries: the next beat tick is the retry."""
+    return asyncio.run(_ingest(source_id, force, scope, probe))
+
+
+async def _ingest(source_id: str, force: bool, scope: list[str] | None, probe: bool) -> dict[str, Any]:
+    async with _fleet_deps() as deps:
+        return (await run_source(source_id, deps, runner="celery", force=force, scope=scope, probe=probe)).as_dict()

@@ -32,12 +32,16 @@ class ConnectionManager:
         await websocket.accept()
         self._send_locks[websocket] = asyncio.Lock()
         self.active_connections.add(websocket)
-        board = list(snapshot) if snapshot is not None else list(self._cache.values())
+        board = list(snapshot) if snapshot is not None else self.snapshot()
         if board:
             try:
                 await asyncio.wait_for(self._send(websocket, encode_ticks(board)), timeout=SEND_TIMEOUT_SECONDS)
             except Exception:
                 pass
+
+    def snapshot(self) -> list[MarketTick]:
+        """This worker's latest view of the board (the fallback when Redis can't provide one)."""
+        return list(self._cache.values())
 
     def disconnect(self, websocket: WebSocket) -> None:
         self.active_connections.discard(websocket)

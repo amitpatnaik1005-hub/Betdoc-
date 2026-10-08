@@ -121,7 +121,7 @@ async def test_odds_api_errors_never_contain_the_key(fleet_settings) -> None:
 
 async def test_odds_api_stops_before_spending_below_the_quota_floor(fleet_settings, http, stub: ProviderStub) -> None:
     stub.headers = {"x-requests-remaining": "3"}
-    settings = fleet_settings(ODDS_SPORT_KEYS="soccer_epl,soccer_epl")
+    settings = fleet_settings(ODDS_SPORT_KEYS="soccer_epl,soccer_spain_la_liga")
     with pytest.raises(QuotaExhaustedError):
         await OddsApiIngestor(http, settings, api_key="k" * 32).fetch()
     assert len(stub.requests) == 1  # the second sport was never requested

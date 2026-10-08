@@ -167,6 +167,8 @@ class OmniFleetSource(Base):
     )
 
     source_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    # Config-driven providers (Universal Ingestion Matrix): the ProviderSpec JSON. None = a built-in adapter.
+    spec: Mapped[dict[str, Any] | None] = mapped_column(JsonColumn, nullable=True)
     is_enabled: Mapped[bool] = mapped_column(Boolean, default=True)
     encrypted_api_key: Mapped[str | None] = mapped_column(Text, nullable=True)
     api_key_hint: Mapped[str | None] = mapped_column(String(64), nullable=True)  # pre-masked; never decrypt to display

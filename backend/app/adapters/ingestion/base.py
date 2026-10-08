@@ -1,9 +1,13 @@
-"""Fleet ingestion adapters: one class per sanctioned sports-data API.
+"""Fleet ingestion adapters: one class per sanctioned sports-data API, or one config per API.
 
-An adapter only fetches. It knows its provider's URLs, auth and quota headers, retries 429/5xx
-with exponential backoff, and hands back raw JSON in an ``IngestionBatch``. Mapping that JSON to
-canonical BetDoc ids and true probabilities is ``app.services.omni_normalizer``'s job, and
-locking, scheduling and health are ``app.services.omni_fleet``'s.
+An adapter only fetches. It knows its provider's URLs, auth and quota headers, waits for a token
+from the provider's rate-limit bucket before every request, retries 429/5xx with exponential
+backoff, and hands back raw JSON in an ``IngestionBatch``. Mapping that JSON to canonical BetDoc ids
+and true probabilities is ``app.services.omni_normalizer``'s job; locking, circuit breaking,
+failover routing and health are ``app.services.omni_fleet``'s.
+
+``fetch(scope)`` takes the provider-native keys (sport keys, league codes) the failover router
+assigned this run; ``None`` means everything the source covers.
 
 Error messages never contain request URLs: some providers take the API key as a query parameter.
 """
@@ -16,7 +20,7 @@ import logging
 import random
 import time
 from abc import ABC, abstractmethod
-from collections.abc import Awaitable, Callable, Mapping
+from collections.abc import Awaitable, Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from email.utils import parsedate_to_datetime
@@ -35,7 +39,9 @@ __all__ = [
     "ProviderAuthError",
     "QuotaExhaustedError",
     "RateLimitedError",
+    "SchemaDriftError",
     "SourcePayload",
+    "ThrottledError",
     "parse_retry_after",
 ]
 
@@ -45,10 +51,11 @@ logging.getLogger("httpx").setLevel(logging.WARNING)
 MAX_RESPONSE_BYTES = 10_000_000
 
 Sleeper = Callable[[float], Awaitable[None]]
+Limiter = Callable[[], Awaitable[float]]
 
 
 class IngestionError(RuntimeError):
-    """A fetch failed. Counts towards the source's consecutive-failure (dead-letter) threshold."""
+    """A fetch failed. Trips the source's circuit breaker and counts towards its dead-letter threshold."""
 
 
 class RateLimitedError(IngestionError):
@@ -63,8 +70,16 @@ class QuotaExhaustedError(IngestionError):
     """The provider's remaining request credits fell below the configured floor."""
 
 
+class SchemaDriftError(IngestionError):
+    """The provider answered, but nothing in the answer could be parsed: its format changed."""
+
+
 class MissingApiKeyError(IngestionError):
     """The source needs a key and none is configured. A setup state, not a failure."""
+
+
+class ThrottledError(RuntimeError):
+    """Our own rate limiter has no token within the wait budget. The run is deferred, not failed."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -109,6 +124,16 @@ def parse_retry_after(value: str | None, now: datetime | None = None) -> float |
     return max(0.0, (when - (now or datetime.now(UTC))).total_seconds())
 
 
+def _header_number(headers: Mapping[str, str], name: str | None) -> float | None:
+    if not name:
+        return None
+    raw = headers.get(name)
+    try:
+        return float(raw) if raw is not None else None
+    except ValueError:
+        return None
+
+
 @dataclass(frozen=True, slots=True)
 class SourcePayload:
     """One provider response: ``key`` is what was asked for (a sport key, a league code)."""
@@ -126,17 +151,42 @@ class IngestionBatch:
     requests: int
     retries: int
     quota_remaining: float | None = None
+    quota_used: float | None = None
+    quota_limit: float | None = None
+    throttled_ms: int = 0  # time spent waiting on our own rate limiter
     meta: dict[str, Any] = field(default_factory=dict)
+
+    @property
+    def quota_fraction(self) -> float | None:
+        """Share of the provider's quota still unspent, when the provider reports enough to know."""
+        return quota_fraction(self.quota_remaining, self.quota_used, self.quota_limit)
+
+
+def quota_fraction(remaining: float | None, used: float | None, limit: float | None) -> float | None:
+    if remaining is None:
+        return None
+    total = limit if limit else (remaining + used if used is not None else None)
+    if not total or total <= 0:
+        return None
+    return max(0.0, min(1.0, remaining / total))
 
 
 class BaseDataIngestor(ABC):
-    """Subclass per provider and register in ``app.adapters.ingestion.INGESTORS``."""
+    """Subclass per provider (``app.adapters.ingestion.INGESTORS``) or describe one declaratively
+    (``app.adapters.ingestion.factory.UniversalDataIngestor``)."""
 
     source_id: ClassVar[str]
     display_name: ClassVar[str]
     description: ClassVar[str]
     requires_api_key: ClassVar[bool] = False
     docs_url: ClassVar[str | None] = None
+    # Self-imposed ceiling (token bucket), kept under the provider's published limit
+    requests_per_minute: ClassVar[float] = 60.0
+    burst: ClassVar[int] = 10
+    # Response headers carrying the provider's quota, when it reports one
+    quota_remaining_header: ClassVar[str | None] = None
+    quota_used_header: ClassVar[str | None] = None
+    quota_limit: ClassVar[float | None] = None
 
     def __init__(
         self,
@@ -146,6 +196,7 @@ class BaseDataIngestor(ABC):
         api_key: str | None = None,
         backoff: BackoffPolicy | None = None,
         sleep: Sleeper = asyncio.sleep,
+        limiter: Limiter | None = None,
     ) -> None:
         if self.requires_api_key and not api_key:
             raise MissingApiKeyError(f"{self.display_name} needs an API key; add one in Fleet Command.")
@@ -154,9 +205,12 @@ class BaseDataIngestor(ABC):
         self._api_key = api_key
         self._backoff = backoff or BackoffPolicy.from_settings(settings)
         self._sleep = sleep
+        self._limiter = limiter
         self._latencies_ms: list[float] = []
         self._retries = 0
+        self._throttled = 0.0
         self._quota_remaining: float | None = None
+        self._quota_used: float | None = None
 
     @classmethod
     @abstractmethod
@@ -164,8 +218,12 @@ class BaseDataIngestor(ABC):
         """Default polling cadence (Fleet Command can override it per source)."""
 
     @abstractmethod
-    async def fetch(self) -> IngestionBatch:
-        """Fetch one round of raw provider JSON. Raise ``IngestionError`` subclasses on failure."""
+    async def fetch(self, scope: Sequence[str] | None = None) -> IngestionBatch:
+        """Fetch one round of raw provider JSON for ``scope`` (provider-native keys; None = all)."""
+
+    async def probe(self) -> IngestionBatch | None:
+        """A request that costs no quota but reports it, used to notice a quota reset. None = unsupported."""
+        return None
 
     # ---------------------------------------------------------------- helpers for subclasses
     def _batch(self, payloads: list[SourcePayload], meta: dict[str, Any] | None = None) -> IngestionBatch:
@@ -178,21 +236,32 @@ class BaseDataIngestor(ABC):
             requests=len(self._latencies_ms),
             retries=self._retries,
             quota_remaining=self._quota_remaining,
+            quota_used=self._quota_used,
+            quota_limit=self.quota_limit,
+            throttled_ms=round(self._throttled * 1000),
             meta=meta or {},
         )
 
-    def _on_response(self, response: httpx.Response) -> None:  # noqa: B027 - optional hook
-        """Hook for provider headers (quota counters). Called for every response, success or not."""
+    def _on_response(self, response: httpx.Response) -> None:
+        """Reads the provider's quota headers from every response, success or not."""
+        remaining = _header_number(response.headers, self.quota_remaining_header)
+        if remaining is not None:
+            self._quota_remaining = remaining
+        used = _header_number(response.headers, self.quota_used_header)
+        if used is not None:
+            self._quota_used = used
 
-    async def _get_json(self, url: str, *, params: Mapping[str, str] | None = None) -> Any:
+    async def _get_json(self, url: str, *, params: Mapping[str, str] | None = None, headers: Mapping[str, str] | None = None) -> Any:
         """GET with retries: 429 and 5xx back off exponentially (Retry-After honoured), as do transport errors."""
-        headers = {"Accept": "application/json", "User-Agent": self._settings.omni_user_agent}
+        request_headers = {"Accept": "application/json", "User-Agent": self._settings.omni_user_agent, **(headers or {})}
         attempts = self._backoff.max_attempts
         for attempt in range(attempts):
             last = attempt == attempts - 1
+            if self._limiter is not None:
+                self._throttled += await self._limiter()  # ThrottledError propagates: the run is deferred
             started = time.perf_counter()
             try:
-                status, response_headers, body = await self._read(url, params, headers)
+                status, response_headers, body = await self._read(url, params, request_headers)
             except httpx.TransportError as exc:
                 if last:
                     raise IngestionError(f"{self.display_name}: transport failure ({type(exc).__name__})") from None
@@ -217,7 +286,7 @@ class BaseDataIngestor(ABC):
             try:
                 return json.loads(body)
             except (json.JSONDecodeError, UnicodeDecodeError):
-                raise IngestionError(f"{self.display_name}: response was not JSON") from None
+                raise SchemaDriftError(f"{self.display_name}: response was not JSON") from None
         raise IngestionError(f"{self.display_name}: no attempts made")  # unreachable: max_attempts >= 1
 
     async def _retry(self, attempt: int, retry_after: float | None) -> None:

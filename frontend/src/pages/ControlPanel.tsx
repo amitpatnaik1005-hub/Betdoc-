@@ -1,6 +1,6 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { apiClient } from '../api/client';
-import { FleetCommand } from '../components/FleetCommand';
+import { FleetCommand } from '../components/fleet/FleetCommand';
 import { type ControlSettings, emergencyStop, resumeTrading, useControls, useExchanges } from '../lib/api';
 import { formatAgo, formatINR, formatRatioPct, humanize } from '../lib/format';
 import { runMutation, useResource } from '../lib/resource';

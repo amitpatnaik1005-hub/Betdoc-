@@ -35,6 +35,10 @@ class OmniRedisKeys:
         """Set by the beat tick when it enqueues a run, so a queued run is not enqueued twice."""
         return f"{self._prefix}:fleet:claim:{source_id}"
 
+    def fleet_probe_claim(self, source_id: str) -> str:
+        """Set while a quota recheck (probe) of a source in reserve is pending."""
+        return f"{self._prefix}:fleet:probe:{source_id}"
+
     def fleet_metrics(self, source_id: str) -> str:
         """Hash: last run outcome, latency, tick counts, quota, schedule state."""
         return f"{self._prefix}:fleet:{source_id}:metrics"

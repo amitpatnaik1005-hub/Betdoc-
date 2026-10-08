@@ -62,7 +62,12 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         limits=httpx.Limits(max_connections=settings.omni_http_max_connections),
     )
     app.state.fleet_deps = FleetDeps(
-        redis=redis, session_factory=AsyncSessionLocal, http=fleet_http, vault=app.state.vault, settings=settings
+        redis=redis,
+        session_factory=AsyncSessionLocal,
+        http=fleet_http,
+        vault=app.state.vault,
+        settings=settings,
+        local_sink=live_odds_manager,  # Redis down: in-process runs still reach this worker's sockets
     )
 
     background = [

@@ -8,7 +8,8 @@ Beat runs ``omni.run_scheduled_quorum`` every ``omni_quorum_interval_seconds``. 
 2. skips topics with fewer than ``omni_quorum_min_providers`` providers (one source is not a quorum)
    and topics whose event set has not changed since the last sweep;
 3. runs ``QuorumService``: agreement yields a consensus event (stored per topic in Redis);
-   variance beyond the threshold writes an ``OmniQuarantineLog`` row. One ``omni.quorum`` summary
+   variance beyond the threshold writes an ``OmniQuarantineLog`` row. With 4+ providers, IQR outliers
+   are dropped first (and logged as ``outlier_rejected``). One ``omni.quorum`` summary
    per sweep goes out on the Omni live channel, and a ``fleet`` event on the section bus.
 
 The live board applies the same engine inline when it merges sources; this sweep is the
@@ -52,7 +53,7 @@ async def resolve_quorums(
     keys = OmniRedisKeys(settings.omni_redis_prefix)
     policy = QuorumPolicy.from_settings(settings)
     service = QuorumService(QuorumConsensusEngine(policy, clock))
-    summary = {"topics": 0, "resolved": 0, "quarantined": 0, "insufficient": 0, "unchanged": 0}
+    summary = {"topics": 0, "resolved": 0, "quarantined": 0, "outliers": 0, "insufficient": 0, "unchanged": 0}
     ttl = max(1, int(policy.max_age_seconds))
 
     topics = await active_topics(redis, keys, policy.max_age_seconds)
@@ -76,14 +77,15 @@ async def resolve_quorums(
                 summary["unchanged"] += 1
                 continue
 
-            consensus = await service.resolve(session, topic, events)  # quarantines (DB) on failure
+            result = await service.resolve_detailed(session, topic, events)  # quarantines (DB) on failure
             await redis.set(keys.quorum_fingerprint(topic), fp, ex=ttl)
-            if consensus is None:
+            if result is None:
                 summary["quarantined"] += 1
                 quarantined.append(topic)
             else:
                 summary["resolved"] += 1
-                await redis.set(keys.quorum_consensus(topic), consensus.model_dump_json(), ex=ttl)
+                summary["outliers"] += len(result.rejected)
+                await redis.set(keys.quorum_consensus(topic), result.event.model_dump_json(), ex=ttl)
 
     if summary["resolved"] or summary["quarantined"]:
         # One message per sweep, not per topic: a sweep can settle dozens of cells at once

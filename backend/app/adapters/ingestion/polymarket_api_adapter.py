@@ -13,6 +13,7 @@ Docs: https://docs.polymarket.com/developers/gamma-markets-api/overview. Two cal
 from __future__ import annotations
 
 import time
+from collections.abc import Sequence
 from datetime import UTC, datetime, timedelta
 from typing import Any, ClassVar
 
@@ -36,6 +37,9 @@ class PolymarketIngestor(BaseDataIngestor):
     description = "Public prediction-market moneylines (Gamma API, no key needed)."
     requires_api_key = False
     docs_url = "https://docs.polymarket.com/developers/gamma-markets-api/overview"
+    # Gamma's published limits are far higher; two calls per league per run never needs more
+    requests_per_minute = 60.0
+    burst = 10
 
     _sports_cache: ClassVar[tuple[float, dict[str, dict[str, Any]]] | None] = None
 
@@ -54,9 +58,11 @@ class PolymarketIngestor(BaseDataIngestor):
         type(self)._sports_cache = (time.monotonic() + SPORTS_CACHE_SECONDS, index)
         return index
 
-    async def fetch(self) -> IngestionBatch:
+    async def fetch(self, scope: Sequence[str] | None = None) -> IngestionBatch:
+        """``scope``: Polymarket league codes (``epl``, ``nfl``); None = every POLYMARKET_LEAGUES entry."""
         base = self._settings.POLYMARKET_GAMMA_BASE_URL.rstrip("/")
-        leagues = self._settings.polymarket_leagues
+        configured = self._settings.polymarket_leagues
+        leagues = [league for league in configured if scope is None or league in scope]
         if not leagues:
             raise IngestionError("Polymarket: POLYMARKET_LEAGUES is empty")
         sports = await self._sports(base)

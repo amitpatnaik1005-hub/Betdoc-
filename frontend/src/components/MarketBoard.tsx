@@ -116,6 +116,7 @@ export default function MarketBoard(): JSX.Element {
   const isConnected = useMarketStore((s) => s.isConnected);
   const isReconnecting = useMarketStore((s) => s.isReconnecting);
   const connectionError = useMarketStore((s) => s.connectionError);
+  const transport = useMarketStore((s) => s.transport);
   const matchIds: string[] = useMarketStore(useShallow((s) => Object.keys(s.matches).sort()));
 
   return (
@@ -126,12 +127,17 @@ export default function MarketBoard(): JSX.Element {
           <h2 className="text-[11px] font-semibold text-stone-700 dark:text-stone-200">Live market board</h2>
         </div>
         <div className="flex items-center gap-2">
-          {isConnected && (
+          {isConnected && transport === "ws" && (
             <Pill tone="good">
               <LiveDot active /> Streaming
             </Pill>
           )}
-          {isReconnecting && <Pill tone="warning" icon="sync">Reconnecting</Pill>}
+          {isConnected && transport === "polling" && (
+            <Pill tone="info" icon="sync_alt">
+              Polling every 3s
+            </Pill>
+          )}
+          {isReconnecting && !isConnected && <Pill tone="warning" icon="sync">Reconnecting</Pill>}
           {connectionError && <Pill tone="critical" icon="error">{connectionError}</Pill>}
           {!isConnected && !isReconnecting && !connectionError && <Pill tone="neutral" icon="cloud_off">Offline</Pill>}
         </div>

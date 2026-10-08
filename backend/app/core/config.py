@@ -62,6 +62,16 @@ class Settings(BaseSettings):
     OMNI_FLEET_BACKOFF_BASE_SECONDS: float = Field(default=1.0, gt=0)
     OMNI_FLEET_BACKOFF_MAX_SECONDS: float = Field(default=30.0, gt=0)
     OMNI_FLEET_DEADLETTER_MAX: int = Field(default=200, ge=1)
+    # Circuit breaker: each failure opens it for base x 2^(n-1) seconds (capped); the next run after
+    # the cooldown is the half-open trial. Dead-lettering (above) still applies at the threshold.
+    OMNI_FLEET_BREAKER_BASE_SECONDS: float = Field(default=30.0, gt=0)
+    OMNI_FLEET_BREAKER_MAX_SECONDS: float = Field(default=900.0, gt=0)
+    # Quota-aware failover: a metered source under this share of its quota stops being scheduled and
+    # its market groups move to the next source; a free quota probe rechecks it on this cadence.
+    OMNI_FLEET_QUOTA_RESERVE: float = Field(default=0.05, ge=0, lt=1)
+    OMNI_FLEET_QUOTA_RECHECK_SECONDS: float = Field(default=1800.0, gt=0)
+    OMNI_FLEET_REDUNDANCY: int = Field(default=1, ge=1, le=10)  # metered sources fetching each market group
+    OMNI_FLEET_THROTTLE_MAX_WAIT_SECONDS: float = Field(default=20.0, gt=0)  # longer = defer the run
 
     # The Wire: public sports RSS feeds (no key needed)
     WIRE_NEWS_FEEDS: List[str] = [

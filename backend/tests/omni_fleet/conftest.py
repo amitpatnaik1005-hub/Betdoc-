@@ -165,6 +165,7 @@ class ProviderStub:
     def __init__(self) -> None:
         self.requests: list[httpx.Request] = []
         self.status_override: int | None = None
+        self.failing: dict[str, int] = {}  # path suffix -> status, for one provider down while others work
         self.responses: dict[str, Any] = {}
         self.headers: dict[str, str] = {}
 
@@ -173,6 +174,9 @@ class ProviderStub:
         if self.status_override is not None:
             return httpx.Response(self.status_override, json={"message": "nope"}, headers=self.headers)
         path = request.url.path
+        for suffix, code in self.failing.items():
+            if path.endswith(suffix):
+                return httpx.Response(code, json={"message": "down"})
         for suffix, body in self.responses.items():
             if path.endswith(suffix):
                 return httpx.Response(200, json=body, headers=self.headers)
