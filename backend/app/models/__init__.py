@@ -219,3 +219,4 @@ from app.models.omni_vault import OmniFleetSource, OmniProviderConfig, OmniProvi
 from app.models.canonical import CanonicalEntity  # noqa: E402,F401
 # Module import, not names: integration.models imports Base from here, so it may still be initialising.
 import app.domain.integration.models  # noqa: E402,F401
+from app.models.cfo_vault import AuditLog, BankrollAccount, LedgerEntry, MarketResult, PhantomLedger, RiskGuardSettings  # noqa: E402,F401

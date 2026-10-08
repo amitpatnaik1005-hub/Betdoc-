@@ -91,6 +91,7 @@ class EdgeSignal(BaseModel):
     books: int = Field(ge=1)
     timestamp: datetime
     expires_at: datetime
+    is_steam_move: bool = False  # consensus spiked > 5% above its 60s EMA: sharp money is moving the line
 
     @property
     def key(self) -> str:
@@ -128,6 +129,7 @@ class TradeSignal(BaseModel):
     books: int = Field(ge=1)
     stake_fraction: Annotated[WireDecimal, Field(ge=0, le=1, allow_inf_nan=False)]
     stake_binding: StakeBinding
+    is_steam_move: bool = False
 
     @model_validator(mode="after")
     def _ttl(self) -> TradeSignal:

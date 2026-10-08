@@ -80,6 +80,22 @@ class Settings(BaseSettings):
     ARYABHATA_LINE_MAX_AGE_SECONDS: float = Field(default=90.0, gt=0)  # a price older than this is never bet
     ARYABHATA_BOOK_MAX_AGE_SECONDS: float = Field(default=300.0, gt=0)  # oldest book still in the consensus
     ARYABHATA_RISK_CACHE_SECONDS: int = Field(default=300, gt=0)  # Redis mirror of the Control Panel limits
+    ARYABHATA_STEAM_PERIOD_SECONDS: int = Field(default=5, ge=1)  # EMA period: 12 of these = the 60s window
+    ARYABHATA_STEAM_PERIODS: int = Field(default=12, ge=2)
+
+    # ---- CFO ledger, risk guards, two-phase execution (Group 62) -------------
+    # paper: a simulated bookmaker that fills every order (the default anywhere without a live book)
+    CFO_EXECUTION_MODE: Literal["paper", "live"] = "paper"
+    CFO_BOOKMAKER_BASE_URL: str | None = None  # live: orders POST to {base}/bets (https only)
+    CFO_BOOKMAKER_API_KEY: SecretStr | None = None
+    CFO_BOOKMAKER_TIMEOUT_SECONDS: float = Field(default=8.0, gt=0, le=30)  # the bankroll row stays locked this long at most
+    CFO_IDEMPOTENCY_TTL_SECONDS: int = Field(default=60, ge=1)
+    CFO_IDEMPOTENCY_KEY_PREFIX: str = "betdoc:idempotency"
+    CFO_KILL_SWITCH_KEY: str = "betdoc:kill_switch"
+    CFO_STREAK_KEY_PREFIX: str = "betdoc:risk:streak"
+    CFO_VELOCITY_WINDOW_SECONDS: float = Field(default=60.0, gt=0)
+    CFO_TICK_HISTORY_SECONDS: int = Field(default=180, ge=60)  # per-selection price history kept in Redis
+    CFO_SETTLE_INTERVAL_SECONDS: float = Field(default=60.0, gt=0)
 
     # The Wire: public sports RSS feeds (no key needed)
     WIRE_NEWS_FEEDS: List[str] = [

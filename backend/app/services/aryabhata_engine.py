@@ -18,6 +18,9 @@ Pipeline for one market (``evaluate_market``):
    under ``MIN_EV`` is noise, anything over ``MAX_PLAUSIBLE_EV`` is a bad quote, not an edge.
 5. Stake (``recommend_stake``, per user): ``kelly_multiplier * f*`` of the bankroll, never above
    the bankroll % cap from the Control Panel or its absolute max bet, rounded down to the paisa.
+6. Steam (``update_ema``): an exponential moving average of each selection's consensus probability
+   over 12 periods of 5s (alpha = 2/(N+1)). A consensus more than ``STEAM_THRESHOLD`` above the EMA
+   of the periods before it is sharp money moving the line: its edge is flagged ``is_steam_move``.
 """
 
 from __future__ import annotations
@@ -51,6 +54,9 @@ MIN_STAKE_PCT = Decimal("1")  # the Control Panel cap slider's range, enforced h
 MAX_STAKE_PCT = Decimal("10")
 PAISA = Decimal("0.01")
 CLOCK_SKEW = timedelta(seconds=5)  # quotes stamped slightly in the future are still fresh
+STEAM_THRESHOLD = Decimal("0.05")  # consensus probability > 5% above its EMA = a steam move
+STEAM_PERIOD_SECONDS = 5
+STEAM_PERIODS = 12  # 12 x 5s = the 60s window
 
 ARYABHATA_NAMESPACE = uuid5(NAMESPACE_URL, "betdoc:aryabhata")
 DEVIG_ORDER: dict[DevigMethod, tuple[DevigMethod, ...]] = {
@@ -440,6 +446,83 @@ class MarketState:
     commence_time: datetime | None = None
 
 
+# ---------------------------------------------------------------- steam (EMA momentum)
+@dataclass(frozen=True, slots=True)
+class EmaState:
+    """EMA of one selection's consensus probability, kept per fixed-length period.
+
+    ``base`` is the EMA through the period before ``bucket`` (None until one period has closed) and
+    ``value`` the latest observation inside ``bucket``. A period's own EMA is only folded into
+    ``base`` once the next period starts, so several ticks in one period never compound.
+    """
+
+    bucket: int
+    base: Decimal | None
+    value: Decimal
+
+    def current(self, alpha: Decimal) -> Decimal:
+        return self.value if self.base is None else alpha * self.value + (_ONE - alpha) * self.base
+
+    def encode(self) -> str:
+        base = "" if self.base is None else str(self.base)
+        return f"{self.bucket}|{base}|{self.value}"
+
+    @classmethod
+    def decode(cls, raw: str) -> EmaState | None:
+        try:
+            bucket, base, value = raw.split("|")
+            parsed_value = to_decimal(value)
+            parsed_base = to_decimal(base) if base else None
+            if parsed_value is None or (base and parsed_base is None):
+                return None
+            return cls(int(bucket), parsed_base, parsed_value)
+        except (ValueError, TypeError):
+            return None
+
+
+@_exact
+def ema_alpha(periods: int) -> Decimal:
+    """Smoothing factor ``2 / (N + 1)``: 12 periods -> 2/13."""
+    if periods < 1:
+        raise AryabhataError("an EMA needs at least one period")
+    return _TWO / (Decimal(periods) + _ONE)
+
+
+@_exact
+def update_ema(
+    state: EmaState | None,
+    value: Decimal,
+    at: datetime,
+    *,
+    period_seconds: int = STEAM_PERIOD_SECONDS,
+    periods: int = STEAM_PERIODS,
+) -> tuple[EmaState, Decimal | None]:
+    """Fold one observation in. Returns the new state and the EMA it is judged against (the EMA
+    through the previous period), or None while there is no history to judge by.
+
+    Periods with no observation hold the last value (the price did not move), up to ``4N`` of them,
+    by which point the EMA has converged on it anyway. A tick older than the state is ignored.
+    """
+    alpha = ema_alpha(periods)
+    bucket = int(_aware(at).timestamp() // period_seconds)
+    if state is None:
+        return EmaState(bucket, None, value), None
+    if bucket < state.bucket:
+        return state, None
+    if bucket == state.bucket:
+        return EmaState(bucket, state.base, value), state.base
+    ema = state.current(alpha)
+    for _ in range(min(bucket - state.bucket - 1, 4 * periods)):
+        ema = alpha * state.value + (_ONE - alpha) * ema
+    return EmaState(bucket, ema, value), ema
+
+
+@_exact
+def is_steam_move(value: Decimal, reference: Decimal | None, threshold: Decimal = STEAM_THRESHOLD) -> bool:
+    """The consensus has spiked more than ``threshold`` (relative) above its EMA."""
+    return reference is not None and reference > _ZERO and value / reference - _ONE > threshold
+
+
 @dataclass(frozen=True, slots=True)
 class MarketEvaluation:
     labels: tuple[str, ...]
@@ -447,6 +530,8 @@ class MarketEvaluation:
     consensus: Mapping[str, Decimal] | None = None
     books_priced: int = 0
     skipped: Mapping[str, int] | None = None  # reason -> count, for diagnostics
+    ema: Mapping[str, EmaState] | None = None  # the new EMA state per selection (None: nothing to fold in)
+    steam: frozenset[str] = frozenset()  # selections whose consensus spiked above their EMA
 
 
 def market_id(fixture_id: str, market_type: str) -> UUID:
@@ -469,6 +554,9 @@ def evaluate_market(
     line_max_age: timedelta,
     book_max_age: timedelta,
     preferred: DevigMethod = "shin",
+    ema: Mapping[str, EmaState] | None = None,
+    steam_period_seconds: int = STEAM_PERIOD_SECONDS,
+    steam_periods: int = STEAM_PERIODS,
 ) -> MarketEvaluation:
     """Consensus fair probabilities from every fresh book, then every line worth staking.
 
@@ -513,6 +601,15 @@ def evaluate_market(
     mid = market_id(state.fixture_id, state.market_type)
     expires_at = now + SIGNAL_TTL
 
+    ema_states: dict[str, EmaState] = {}
+    steam: set[str] = set()
+    for label in labels:
+        previous = (ema or {}).get(label)
+        new_state, reference = update_ema(previous, consensus[label], now, period_seconds=steam_period_seconds, periods=steam_periods)
+        ema_states[label] = new_state
+        if is_steam_move(consensus[label], reference):
+            steam.add(label)
+
     edges: list[EdgeSignal] = []
     for label in labels:
         lines = [(book, result) for book, result in priced if now - _aware(book.seen_at) <= line_max_age]
@@ -553,6 +650,7 @@ def evaluate_market(
                 books=len(priced),
                 timestamp=now,
                 expires_at=expires_at,
+                is_steam_move=label in steam,
             )
         )
     return MarketEvaluation(
@@ -561,4 +659,6 @@ def evaluate_market(
         consensus=consensus,
         books_priced=len(priced),
         skipped=dict(skipped),
+        ema=ema_states,
+        steam=frozenset(steam),
     )

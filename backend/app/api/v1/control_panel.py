@@ -12,6 +12,7 @@ from app.domain.control_panel.errors import ControlPanelDomainError
 from app.domain.control_panel.manager import ControlPanelManager
 from app.schemas.control_panel import REDACTED, SECRET_FIELDS, SettingsRead, SettingsUpdate
 from app.services.aryabhata_pipeline import publish_risk_limits
+from app.services.risk_guard import set_kill_switch
 
 logger = logging.getLogger("betdoc.control_panel")
 
@@ -52,7 +53,10 @@ async def update_settings(payload: SettingsUpdate, request: Request, db: DbSessi
         logger.warning("CONTROL: settings update rejected: %s", exc.message)
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=exc.message) from exc
     # Live stake sizing reads the Redis mirror: refresh it now, not when its cache expires
-    await publish_risk_limits(getattr(request.app.state, "redis", None), settings, app_settings)
+    redis = getattr(request.app.state, "redis", None)
+    await publish_risk_limits(redis, settings, app_settings)
+    if "max_daily_exposure" in payload.model_fields_set and settings.max_daily_exposure > 0:
+        await set_kill_switch(redis, app_settings, engaged=False)  # trading resumed
     return _redact(SettingsRead.model_validate(settings))
 
 
@@ -63,5 +67,7 @@ async def emergency_stop(request: Request, db: DbSession, manager: Manager) -> S
     except ControlPanelDomainError as exc:
         logger.error("CONTROL: emergency stop failed: %s", exc.message)
         raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=exc.message) from exc
-    await publish_risk_limits(getattr(request.app.state, "redis", None), settings, app_settings)  # stakes drop to 0
+    redis = getattr(request.app.state, "redis", None)
+    await set_kill_switch(redis, app_settings, engaged=True)  # every Omni execution checks this first
+    await publish_risk_limits(redis, settings, app_settings)  # stakes drop to 0
     return _redact(SettingsRead.model_validate(settings))

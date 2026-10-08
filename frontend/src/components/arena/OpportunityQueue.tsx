@@ -9,7 +9,8 @@ import { type ReactNode, useEffect, useLayoutEffect, useRef, useState } from "re
 import { AnimatePresence, animate, motion, useMotionValue, useReducedMotion } from "framer-motion";
 import { formatDateTime, formatINR, formatOdds, humanize } from "../../lib/format";
 import { type ArenaSignal, MAX_VISIBLE, type RiskConfig, type StakeBinding, useArenaStore } from "../../store/useArenaStore";
-import { isSelection, useExecutionStore } from "../../store/useExecutionStore";
+import { useBetslipStore } from "../../store/useBetslipStore";
+import { SlideOverBetslip } from "../betslip/SlideOverBetslip";
 import { CARD_VARIANTS, LiveDot, SPRING } from "../../ui/kit";
 
 const PRUNE_INTERVAL_MS = 250;
@@ -75,6 +76,21 @@ const TtlRing = ({ expiresAt, ttlMs }: { expiresAt: number; ttlMs: number }) => 
   );
 };
 
+// ---------------------------------------------------------------- steam halo
+/** A pulsing red-orange border around a steam-move card (static under reduced motion). */
+const SteamHalo = () => {
+  const reduce = useReducedMotion();
+  return (
+    <motion.span
+      aria-hidden="true"
+      className="pointer-events-none absolute -inset-px -z-10 rounded-2xl ring-2 ring-orange-500/80 shadow-[0_0_28px_-6px_rgba(239,68,68,0.6)] dark:ring-orange-400/80"
+      initial={false}
+      animate={reduce ? { opacity: 1 } : { opacity: [0.35, 1, 0.35], scale: [1, 1.012, 1] }}
+      transition={reduce ? undefined : { duration: 1.6, repeat: Infinity, ease: "easeInOut" }}
+    />
+  );
+};
+
 // ---------------------------------------------------------------- one card
 const BINDING: Record<StakeBinding, (risk: RiskConfig | null, s: ArenaSignal) => string> = {
   kelly: (risk) => `${risk ? risk.kelly_multiplier : "¼"}× Kelly`,
@@ -116,6 +132,7 @@ const OpportunityCard = ({ signal, risk, onLoad }: { signal: ArenaSignal; risk: 
       className="relative isolate flex flex-col rounded-2xl bg-white/65 p-5 shadow-soft ring-1 ring-inset ring-stone-900/[0.04] backdrop-blur-md sm:p-6 dark:bg-stone-900/55 dark:shadow-none dark:ring-white/[0.06]"
       aria-label={`${pickLabel(signal)} at ${formatOdds(signal.odds)}, plus ${signal.ev_percent.toFixed(2)} percent expected value`}
     >
+      {signal.is_steam_move && <SteamHalo />}
       <TtlRing expiresAt={signal.expiresAt} ttlMs={signal.ttlMs} />
 
       <div className="flex items-start justify-between gap-3">
@@ -127,9 +144,17 @@ const OpportunityCard = ({ signal, risk, onLoad }: { signal: ArenaSignal; risk: 
             {signal.commence_time ? formatDateTime(signal.commence_time) : signal.market_type}
           </p>
         </div>
-        <span className="shrink-0 rounded-full bg-stone-900/[0.04] px-2.5 py-1 text-[11px] font-medium text-stone-600 dark:bg-white/[0.06] dark:text-stone-300">
-          {humanize(signal.bookmaker_id)}
-        </span>
+        <div className="flex shrink-0 items-center gap-1.5">
+          {signal.is_steam_move && (
+            <span className="inline-flex items-center gap-0.5 rounded-full bg-orange-500/10 px-2 py-1 text-[11px] font-semibold text-orange-700 dark:text-orange-300" title="Sharp money: the consensus jumped more than 5% above its 60s average">
+              <span className="material-symbols-outlined text-[13px]">local_fire_department</span>
+              Steam
+            </span>
+          )}
+          <span className="rounded-full bg-stone-900/[0.04] px-2.5 py-1 text-[11px] font-medium text-stone-600 dark:bg-white/[0.06] dark:text-stone-300">
+            {humanize(signal.bookmaker_id)}
+          </span>
+        </div>
       </div>
 
       <p className="mt-5 truncate text-lg font-semibold tracking-tight text-stone-900 dark:text-stone-50">
@@ -196,21 +221,10 @@ export const OpportunityQueue = () => {
   const status = useArenaStore((s) => s.status);
   const risk = useArenaStore((s) => s.risk);
   const bankroll = useArenaStore((s) => s.bankroll);
-  const setDraft = useExecutionStore((s) => s.setDraft);
+  const loadSlip = useBetslipStore((s) => s.load);
   const [label, tone, active] = STATUS[status] ?? STATUS.idle;
 
-  const load = (s: ArenaSignal) => {
-    if (!isSelection(s.selection)) return;
-    setDraft({
-      matchId: s.fixture_id,
-      selection: s.selection,
-      odds: s.odds,
-      trueProbability: s.true_prob,
-      label: `${s.home_team} v ${s.away_team}`,
-      source: `Aryabhata · ${humanize(s.bookmaker_id)} · +${s.ev_percent.toFixed(2)}% EV`,
-      stake: s.kelly_stake_inr >= 1 ? Math.floor(s.kelly_stake_inr) : undefined, // whole rupees, rounded down: never above the cap
-    });
-  };
+  const load = (s: ArenaSignal) => loadSlip(s); // the CFO-ledger betslip: guarded two-phase execution
 
   const visible = signals.slice(0, MAX_VISIBLE);
   return (
@@ -265,6 +279,7 @@ export const OpportunityQueue = () => {
           )}
         </AnimatePresence>
       </div>
+      <SlideOverBetslip />
     </motion.section>
   );
 };

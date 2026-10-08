@@ -28,8 +28,8 @@ const SECTION_FANOUT: Record<string, string[]> = {
   core: ["core", "archive", "commanders"],
   exchanges: ["exchanges", "control-panel"],
   signals: ["signals", "arena"],
-  // Fleet Command writes (toggles, keys, run now) under /api/v1/omni/fleet
-  omni: ["fleet"],
+  // Fleet Command writes under /api/v1/omni/fleet; CFO executions, settlements and risk settings under /api/v1/omni
+  omni: ["fleet", "cfo"],
 };
 
 function handleBusEvent(data: unknown): void {

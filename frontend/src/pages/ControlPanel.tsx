@@ -1,6 +1,7 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { apiClient } from '../api/client';
 import { StakeCapPanel } from '../components/arena/StakeCapPanel';
+import { RiskManagement } from '../components/cfo/RiskManagement';
 import { FleetCommand } from '../components/fleet/FleetCommand';
 import { type ControlSettings, emergencyStop, resumeTrading, useControls, useExchanges } from '../lib/api';
 import { formatAgo, formatINR, formatRatioPct, humanize } from '../lib/format';
@@ -17,6 +18,11 @@ interface SportConfig { id: string; sport_name: string; is_active: boolean; conf
 interface OmniHealth { generated_at: string; total: number; active: number; degraded: number; open_circuits: number; redis_available: boolean; providers: { provider_id: string; provider_name: string; category_code: string; is_active: boolean; health_status: string; breaker_state: string; recent_failures: number | null }[] }
 
 const SPORTS = ['cricket', 'basketball', 'tennis'] as const;
+type ControlTab = 'system' | 'risk';
+const TABS = [
+  { value: 'system', label: 'System', icon: 'tune' },
+  { value: 'risk', label: 'Risk management', icon: 'shield_lock' },
+] as const;
 const EXCHANGES = ['Pinnacle', 'Betfair'] as const;
 
 // ---------------------------------------------------------------------------
@@ -307,6 +313,7 @@ export const ControlPanel = () => {
   const halted = useSystemStore((s) => s.halted);
   const s = controls.data;
   const [resumeAt, setResumeAt] = useState('500');
+  const [tab, setTab] = useState<ControlTab>('system');
 
   return (
     <Page>
@@ -328,20 +335,33 @@ export const ControlPanel = () => {
           )
         }
       />
-      <Async resource={controls} skeletonRows={4}>
-        {(settings) => (
-          <>
-            <GlobalOverrides settings={settings} />
-            <Credentials settings={settings} />
-            <StakeCapPanel settings={settings} />
-          </>
-        )}
-      </Async>
-      <FleetCommand />
-      <ExchangeAccounts />
-      <Bookmakers />
-      <SportsEngine />
-      <OmniAdmin />
+      <div className="lg:col-span-12">
+        <Segmented<ControlTab> options={TABS} value={tab} onChange={setTab} label="Control Panel sections" />
+      </div>
+      {tab === 'system' ? (
+        <>
+          <Async resource={controls} skeletonRows={4}>
+            {(settings) => (
+              <>
+                <GlobalOverrides settings={settings} />
+                <Credentials settings={settings} />
+              </>
+            )}
+          </Async>
+          <FleetCommand />
+          <ExchangeAccounts />
+          <Bookmakers />
+          <SportsEngine />
+          <OmniAdmin />
+        </>
+      ) : (
+        <>
+          <RiskManagement />
+          <Async resource={controls} skeletonRows={2}>
+            {(settings) => <StakeCapPanel settings={settings} />}
+          </Async>
+        </>
+      )}
     </Page>
   );
 };

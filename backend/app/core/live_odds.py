@@ -11,6 +11,8 @@ Keys (prefix ``LIVE_ODDS_CHANNEL``):
     <channel>:board       hash   board_key -> latest MarketTick JSON
     <channel>:board:ts    zset   board_key -> unix time of its last update (staleness + pruning)
     <channel>:src:<key>   hash   source id -> that source's own tick (the fleet merges these)
+    <channel>:hist:<key>  zset   "<ts>|<odds>|<true_prob>" scored by time: the last few minutes of
+                                 each cell, for the CFO velocity lock
 """
 
 from __future__ import annotations
@@ -27,7 +29,7 @@ from pydantic import ValidationError
 from redis.asyncio import Redis
 from redis.exceptions import RedisError
 
-from app.core.config import get_settings
+from app.core.config import Settings, get_settings
 from app.schemas.market import MarketTick
 
 logger = logging.getLogger(__name__)
@@ -57,6 +59,10 @@ def live_odds_keys() -> LiveOddsKeys:
     return LiveOddsKeys(get_settings().LIVE_ODDS_CHANNEL)
 
 
+def tick_history_key(settings: Settings, board_key: str) -> str:
+    return f"{settings.LIVE_ODDS_CHANNEL}:hist:{board_key}"
+
+
 def encode_ticks(ticks: Iterable[MarketTick]) -> str:
     """camelCase JSON array, the shape the frontend market store accepts."""
     return "[" + ",".join(t.model_dump_json(by_alias=True) for t in ticks) + "]"
@@ -83,9 +89,11 @@ async def publish_board_ticks(redis: Redis | None, ticks: Sequence[MarketTick]) 
     """Store and broadcast board ticks. Returns False when Redis is unavailable (caller decides the fallback)."""
     if redis is None or not ticks:
         return redis is not None
+    settings = get_settings()
     keys = live_odds_keys()
     now = time.time()
-    cutoff = now - get_settings().LIVE_ODDS_SNAPSHOT_TTL_SECONDS
+    cutoff = now - settings.LIVE_ODDS_SNAPSHOT_TTL_SECONDS
+    history = settings.CFO_TICK_HISTORY_SECONDS
     try:
         async with asyncio.timeout(_PUBLISH_TIMEOUT_SECONDS):
             stale: list[str] = await redis.zrangebyscore(keys.board_ts, "-inf", cutoff)
@@ -95,6 +103,12 @@ async def publish_board_ticks(redis: Redis | None, ticks: Sequence[MarketTick]) 
                 pipe.zrem(keys.board_ts, *stale)
             pipe.hset(keys.board, mapping={t.board_key: t.model_dump_json(by_alias=True) for t in ticks})
             pipe.zadd(keys.board_ts, {t.board_key: now for t in ticks})
+            for tick in ticks:
+                if tick.odds > 1:
+                    hist = tick_history_key(settings, tick.board_key)
+                    pipe.zadd(hist, {f"{now:.3f}|{tick.odds}|{tick.true_probability}": now})
+                    pipe.zremrangebyscore(hist, "-inf", now - history)
+                    pipe.expire(hist, history)
             pipe.publish(keys.channel, encode_ticks(ticks))
             await pipe.execute()
     except (RedisError, OSError, TimeoutError):

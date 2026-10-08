@@ -26,6 +26,7 @@ from app.services.omni_fleet import FleetDeps, run_inprocess_fallback
 from app.domain.the_hive import HiveOrchestrator
 from app.core.live_odds import run_live_odds_relay
 from app.services.aryabhata_pipeline import run_aryabhata
+from app.services.bookmaker_gateway import BookmakerConfigurationError, build_gateway
 from app.core.websockets import manager as live_odds_manager
 
 logger = logging.getLogger(__name__)
@@ -71,6 +72,14 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         local_sink=live_odds_manager,  # Redis down: in-process runs still reach this worker's sockets
     )
 
+    # CFO two-phase execution: the bookmaker leg (paper unless CFO_EXECUTION_MODE=live is configured)
+    cfo_http = httpx.AsyncClient(follow_redirects=False, limits=httpx.Limits(max_connections=20))
+    try:
+        app.state.bookmaker = build_gateway(settings, cfo_http)
+    except BookmakerConfigurationError as exc:
+        app.state.bookmaker = None  # /omni/execute-trade answers 503 instead of guessing
+        logger.error("CFO execution disabled: %s", exc)
+
     background = [
         # Every worker relays the Redis live-odds channel to the sockets it holds (cross-worker fan-out)
         asyncio.create_task(run_live_odds_relay(redis, live_odds_manager), name="live-odds-relay"),
@@ -103,6 +112,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
                 await task
 
         await fleet_http.aclose()
+        await cfo_http.aclose()
         await redis.aclose()
         # Close pooled DB connections cleanly on shutdown
         await engine.dispose()

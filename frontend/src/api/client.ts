@@ -24,11 +24,14 @@ export function readToken(): string | null {
 
 export class ApiError extends Error {
   readonly status: number;
+  /** Machine-readable refusal code when the API sends one (`detail.reason`), e.g. BLOCKED_BY_DRAWDOWN. */
+  readonly reason: string | null;
 
-  constructor(message: string, status: number) {
+  constructor(message: string, status: number, reason: string | null = null) {
     super(message);
     this.name = "ApiError";
     this.status = status;
+    this.reason = reason;
   }
 }
 
@@ -63,6 +66,12 @@ function extractErrorMessage(payload: unknown, fallback: string): string {
     return detail;
   }
 
+  // Structured refusals: { reason, message, ... }
+  if (detail !== null && typeof detail === "object" && !Array.isArray(detail)) {
+    const message: unknown = (detail as { message?: unknown }).message;
+    if (typeof message === "string" && message.trim().length > 0) return message;
+  }
+
   if (Array.isArray(detail)) {
     const messages: string[] = detail
       .map((item: unknown): string | null => {
@@ -80,6 +89,14 @@ function extractErrorMessage(payload: unknown, fallback: string): string {
   }
 
   return fallback;
+}
+
+function extractReason(payload: unknown): string | null {
+  if (payload === null || typeof payload !== "object" || !("detail" in payload)) return null;
+  const detail: unknown = (payload as { detail: unknown }).detail;
+  if (detail === null || typeof detail !== "object" || Array.isArray(detail)) return null;
+  const reason: unknown = (detail as { reason?: unknown }).reason;
+  return typeof reason === "string" ? reason : null;
 }
 
 async function request<T>(
@@ -137,6 +154,7 @@ async function request<T>(
       throw new ApiError(
         extractErrorMessage(payload, `Request failed (${response.status} ${response.statusText})`),
         response.status,
+        extractReason(payload),
       );
     }
 

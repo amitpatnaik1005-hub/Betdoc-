@@ -60,6 +60,7 @@ from app.schemas.aryabhata import (
 from app.schemas.market import MarketTick
 from app.services.aryabhata_engine import (
     BookLine,
+    EmaState,
     MarketEvaluation,
     MarketState,
     RiskLimits,
@@ -80,6 +81,7 @@ _IDLE_CONSUMER_MS = 3_600_000
 _BACKOFF_MAX_SECONDS = 30.0
 _BANKROLL_REFRESH_SECONDS = 15.0
 _RISK_REFRESH_SECONDS = 30.0
+_EMA_FIELD = "~e:"  # books-hash fields holding each selection's steam EMA state
 
 # Replace everything one source said about a market with its newest frame, atomically, and stamp
 # the merge with Redis' own clock so commits from racing consumers can be ordered.
@@ -100,7 +102,8 @@ return {t[1] .. string.format('%06d', tonumber(t[2])), redis.call('HGETALL', KEY
 # Commit one market's evaluation unless a newer merge already committed, prune expired edges, and
 # publish the change in the same atomic step (so subscribers see commits in version order).
 # KEYS: books hash, active hash, expiry zset.
-# ARGV: version, now, channel, market key, n, n fields, n edge JSONs ("" = none), n expiries.
+# ARGV: version, now, channel, market key, n, n fields, n edge JSONs ("" = none), n expiries,
+#       m, then m field/value pairs of EMA state written into the books hash.
 _COMMIT_EDGES = """
 local version = tonumber(ARGV[1])
 if version < tonumber(redis.call('HGET', KEYS[1], '~c') or '0') then return 0 end
@@ -110,6 +113,10 @@ for _, f in ipairs(redis.call('ZRANGEBYSCORE', KEYS[3], '-inf', ARGV[2])) do
   redis.call('ZREM', KEYS[3], f)
 end
 local n = tonumber(ARGV[5])
+local m_at = 6 + 3 * n
+for j = 1, tonumber(ARGV[m_at] or '0') do
+  redis.call('HSET', KEYS[1], ARGV[m_at + 2 * j - 1], ARGV[m_at + 2 * j])
+end
 local signals, withdrawn = {}, {}
 for i = 1, n do
   local f, edge = ARGV[5 + i], ARGV[5 + n + i]
@@ -343,6 +350,7 @@ def personalize(edge: EdgeSignal, bankroll: Decimal | None, limits: RiskLimits) 
         books=edge.books,
         stake_fraction=decision.fraction,
         stake_binding=decision.binding,
+        is_steam_move=edge.is_steam_move,
     )
 
 
@@ -510,7 +518,7 @@ class AryabhataConsumer:
             return []
         self.stats.frames += len(quotes)
 
-        merged: list[tuple[MarketQuote, str, MarketState]] = []
+        merged: list[tuple[MarketQuote, str, MarketState, dict[str, EmaState]]] = []
         for quote in latest.values():
             # A price is as old as its fetch, not its arrival here (a backlog must not freshen it)
             fetched = quote.fetched_at if quote.fetched_at.tzinfo else quote.fetched_at.replace(tzinfo=UTC)
@@ -519,9 +527,13 @@ class AryabhataConsumer:
             for book in quote.books:
                 args += [_book_field(quote.source, book), _book_value(quote.source, book, seen_at)]
             version, flat = await self._merge(keys=[self.keys.books(quote.market_key)], args=args)
-            books = tuple(
-                line for name, raw in _pairs(flat).items() if not name.startswith("~") and (line := _book_line(raw)) is not None
-            )
+            fields = _pairs(flat)
+            books = tuple(line for name, raw in fields.items() if not name.startswith("~") and (line := _book_line(raw)) is not None)
+            ema = {
+                name[len(_EMA_FIELD):]: ema_state
+                for name, raw in fields.items()
+                if name.startswith(_EMA_FIELD) and (ema_state := EmaState.decode(raw)) is not None
+            }
             state = MarketState(
                 fixture_id=quote.match_id,
                 market_type=quote.market_type,
@@ -531,24 +543,34 @@ class AryabhataConsumer:
                 sport_key=quote.sport_key,
                 commence_time=quote.commence_time,
             )
-            merged.append((quote, str(version), state))
+            merged.append((quote, str(version), state, ema))
 
         now = self.clock()
         line_age = timedelta(seconds=self.settings.ARYABHATA_LINE_MAX_AGE_SECONDS)
         book_age = timedelta(seconds=self.settings.ARYABHATA_BOOK_MAX_AGE_SECONDS)
+        period, periods = self.settings.ARYABHATA_STEAM_PERIOD_SECONDS, self.settings.ARYABHATA_STEAM_PERIODS
         evaluations = await asyncio.to_thread(
-            lambda: [evaluate_market(state, now=now, line_max_age=line_age, book_max_age=book_age) for _, _, state in merged]
+            lambda: [
+                evaluate_market(
+                    state, now=now, line_max_age=line_age, book_max_age=book_age, ema=ema, steam_period_seconds=period, steam_periods=periods
+                )
+                for _, _, state, ema in merged
+            ]
         )
 
-        for (quote, version, state), evaluation in zip(merged, evaluations, strict=True):
+        for (quote, version, state, _), evaluation in zip(merged, evaluations, strict=True):
             labels = evaluation.labels or ordered_labels(frozenset(label for book in state.books for label in book.prices))
             by_label = {edge.selection: edge for edge in evaluation.edges}
             fields = [f"{quote.match_id}|{label}" for label in labels]
             payloads = [by_label[label].model_dump_json() if label in by_label else "" for label in labels]
             expiries = [str(by_label[label].expires_at.timestamp()) if label in by_label else "0" for label in labels]
+            ema_args = [item for label, ema_state in (evaluation.ema or {}).items() for item in (f"{_EMA_FIELD}{label}", ema_state.encode())]
             committed = await self._commit(
                 keys=[self.keys.books(quote.market_key), self.keys.active, self.keys.active_exp],
-                args=[version, str(now.timestamp()), self.keys.channel, quote.market_key, str(len(labels)), *fields, *payloads, *expiries],
+                args=[
+                    version, str(now.timestamp()), self.keys.channel, quote.market_key, str(len(labels)),
+                    *fields, *payloads, *expiries, str(len(ema_args) // 2), *ema_args,
+                ],
             )
             self.stats.markets += 1
             if int(committed) == 1:

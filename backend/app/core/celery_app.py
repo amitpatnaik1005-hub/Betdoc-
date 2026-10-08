@@ -26,7 +26,7 @@ FLEET_TICK_SECONDS = 5.0
 celery_app = Celery(
     "betdoc_omni",
     broker=_settings.celery_broker_url.get_secret_value(),
-    include=["app.workers.omni_poller", "app.workers.omni_quorum"],
+    include=["app.workers.omni_poller", "app.workers.omni_quorum", "app.workers.cfo_settlement"],
 )
 
 celery_app.conf.update(
@@ -57,6 +57,11 @@ celery_app.conf.update(
             "task": "omni.run_scheduled_quorum",
             "schedule": _settings.omni_quorum_interval_seconds,
             "options": {"expires": _settings.omni_quorum_interval_seconds},
+        },
+        "cfo-settle-markets": {
+            "task": "cfo.settle_markets",
+            "schedule": _settings.CFO_SETTLE_INTERVAL_SECONDS,
+            "options": {"expires": _settings.CFO_SETTLE_INTERVAL_SECONDS},
         },
     },
 )

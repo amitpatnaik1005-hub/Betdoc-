@@ -45,6 +45,8 @@ export interface TradeSignal {
   books: number;
   stake_fraction: number;
   stake_binding: StakeBinding;
+  /** Consensus spiked > 5% above its 60s EMA: sharp money is moving this line. */
+  is_steam_move: boolean;
 }
 
 export interface ArenaSignal extends TradeSignal {
@@ -100,6 +102,7 @@ export function parseSignal(raw: unknown): TradeSignal | null {
     books: finite(s.books) ? s.books : 0,
     overround: finite(s.overround) ? s.overround : 0,
     stake_fraction: finite(s.stake_fraction) ? s.stake_fraction : 0,
+    is_steam_move: s.is_steam_move === true,
   };
 }
 
