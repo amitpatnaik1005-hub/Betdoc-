@@ -592,11 +592,27 @@ class AryabhataConsumer:
             self.stats.markets += 1
             if int(committed) == 1:
                 self.stats.edges += len(evaluation.edges)
+                await publish_hive_signals(self.redis, self.settings, evaluation.edges)
             else:
                 self.stats.stale_commits += 1
             for reason, count in (evaluation.skipped or {}).items():
                 self.stats.skipped[reason] = self.stats.skipped.get(reason, 0) + count
         return evaluations
+
+
+async def publish_hive_signals(redis: Redis, settings: Settings, edges: Sequence[EdgeSignal]) -> None:
+    """Committed edges onto the Hive's stream (Group 65): its consumer group decides each once,
+    whichever worker reads it. A missed append costs the bots one frame, never the commit."""
+    if not edges or not settings.HIVE_ENABLED:
+        return
+    try:
+        async with asyncio.timeout(_REDIS_TIMEOUT_SECONDS):
+            pipe = redis.pipeline(transaction=False)
+            for edge in edges:
+                pipe.xadd(f"{settings.HIVE_PREFIX}:signals", {"e": edge.model_dump_json()}, maxlen=settings.HIVE_STREAM_MAXLEN, approximate=True)
+            await pipe.execute()
+    except (RedisError, OSError, TimeoutError):
+        logger.warning("Aryabhata: %d edge(s) not handed to the Hive; Redis unavailable", len(edges))
 
 
 async def run_aryabhata(redis: Redis, settings: Settings) -> None:

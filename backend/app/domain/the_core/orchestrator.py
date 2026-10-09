@@ -35,6 +35,7 @@ from app.domain.the_core.errors import (
     SmallcaseNotFoundError,
 )
 from app.models.the_core import (
+    ComponentKind,
     BacktestJobModel,
     CoreEngineMetricsModel,
     EngineTaskStatus,
@@ -385,7 +386,7 @@ class CoreOrchestrator:
         pipelines = (
             await db.execute(
                 select(SmallcaseRegistryModel.pipeline_config).where(
-                    SmallcaseRegistryModel.status == SmallcaseStatus.ACTIVE
+                    SmallcaseRegistryModel.status == SmallcaseStatus.ACTIVE, SmallcaseRegistryModel.component_kind == ComponentKind.PIPELINE
                 )
             )
         ).scalars().all()
@@ -430,13 +431,13 @@ class CoreOrchestrator:
             latest = await self.record_engine_metrics(db)
 
         total_smallcases = (
-            await db.execute(select(func.count()).select_from(SmallcaseRegistryModel))
+            await db.execute(select(func.count()).select_from(SmallcaseRegistryModel).where(SmallcaseRegistryModel.component_kind == ComponentKind.PIPELINE))
         ).scalar_one()
         active_smallcases = (
             await db.execute(
                 select(func.count())
                 .select_from(SmallcaseRegistryModel)
-                .where(SmallcaseRegistryModel.status == SmallcaseStatus.ACTIVE)
+                .where(SmallcaseRegistryModel.status == SmallcaseStatus.ACTIVE, SmallcaseRegistryModel.component_kind == ComponentKind.PIPELINE)
             )
         ).scalar_one()
 
@@ -459,7 +460,8 @@ class CoreOrchestrator:
     async def list_smallcases(
         self, db: AsyncSession, status: SmallcaseStatus | None = None
     ) -> list[SmallcaseRegistryModel]:
-        statement = select(SmallcaseRegistryModel).order_by(SmallcaseRegistryModel.name)
+        # Model-registry components (Group 65) share the table; The Core only ever sees its pipelines
+        statement = select(SmallcaseRegistryModel).where(SmallcaseRegistryModel.component_kind == ComponentKind.PIPELINE).order_by(SmallcaseRegistryModel.name)
         if status is not None:
             statement = statement.where(SmallcaseRegistryModel.status == SmallcaseStatus(status))
         result = await db.execute(statement.execution_options(populate_existing=True))
@@ -468,7 +470,7 @@ class CoreOrchestrator:
     async def _get_smallcase_or_raise(self, db: AsyncSession, smallcase_id: UUID) -> SmallcaseRegistryModel:
         result = await db.execute(
             select(SmallcaseRegistryModel)
-            .where(SmallcaseRegistryModel.id == smallcase_id)
+            .where(SmallcaseRegistryModel.id == smallcase_id, SmallcaseRegistryModel.component_kind == ComponentKind.PIPELINE)
             .execution_options(populate_existing=True)
         )
         smallcase = result.scalar_one_or_none()
@@ -551,7 +553,7 @@ class CoreOrchestrator:
             )
         result = await db.execute(
             update(SmallcaseRegistryModel)
-            .where(SmallcaseRegistryModel.id == smallcase_id, SmallcaseRegistryModel.status == expected)
+            .where(SmallcaseRegistryModel.id == smallcase_id, SmallcaseRegistryModel.status == expected, SmallcaseRegistryModel.component_kind == ComponentKind.PIPELINE)
             .values(status=target, updated_at=_utcnow())
             .execution_options(synchronize_session=False)
         )

@@ -34,7 +34,7 @@ from typing import Any, Literal
 
 from redis.asyncio import Redis
 from redis.exceptions import RedisError
-from sqlalchemy import func, select
+from sqlalchemy import func, select, text
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.exc import DBAPIError, IntegrityError
@@ -43,6 +43,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from app.core.config import Settings
 from app.services.portfolio_positions import mark_positions_dirty
 from app.models.cfo_vault import (
+    AccountFunding,
     OPEN_STATUSES,
     AuditEvent,
     AuditLog,
@@ -163,7 +164,7 @@ async def _open_account(session: AsyncSession, user_id: uuid.UUID, settings: Set
             created_at=now,
             updated_at=now,
         )
-        .on_conflict_do_nothing(index_elements=["user_id"])
+        .on_conflict_do_nothing(index_elements=["user_id"], index_where=text("bot_id IS NULL"))
         .returning(BankrollAccount.id)
     )
     created = (await session.execute(stmt)).scalar_one_or_none()
@@ -178,11 +179,19 @@ async def _open_account(session: AsyncSession, user_id: uuid.UUID, settings: Set
         await session.flush()
 
 
-async def lock_bankroll(session: AsyncSession, user_id: uuid.UUID, settings: Settings, *, nowait: bool = True) -> BankrollAccount:
-    """``SELECT ... FOR UPDATE NOWAIT`` on the user's bankroll row, opening the account on first use."""
+def account_scope(column: Any, bot_id: uuid.UUID | None) -> Any:
+    """``bot_id`` NULL is the user's main account; anything else is that bot's isolated sub-account."""
+    return column.is_(None) if bot_id is None else column == bot_id
+
+
+async def lock_bankroll(
+    session: AsyncSession, user_id: uuid.UUID, settings: Settings, *, nowait: bool = True, bot_id: uuid.UUID | None = None
+) -> BankrollAccount:
+    """``SELECT ... FOR UPDATE NOWAIT`` on one bankroll row: the user's main account (opened on first
+    use) or a Hive bot's sub-account (which exists only once capital was allocated to it)."""
     stmt = (
         select(BankrollAccount)
-        .where(BankrollAccount.user_id == user_id)
+        .where(BankrollAccount.user_id == user_id, account_scope(BankrollAccount.bot_id, bot_id))
         .with_for_update(nowait=nowait)
         .execution_options(populate_existing=True)
     )
@@ -195,13 +204,16 @@ async def lock_bankroll(session: AsyncSession, user_id: uuid.UUID, settings: Set
             raise
         if account is not None:
             return account
+        if bot_id is not None:
+            raise CfoError("NO_SUB_ACCOUNT", "This bot has no capital allocated to it", status_code=409)
         await _open_account(session, user_id, settings)
     raise LedgerInvariantError("ACCOUNT_UNAVAILABLE", "The bankroll account could not be opened")
 
 
-async def read_account(session: AsyncSession, user_id: uuid.UUID) -> BankrollAccount | None:
+async def read_account(session: AsyncSession, user_id: uuid.UUID, bot_id: uuid.UUID | None = None) -> BankrollAccount | None:
     """A lock-free read for dashboards and pre-lock guard checks."""
-    return (await session.execute(select(BankrollAccount).where(BankrollAccount.user_id == user_id))).scalar_one_or_none()
+    stmt = select(BankrollAccount).where(BankrollAccount.user_id == user_id, account_scope(BankrollAccount.bot_id, bot_id))
+    return (await session.execute(stmt)).scalar_one_or_none()
 
 
 # ---------------------------------------------------------------- postings
@@ -224,7 +236,9 @@ def _post(
     journal = uuid.uuid4()
     for ledger_account, amount in legs.items():
         if amount != ZERO:
-            session.add(LedgerEntry(journal_id=journal, user_id=account.user_id, ledger_id=ledger_id, kind=kind, account=ledger_account, amount=amount))
+            session.add(
+                LedgerEntry(journal_id=journal, user_id=account.user_id, bot_id=account.bot_id, ledger_id=ledger_id, kind=kind, account=ledger_account, amount=amount)
+            )
     account.available_balance = available
     account.exposure_balance = exposure
     account.postings += 1
@@ -255,6 +269,7 @@ class OrderTicket:
     group_id: uuid.UUID | None = None
     currency: str = "INR"  # the venue account's currency
     stake_ccy: Decimal | None = None  # the stake in that currency (None: an INR venue, stake_inr itself)
+    bot_id: uuid.UUID | None = None  # a Hive bot's order: reserved and settled inside its sub-account
 
 
 async def reserve(session: AsyncSession, account: BankrollAccount, ticket: OrderTicket) -> PhantomLedger:
@@ -264,6 +279,8 @@ async def reserve(session: AsyncSession, account: BankrollAccount, ticket: Order
         raise CfoError("INVALID_STAKE", "Stake must be positive")
     if ticket.odds <= 1:
         raise CfoError("INVALID_ODDS", "Odds must be greater than 1")
+    if account.bot_id != ticket.bot_id or account.user_id != ticket.user_id:
+        raise LedgerInvariantError("WRONG_ACCOUNT", "An order reserves only in its own account")
     if stake > account.available_balance:
         raise InsufficientFundsError(
             "INSUFFICIENT_BALANCE",
@@ -295,6 +312,7 @@ async def reserve(session: AsyncSession, account: BankrollAccount, ticket: Order
         group_id=ticket.group_id,
         currency=None if ticket.currency == "INR" else ticket.currency,
         stake_ccy=ticket.stake_ccy if ticket.currency != "INR" else None,
+        bot_id=ticket.bot_id,
     )
     session.add(entry)
     try:
@@ -359,19 +377,22 @@ def settle(session: AsyncSession, account: BankrollAccount, entry: PhantomLedger
     return pnl
 
 
-async def verify_account(session: AsyncSession, user_id: uuid.UUID) -> dict[str, Decimal]:
-    """Re-derive every balance from the journal; raise if the materialised row disagrees."""
+async def verify_account(session: AsyncSession, user_id: uuid.UUID, bot_id: uuid.UUID | None = None) -> dict[str, Decimal]:
+    """Re-derive every balance of one account (main, or a bot's) from its journal; raise if the
+    materialised row disagrees. Each account's own journal sums to zero."""
     sums = dict(
         (
             await session.execute(
-                select(LedgerEntry.account, func.coalesce(func.sum(LedgerEntry.amount), 0)).where(LedgerEntry.user_id == user_id).group_by(LedgerEntry.account)
+                select(LedgerEntry.account, func.coalesce(func.sum(LedgerEntry.amount), 0))
+                .where(LedgerEntry.user_id == user_id, account_scope(LedgerEntry.bot_id, bot_id))
+                .group_by(LedgerEntry.account)
             )
         ).all()
     )
     derived = {str(account): Decimal(str(sums.get(account, 0))) for account in LedgerAccount}
     if sum(derived.values(), ZERO) != ZERO:
         raise LedgerInvariantError("JOURNAL_UNBALANCED", "The journal does not sum to zero")
-    account = await read_account(session, user_id)
+    account = await read_account(session, user_id, bot_id)
     if account is not None and (
         derived[LedgerAccount.AVAILABLE] != account.available_balance or derived[LedgerAccount.EXPOSURE] != account.exposure_balance
     ):
@@ -402,16 +423,21 @@ async def write_audit(session_factory: async_sessionmaker[AsyncSession], row: Au
 
 
 # ---------------------------------------------------------------- loss streak (Redis counter, DB truth)
-def streak_key(settings: Settings, user_id: uuid.UUID) -> str:
-    return f"{settings.CFO_STREAK_KEY_PREFIX}:{user_id}"
+def streak_key(settings: Settings, user_id: uuid.UUID, bot_id: uuid.UUID | None = None) -> str:
+    base = f"{settings.CFO_STREAK_KEY_PREFIX}:{user_id}"
+    return base if bot_id is None else f"{base}:bot:{bot_id}"
 
 
-async def loss_streak_from_db(session: AsyncSession, user_id: uuid.UUID, limit: int = 100) -> int:
+async def loss_streak_from_db(session: AsyncSession, user_id: uuid.UUID, limit: int = 100, bot_id: uuid.UUID | None = None) -> int:
     """Consecutive LOST bets, newest first, ignoring voids. The truth the Redis counter mirrors."""
     rows = (
         await session.execute(
             select(PhantomLedger.status)
-            .where(PhantomLedger.user_id == user_id, PhantomLedger.status.in_((LedgerStatus.WON, LedgerStatus.LOST)))
+            .where(
+                PhantomLedger.user_id == user_id,
+                account_scope(PhantomLedger.bot_id, bot_id),
+                PhantomLedger.status.in_((LedgerStatus.WON, LedgerStatus.LOST)),
+            )
             .order_by(PhantomLedger.settled_at.desc(), PhantomLedger.id.desc())
             .limit(limit)
         )
@@ -424,12 +450,12 @@ async def loss_streak_from_db(session: AsyncSession, user_id: uuid.UUID, limit: 
     return streak
 
 
-async def apply_streak(redis: Redis | None, settings: Settings, user_id: uuid.UUID, outcomes: list[bool]) -> None:
+async def apply_streak(redis: Redis | None, settings: Settings, user_id: uuid.UUID, outcomes: list[bool], bot_id: uuid.UUID | None = None) -> None:
     """After a committed settlement: INCR per loss, reset per win. On failure, drop the key so the
     guard recomputes it from the ledger rather than trusting a stale count."""
     if redis is None or not outcomes:
         return
-    key = streak_key(settings, user_id)
+    key = streak_key(settings, user_id, bot_id)
     try:
         for won in outcomes:
             if won:
@@ -504,11 +530,11 @@ async def settle_markets(
     """
     summary = SettlementSummary()
     grades = dict(bookmaker_grades or {})
-    by_user: dict[uuid.UUID, set[uuid.UUID]] = defaultdict(set)
+    by_user: dict[tuple[uuid.UUID, uuid.UUID | None], set[uuid.UUID]] = defaultdict(set)
     async with session_factory() as session:
         due = (
             await session.execute(
-                select(PhantomLedger.user_id, PhantomLedger.id)
+                select(PhantomLedger.user_id, PhantomLedger.bot_id, PhantomLedger.id)
                 .join(MarketResult, (MarketResult.fixture_id == PhantomLedger.fixture_id) & (MarketResult.market == PhantomLedger.market))
                 .where(PhantomLedger.status == LedgerStatus.PENDING, PhantomLedger.reconcile_required.is_(False))
             )
@@ -516,19 +542,19 @@ async def settle_markets(
         if grades:
             due += (
                 await session.execute(
-                    select(PhantomLedger.user_id, PhantomLedger.id).where(
+                    select(PhantomLedger.user_id, PhantomLedger.bot_id, PhantomLedger.id).where(
                         PhantomLedger.id.in_(list(grades)), PhantomLedger.status == LedgerStatus.PENDING, PhantomLedger.reconcile_required.is_(False)
                     )
                 )
             ).all()
-    for user_id, ledger_id in due:
-        by_user[user_id].add(ledger_id)
+    for user_id, bot_id, ledger_id in due:
+        by_user[(user_id, bot_id)].add(ledger_id)
 
-    for user_id, ids in by_user.items():
+    for (user_id, bot_id), ids in by_user.items():
         outcomes: list[bool] = []
         async with session_factory() as session:
             try:
-                account = await lock_bankroll(session, user_id, settings, nowait=True)
+                account = await lock_bankroll(session, user_id, settings, nowait=True, bot_id=bot_id)
                 rows = (
                     await session.execute(
                         select(PhantomLedger, MarketResult)
@@ -571,7 +597,8 @@ async def settle_markets(
                 mark_peak(account)
                 await session.commit()
                 summary.users += 1
-                await mark_positions_dirty(redis, settings, user_id)
+                if bot_id is None:
+                    await mark_positions_dirty(redis, settings, user_id)
             except BankrollLockedError:
                 await session.rollback()
                 summary.skipped_locked += 1  # an execution holds the row: the next sweep settles it
@@ -582,8 +609,78 @@ async def settle_markets(
                 summary.errors.append(type(exc).__name__)
                 logger.exception("Settlement failed for a user; rolled back")
                 continue
-        await apply_streak(redis, settings, user_id, outcomes)
+        await apply_streak(redis, settings, user_id, outcomes, bot_id)
     return summary
+
+
+# ---------------------------------------------------------------- Hive sub-accounts (Group 65)
+async def _lock_sub_account(session: AsyncSession, user_id: uuid.UUID, bot_id: uuid.UUID, funding: AccountFunding, settings: Settings) -> BankrollAccount:
+    """Lock a bot's sub-account, opening it (empty) on its first allocation."""
+    try:
+        return await lock_bankroll(session, user_id, settings, nowait=True, bot_id=bot_id)
+    except CfoError as exc:
+        if exc.reason != "NO_SUB_ACCOUNT":
+            raise
+    now = _utcnow()
+    session.add(
+        BankrollAccount(
+            user_id=user_id, bot_id=bot_id, funding=funding.value, currency="INR", available_balance=ZERO, exposure_balance=ZERO,
+            peak_balance=ZERO, postings=0, created_at=now, updated_at=now,
+        )
+    )
+    await session.flush()
+    return await lock_bankroll(session, user_id, settings, nowait=True, bot_id=bot_id)
+
+
+async def allocate(
+    session: AsyncSession, settings: Settings, *, user_id: uuid.UUID, bot_id: uuid.UUID, amount: object, funding: AccountFunding
+) -> tuple[BankrollAccount | None, BankrollAccount]:
+    """Capital into a bot's sub-account. TRANSFER (a live bot) moves it out of the main account
+    (locked first: one lock order everywhere); VIRTUAL (a paper bot) is notional and touches no
+    real balance. Either way each account's journal still sums to zero, and moving capital is not
+    performance: both peaks move by the same amount, so no drawdown guard reads it as a loss.
+    The caller commits."""
+    cash = to_money(amount, "amount")
+    if cash <= ZERO:
+        raise CfoError("INVALID_AMOUNT", "Allocate a positive amount", status_code=422)
+    main = await lock_bankroll(session, user_id, settings, nowait=True) if funding is AccountFunding.TRANSFER else None
+    sub = await _lock_sub_account(session, user_id, bot_id, funding, settings)
+    if sub.funding != funding.value:
+        if sub.available_balance != ZERO or sub.exposure_balance != ZERO:
+            raise CfoError("FUNDING_MISMATCH", f"This bot's sub-account is {sub.funding.lower()}-funded; release its capital first", status_code=409)
+        sub.funding = funding.value  # empty: it may change hands between paper and live
+    if main is not None:
+        if cash > main.available_balance:
+            raise InsufficientFundsError("INSUFFICIENT_BALANCE", "Not enough available balance to allocate", detail={"available": str(main.available_balance)})
+        _post(session, main, PostingKind.ALLOCATE, {LedgerAccount.AVAILABLE: -cash, LedgerAccount.EQUITY: cash})
+        main.peak_balance = max(ZERO, main.peak_balance - cash)
+    _post(session, sub, PostingKind.ALLOCATE, {LedgerAccount.AVAILABLE: cash, LedgerAccount.EQUITY: -cash})
+    sub.peak_balance += cash
+    await session.flush()
+    return main, sub
+
+
+async def deallocate(session: AsyncSession, settings: Settings, *, user_id: uuid.UUID, bot_id: uuid.UUID, amount: object) -> tuple[BankrollAccount | None, BankrollAccount]:
+    """Capital back out of a bot's free balance (never its open exposure). A transfer-funded
+    account returns it to the main account; virtual capital simply ceases to exist. The caller commits."""
+    cash = to_money(amount, "amount")
+    if cash <= ZERO:
+        raise CfoError("INVALID_AMOUNT", "Release a positive amount", status_code=422)
+    probe = await read_account(session, user_id, bot_id)
+    if probe is None:
+        raise CfoError("NO_SUB_ACCOUNT", "This bot has no capital allocated to it", status_code=409)
+    funding = AccountFunding(probe.funding)
+    main = await lock_bankroll(session, user_id, settings, nowait=True) if funding is AccountFunding.TRANSFER else None
+    sub = await lock_bankroll(session, user_id, settings, nowait=True, bot_id=bot_id)
+    if cash > sub.available_balance:
+        raise InsufficientFundsError("INSUFFICIENT_BALANCE", "Only the bot's free balance can be released", detail={"available": str(sub.available_balance)})
+    _post(session, sub, PostingKind.DEALLOCATE, {LedgerAccount.AVAILABLE: -cash, LedgerAccount.EQUITY: cash})
+    sub.peak_balance = max(ZERO, sub.peak_balance - cash)
+    if main is not None:
+        _post(session, main, PostingKind.DEALLOCATE, {LedgerAccount.AVAILABLE: cash, LedgerAccount.EQUITY: -cash})
+        main.peak_balance += cash
+    await session.flush()
+    return main, sub
 
 
 # ---------------------------------------------------------------- reconciliation (UNKNOWN outcomes)
@@ -605,10 +702,11 @@ async def resolve_manually(
     the resolver's queue as an ordinary pending bet. Returns the entry and, for WON/LOST, whether it
     won (for the loss-streak counter). The caller commits.
     """
-    owner = await session.scalar(select(PhantomLedger.user_id).where(PhantomLedger.id == ledger_id))
-    if owner is None:
+    found = (await session.execute(select(PhantomLedger.user_id, PhantomLedger.bot_id).where(PhantomLedger.id == ledger_id))).first()
+    if found is None:
         raise CfoError("NOT_FOUND", "No such position", status_code=404)
-    account = await lock_bankroll(session, owner, settings, nowait=True)
+    owner, bot_id = found
+    account = await lock_bankroll(session, owner, settings, nowait=True, bot_id=bot_id)
     entry = (await session.execute(select(PhantomLedger).where(PhantomLedger.id == ledger_id).with_for_update())).scalar_one()
     if entry.status not in OPEN_STATUSES:
         raise CfoError("NOT_OPEN", "This bet is already settled", status_code=409)

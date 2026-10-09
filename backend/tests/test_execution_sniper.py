@@ -43,6 +43,7 @@ from app.models.cfo_vault import (
     PhantomLedger,
     RiskGuardSettings,
 )
+from app.models.hive_bots import TradingBot
 from app.models.control_panel import SystemSettingsModel
 from app.models.execution import EntityMapping, ExecutionVenue
 from app.sandbox.bookmaker import SANDBOX_BASE_URL, build_sandbox_app, sandbox_credentials
@@ -59,7 +60,7 @@ from app.services.sniper import SniperGateway
 D = Decimal
 TABLES = [
     User.__table__, ExchangeAccount.__table__, RiskMandate.__table__, BetLedger.__table__, SystemSettingsModel.__table__,
-    BankrollAccount.__table__, PhantomLedger.__table__, LedgerEntry.__table__, AuditLog.__table__, RiskGuardSettings.__table__,
+    TradingBot.__table__, BankrollAccount.__table__, PhantomLedger.__table__, LedgerEntry.__table__, AuditLog.__table__, RiskGuardSettings.__table__,
     MarketResult.__table__, ExecutionVenue.__table__, EntityMapping.__table__,
 ]
 TEST_REDIS_URL = os.environ.get("TEST_REDIS_URL", "redis://localhost:6379/15")

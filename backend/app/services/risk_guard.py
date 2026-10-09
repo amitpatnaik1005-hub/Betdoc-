@@ -26,14 +26,14 @@ from decimal import Decimal, InvalidOperation
 
 from redis.asyncio import Redis
 from redis.exceptions import RedisError
-from sqlalchemy import func, select
+from sqlalchemy import func, select, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import Settings
 from app.core.live_odds import tick_history_key
 from app.models.cfo_vault import AuditEvent, AuditLog, BankrollAccount, LedgerStatus, PhantomLedger, RiskGuardSettings
 from app.models.control_panel import SETTINGS_SINGLETON_ID, SystemSettingsModel
-from app.services.cfo_ledger import ZERO, CfoError, OrderTicket, loss_streak_from_db, streak_key
+from app.services.cfo_ledger import ZERO, CfoError, OrderTicket, loss_streak_from_db, streak_key, account_scope
 
 HUNDRED = Decimal(100)
 TRUTHY = frozenset({"1", "true", "on", "yes"})
@@ -116,11 +116,16 @@ def coefficient_of_variation(values: list[Decimal]) -> Decimal | None:
 
 
 # ---------------------------------------------------------------- measurements (also shown on the betslip)
-async def realized_pnl_24h(session: AsyncSession, user_id: uuid.UUID, now: datetime) -> Decimal:
-    """Net realised P&L of the rolling 24h, from the audit log's SETTLED rows."""
+async def realized_pnl_24h(session: AsyncSession, user_id: uuid.UUID, now: datetime, bot_id: uuid.UUID | None = None) -> Decimal:
+    """Net realised P&L of the rolling 24h of one account (main, or a bot's), from the audit log's SETTLED rows."""
+    in_account = select(PhantomLedger.id).where(PhantomLedger.user_id == user_id, account_scope(PhantomLedger.bot_id, bot_id))
     pnl = await session.scalar(
         select(func.coalesce(func.sum(AuditLog.pnl_inr), 0)).where(
-            AuditLog.user_id == user_id, AuditLog.event == AuditEvent.SETTLED, AuditLog.created_at >= now - timedelta(hours=24)
+            AuditLog.user_id == user_id,
+            AuditLog.event == AuditEvent.SETTLED,
+            AuditLog.created_at >= now - timedelta(hours=24),
+            # unlinked settlement rows predate sub-accounts: they are the main account's
+            or_(AuditLog.ledger_id.in_(in_account), AuditLog.ledger_id.is_(None)) if bot_id is None else AuditLog.ledger_id.in_(in_account),
         )
     )
     return Decimal(str(pnl or 0))
@@ -130,12 +135,12 @@ def drawdown_limit(peak: Decimal, limits: GuardLimits) -> Decimal:
     return (peak * limits.daily_drawdown_pct / HUNDRED).quantize(Decimal("0.01"))
 
 
-async def read_loss_streak(redis: Redis | None, settings: Settings, session: AsyncSession, user_id: uuid.UUID) -> int:
+async def read_loss_streak(redis: Redis | None, settings: Settings, session: AsyncSession, user_id: uuid.UUID, bot_id: uuid.UUID | None = None) -> int:
     """The Redis counter; recomputed from the ledger (and written back) when missing or corrupt.
     Raises the 503 violation when Redis cannot be read at all."""
     if redis is None:
         raise _unavailable()
-    key = streak_key(settings, user_id)
+    key = streak_key(settings, user_id, bot_id)
     try:
         cached = await redis.get(key)
     except (RedisError, OSError) as exc:
@@ -145,7 +150,7 @@ async def read_loss_streak(redis: Redis | None, settings: Settings, session: Asy
             return max(int(cached), 0)
         except (TypeError, ValueError):
             pass
-    streak = await loss_streak_from_db(session, user_id)
+    streak = await loss_streak_from_db(session, user_id, bot_id=bot_id)
     try:
         await redis.set(key, streak)
     except (RedisError, OSError):
@@ -174,8 +179,10 @@ class RiskGuard:
             raise RiskGuardViolation("BLOCKED_BY_KILL_SWITCH", "Trading is halted by the emergency stop")
 
     # -------------------------------------------------------------- pillar 1
-    async def drawdown(self, session: AsyncSession, user_id: uuid.UUID, limits: GuardLimits, account: BankrollAccount | None, report: GuardReport) -> None:
-        report.pnl_24h = await realized_pnl_24h(session, user_id, self.clock())
+    async def drawdown(
+        self, session: AsyncSession, user_id: uuid.UUID, limits: GuardLimits, account: BankrollAccount | None, report: GuardReport, bot_id: uuid.UUID | None = None
+    ) -> None:
+        report.pnl_24h = await realized_pnl_24h(session, user_id, self.clock(), bot_id)
         if account is None or account.peak_balance <= 0:
             return
         report.drawdown_limit = drawdown_limit(account.peak_balance, limits)
@@ -188,8 +195,8 @@ class RiskGuard:
             )
 
     # -------------------------------------------------------------- pillar 2
-    async def loss_streak(self, session: AsyncSession, user_id: uuid.UUID, limits: GuardLimits, report: GuardReport) -> None:
-        streak = await read_loss_streak(self.redis, self.settings, session, user_id)
+    async def loss_streak(self, session: AsyncSession, user_id: uuid.UUID, limits: GuardLimits, report: GuardReport, bot_id: uuid.UUID | None = None) -> None:
+        streak = await read_loss_streak(self.redis, self.settings, session, user_id, bot_id)
         report.loss_streak = streak
         if streak >= limits.max_loss_streak:
             raise RiskGuardViolation(
@@ -205,6 +212,7 @@ class RiskGuard:
         open_stake = await session.scalar(
             select(func.coalesce(func.sum(PhantomLedger.stake_inr), 0)).where(
                 PhantomLedger.user_id == ticket.user_id,
+                account_scope(PhantomLedger.bot_id, ticket.bot_id),
                 PhantomLedger.fixture_id == ticket.fixture_id,
                 PhantomLedger.status == LedgerStatus.PENDING,
             )
@@ -260,8 +268,8 @@ class RiskGuard:
         if risk_reducing:
             return report
         limits = await load_limits(session, ticket.user_id)
-        await self.drawdown(session, ticket.user_id, limits, account, report)
-        await self.loss_streak(session, ticket.user_id, limits, report)
+        await self.drawdown(session, ticket.user_id, limits, account, report, ticket.bot_id)
+        await self.loss_streak(session, ticket.user_id, limits, report, ticket.bot_id)
         await self.market_exposure(session, ticket, limits, account, report)
         await self.velocity(ticket, limits, report)
         return report
@@ -273,7 +281,7 @@ class RiskGuard:
         if risk_reducing:
             return report
         limits = await load_limits(session, ticket.user_id)
-        await self.drawdown(session, ticket.user_id, limits, account, report)
+        await self.drawdown(session, ticket.user_id, limits, account, report, ticket.bot_id)
         await self.market_exposure(session, ticket, limits, account, report)
         return report
 

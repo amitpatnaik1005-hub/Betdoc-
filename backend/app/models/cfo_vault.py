@@ -1,8 +1,10 @@
 """CFO vault (Group 62): the cash ledger every Omni execution and settlement moves money through.
 
-* ``BankrollAccount``: one row per user, the row every money movement locks
-  (``SELECT ... FOR UPDATE NOWAIT``). ``available_balance`` is free cash, ``exposure_balance`` is
-  cash riding on open bets, ``peak_balance`` the equity high-water mark the drawdown guard uses.
+* ``BankrollAccount``: the row every money movement locks (``SELECT ... FOR UPDATE NOWAIT``). Each
+  user has one main account (``bot_id`` NULL) and one isolated sub-account per Hive trading bot
+  (Group 65): a bot's bets reserve, settle and lose only inside its own sub-account.
+  ``available_balance`` is free cash, ``exposure_balance`` is cash riding on open bets,
+  ``peak_balance`` the equity high-water mark the drawdown guard uses.
 * ``LedgerEntry``: the double-entry journal behind those balances. Every posting writes legs that
   sum to exactly zero across AVAILABLE, EXPOSURE, PNL and EQUITY, so the materialised balances can
   always be re-derived and checked. Append-only.
@@ -38,7 +40,7 @@ from sqlalchemy import (
 )
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
-from sqlalchemy.sql import func
+from sqlalchemy.sql import func, text
 from sqlalchemy.types import JSON
 
 from app.models import Base, utc_now
@@ -77,6 +79,8 @@ class PostingKind(StrEnum):
     RELEASE = "RELEASE"  # rejected or void: EXPOSURE -> AVAILABLE
     SETTLE_WON = "SETTLE_WON"
     SETTLE_LOST = "SETTLE_LOST"
+    ALLOCATE = "ALLOCATE"  # capital into a bot's sub-account (from the main account, or virtual for paper)
+    DEALLOCATE = "DEALLOCATE"  # capital back out of it
 
 
 class AuditEvent(StrEnum):
@@ -95,16 +99,27 @@ def _enum(enum_cls: type[StrEnum], name: str) -> Enum:
     return Enum(enum_cls, name=name, native_enum=False, create_constraint=True, length=32, validate_strings=True)
 
 
+class AccountFunding(StrEnum):
+    TRANSFER = "TRANSFER"  # real capital moved over from the main account (live bots)
+    VIRTUAL = "VIRTUAL"  # notional capital (paper bots): never flows back into the main account
+
+
 class BankrollAccount(Base):
     __tablename__ = "cfo_bankroll_accounts"
     __table_args__ = (
         CheckConstraint("available_balance >= 0", name="available_non_negative"),
         CheckConstraint("exposure_balance >= 0", name="exposure_non_negative"),
         CheckConstraint("peak_balance >= 0", name="peak_non_negative"),
+        CheckConstraint("(bot_id IS NULL AND funding IS NULL) OR (bot_id IS NOT NULL AND funding IS NOT NULL)", name="funding_for_bots"),
+        # One main account per user; one sub-account per bot
+        Index("uq_cfo_bankroll_accounts_main", "user_id", unique=True, postgresql_where=text("bot_id IS NULL"), sqlite_where=text("bot_id IS NULL")),
+        Index("uq_cfo_bankroll_accounts_bot", "bot_id", unique=True, postgresql_where=text("bot_id IS NOT NULL"), sqlite_where=text("bot_id IS NOT NULL")),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"), unique=True)
+    user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"))
+    bot_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("hive_trading_bots.id", ondelete="RESTRICT"), nullable=True)
+    funding: Mapped[str | None] = mapped_column(String(16), nullable=True)  # AccountFunding, sub-accounts only
     currency: Mapped[str] = mapped_column(String(3), default="INR", server_default="INR")
     available_balance: Mapped[Decimal] = mapped_column(MONEY, default=Decimal("0"))
     exposure_balance: Mapped[Decimal] = mapped_column(MONEY, default=Decimal("0"))
@@ -137,6 +152,7 @@ class PhantomLedger(Base):
         Index("ix_cfo_phantom_ledger_fixture_market_status", "fixture_id", "market", "status"),
         Index("ix_cfo_phantom_ledger_status_next_resolve", "status", "next_resolve_at"),
         Index("ix_cfo_phantom_ledger_user_group", "user_id", "group_id"),
+        Index("ix_cfo_phantom_ledger_bot_status", "bot_id", "status"),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
@@ -168,6 +184,8 @@ class PhantomLedger(Base):
     # A bet at a foreign-currency venue: its stake there (stake_inr is the rupees it cost); None = INR
     currency: Mapped[str | None] = mapped_column(String(3), nullable=True)
     stake_ccy: Mapped[Decimal | None] = mapped_column(MONEY, nullable=True)
+    # Group 65: the Hive bot whose sub-account holds this bet (None: the user's main account)
+    bot_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("hive_trading_bots.id", ondelete="RESTRICT"), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, server_default=func.now())
     settled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
@@ -178,12 +196,14 @@ class LedgerEntry(Base):
         CheckConstraint("amount <> 0", name="amount_non_zero"),
         Index("ix_cfo_ledger_entries_user_account", "user_id", "account"),
         Index("ix_cfo_ledger_entries_journal", "journal_id"),
+        Index("ix_cfo_ledger_entries_user_bot_account", "user_id", "bot_id", "account"),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
     journal_id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True))  # the legs of one posting share it
     user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"))
     ledger_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("cfo_phantom_ledger.id", ondelete="RESTRICT"), nullable=True)
+    bot_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("hive_trading_bots.id", ondelete="RESTRICT"), nullable=True)  # whose sub-ledger
     kind: Mapped[PostingKind] = mapped_column(_enum(PostingKind, "cfo_posting_kind"))
     account: Mapped[LedgerAccount] = mapped_column(_enum(LedgerAccount, "cfo_ledger_account"))
     amount: Mapped[Decimal] = mapped_column(MONEY)  # signed: debits to an asset account are positive

@@ -107,7 +107,9 @@ async def bankroll(request: Request, user: CurrentUser, sessions: SessionFactory
             streak = None  # Redis down: shown as unknown, and executions are refused meanwhile
         positions = (
             await session.execute(
-                select(PhantomLedger).where(PhantomLedger.user_id == user.id, PhantomLedger.status == LedgerStatus.PENDING).order_by(PhantomLedger.created_at.desc())
+                select(PhantomLedger)
+                .where(PhantomLedger.user_id == user.id, PhantomLedger.bot_id.is_(None), PhantomLedger.status == LedgerStatus.PENDING)
+                .order_by(PhantomLedger.created_at.desc())
             )
         ).scalars().all()
         if account is None:
@@ -145,7 +147,7 @@ async def positions(
     status_filter: Annotated[LedgerStatus | None, Query(alias="status")] = None,
     limit: Annotated[int, Query(ge=1, le=500)] = 100,
 ) -> list[PositionRead]:
-    stmt = select(PhantomLedger).where(PhantomLedger.user_id == user.id)
+    stmt = select(PhantomLedger).where(PhantomLedger.user_id == user.id, PhantomLedger.bot_id.is_(None))  # bots: /hive/trading
     if status_filter is not None:
         stmt = stmt.where(PhantomLedger.status == status_filter)
     async with sessions() as session:

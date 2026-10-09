@@ -148,6 +148,23 @@ class Settings(BaseSettings):
     FX_MAX_AGE_SECONDS: int = Field(default=3600, ge=60)  # an older rate is refused: legs in that currency can't be priced
     FX_HAIRCUT_PCT: float = Field(default=0.5, ge=0, lt=20)  # taken off every foreign payout coming home
 
+    # ---- The Hive: autonomous trading bots (Group 65) ------------------------
+    HIVE_ENABLED: bool = True  # every API worker joins the bots' signal consumer group
+    HIVE_PREFIX: str = "hive"  # <p>:signals stream, <p>:halt flag, <p>:lock:*, <p>:fires:*, <p>:seen:*
+    HIVE_STREAM_MAXLEN: int = Field(default=10_000, ge=100)
+    HIVE_MERGE_LOCK_MS: int = Field(default=30_000, ge=1_000)  # one order per owner and market at a time
+    HIVE_VELOCITY_WINDOW_SECONDS: int = Field(default=60, ge=10)  # the velocity breaker's window
+    HIVE_FLASH_WINDOW_SECONDS: float = Field(default=120.0, ge=10)
+    HIVE_FLASH_THRESHOLD_PCT: float = Field(default=15.0, gt=0, le=100)  # consensus swing that halts every bot
+    HIVE_FLASH_MIN_POINTS: int = Field(default=3, ge=2)
+    HIVE_SCAN_INTERVAL_SECONDS: float = Field(default=5.0, ge=1)  # flash-crash scan, breakers, shadow grading
+    HIVE_SLICE_DELAY_MIN_SECONDS: int = Field(default=60, ge=1)
+    HIVE_SLICE_DELAY_MAX_SECONDS: int = Field(default=120, ge=1)
+    HIVE_SLICE_JITTER_PCT: float = Field(default=15.0, ge=0, lt=50)  # each slice within this of an equal split
+    HIVE_BOT_CACHE_SECONDS: float = Field(default=5.0, gt=0)
+    HIVE_EVENT_DEDUPE_SECONDS: int = Field(default=60, ge=1)  # one "skipped for the same reason" row per minute
+    HIVE_HISTORY_POINTS: int = Field(default=60, ge=5)  # probability history the time-series models read
+
     # The Wire: public sports RSS feeds (no key needed)
     WIRE_NEWS_FEEDS: List[str] = [
         "https://feeds.bbci.co.uk/sport/rss.xml",

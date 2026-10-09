@@ -44,6 +44,16 @@ class SmallcaseStatus(StrEnum):
     DISABLED = "DISABLED"
 
 
+class ComponentKind(StrEnum):
+    """What a registry row is. PIPELINE rows are The Core's smallcases; the rest are the building
+    blocks Group 65's model registry seeds (one row per math model, risk model and bet type)."""
+
+    PIPELINE = "PIPELINE"
+    MATH_MODEL = "MATH_MODEL"
+    RISK_MODEL = "RISK_MODEL"
+    BET_TYPE = "BET_TYPE"
+
+
 class EngineTaskStatus(StrEnum):
     QUEUED = "QUEUED"
     RUNNING = "RUNNING"
@@ -116,6 +126,16 @@ class SmallcaseRegistryModel(Base):
     cross_val_score: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
     total_backtests_run: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
     last_tested_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # Group 65 model registry: component rows (math / risk / bet type) next to The Core's pipelines
+    component_kind: Mapped[ComponentKind] = mapped_column(
+        _status_type(ComponentKind, "core_component_kind"), nullable=False, default=ComponentKind.PIPELINE,
+        server_default=ComponentKind.PIPELINE.value,
+    )
+    component_key: Mapped[str | None] = mapped_column(String(96), nullable=True, unique=True)  # e.g. "math.arima"
+    category: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    implementation: Mapped[str | None] = mapped_column(String(255), nullable=True)  # "module:Symbol" it runs, if any
+    live_capable: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="false")
+    catalogue_source: Mapped[str] = mapped_column(String(32), nullable=False, default="core", server_default="core")
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=utcnow, server_default=func.now()
     )

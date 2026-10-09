@@ -43,6 +43,7 @@ from app.models.cfo_vault import (
     PhantomLedger,
     RiskGuardSettings,
 )
+from app.models.hive_bots import TradingBot
 from app.models.control_panel import SETTINGS_SINGLETON_ID, SystemSettingsModel
 from app.schemas.aryabhata import SIGNAL_TTL
 from app.schemas.cfo_vault import ExecuteTradeRequest
@@ -85,6 +86,7 @@ TABLES = [
     RiskMandate.__table__,
     BetLedger.__table__,
     SystemSettingsModel.__table__,
+    TradingBot.__table__,  # bot sub-accounts reference it (Group 65)
     BankrollAccount.__table__,
     PhantomLedger.__table__,
     LedgerEntry.__table__,

@@ -187,7 +187,7 @@ class TradeExecutor:
                 edge = await self._check_signal(request)
                 if ticket.commence_time is None and edge is not None and edge.commence_time is not None:
                     ticket = replace(ticket, commence_time=edge.commence_time)
-                ticket = await self._in_venue_currency(ticket)
+            ticket = await self._in_venue_currency(ticket)  # betslip and Hive orders; multi-leg tickets carry their own
             report, guard_limits = await self._pre_guards(ticket, risk_reducing)
             limits = await load_risk_limits(self.redis, self.session_factory, self.settings)
             self._check_limits(ticket, limits, equity=None, risk_reducing=risk_reducing)
@@ -223,7 +223,8 @@ class TradeExecutor:
         try:
             return await self._conclude(ticket, outcome)
         finally:
-            await mark_positions_dirty(self.redis, self.settings, ticket.user_id)
+            if ticket.bot_id is None:
+                await mark_positions_dirty(self.redis, self.settings, ticket.user_id)
 
     # -------------------------------------------------------------- 1. idempotency + TTL
     async def _claim(self, ticket: OrderTicket) -> None:
@@ -271,7 +272,7 @@ class TradeExecutor:
         stake's cost rounded up to the paisa, never above what was asked. No live rate: refused, with
         nothing reserved. Paper fills (no venue) stay in rupees."""
         venue_for = getattr(self.gateway, "venue_for", None)
-        if venue_for is None or ticket.currency != HOME_CURRENCY:
+        if venue_for is None or ticket.currency != HOME_CURRENCY or ticket.stake_ccy is not None:
             return ticket
         currency = bookmaker_terms(ticket.bookmaker_id, self.settings, await venue_for(ticket.bookmaker_id)).currency
         if currency == HOME_CURRENCY:
@@ -291,7 +292,7 @@ class TradeExecutor:
     # -------------------------------------------------------------- 2. the five guards + stake limits
     async def _pre_guards(self, ticket: OrderTicket, risk_reducing: bool = False) -> tuple[GuardReport, GuardLimits]:
         async with self.session_factory() as session:
-            account = await read_account(session, ticket.user_id)
+            account = await read_account(session, ticket.user_id, ticket.bot_id)
             report = await self.guard.check(session, ticket, account, risk_reducing=risk_reducing)
             return report, await load_limits(session, ticket.user_id)
 
@@ -323,7 +324,7 @@ class TradeExecutor:
     ) -> _Outcome:
         async with self.session_factory() as session:
             try:
-                account = await self._lock_with_queue(session, ticket.user_id)
+                account = await self._lock_with_queue(session, ticket.user_id, ticket.bot_id)
                 await self.guard.recheck_locked(session, ticket, account, report, risk_reducing=risk_reducing)
                 self._check_limits(ticket, limits, equity=account.equity, risk_reducing=risk_reducing)
                 entry = await reserve(session, account, ticket)
@@ -392,7 +393,7 @@ class TradeExecutor:
                     await session.rollback()
                 raise
 
-    async def _lock_with_queue(self, session: AsyncSession, user_id: uuid.UUID) -> BankrollAccount:
+    async def _lock_with_queue(self, session: AsyncSession, user_id: uuid.UUID, bot_id: uuid.UUID | None = None) -> BankrollAccount:
         """``FOR UPDATE NOWAIT``, retried with jittered backoff inside a short budget: the user's
         simultaneous orders queue micro-sequentially behind one another instead of failing, and
         nothing ever sits in a database lock wait."""
@@ -400,7 +401,7 @@ class TradeExecutor:
         delay = 0.02
         while True:
             try:
-                return await lock_bankroll(session, user_id, self.settings, nowait=True)
+                return await lock_bankroll(session, user_id, self.settings, nowait=True, bot_id=bot_id)
             except BankrollLockedError:
                 await session.rollback()  # a refused NOWAIT aborts the transaction on PostgreSQL
                 if time.monotonic() + delay > deadline:

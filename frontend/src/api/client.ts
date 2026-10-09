@@ -26,12 +26,15 @@ export class ApiError extends Error {
   readonly status: number;
   /** Machine-readable refusal code when the API sends one (`detail.reason`), e.g. BLOCKED_BY_DRAWDOWN. */
   readonly reason: string | null;
+  /** The structured refusal body (`detail`), when the API sent one: e.g. `{ reason, message, problems }`. */
+  readonly detail: Record<string, unknown> | null;
 
-  constructor(message: string, status: number, reason: string | null = null) {
+  constructor(message: string, status: number, reason: string | null = null, detail: Record<string, unknown> | null = null) {
     super(message);
     this.name = "ApiError";
     this.status = status;
     this.reason = reason;
+    this.detail = detail;
   }
 }
 
@@ -99,6 +102,12 @@ function extractReason(payload: unknown): string | null {
   return typeof reason === "string" ? reason : null;
 }
 
+function extractDetail(payload: unknown): Record<string, unknown> | null {
+  if (payload === null || typeof payload !== "object" || !("detail" in payload)) return null;
+  const detail: unknown = (payload as { detail: unknown }).detail;
+  return detail !== null && typeof detail === "object" && !Array.isArray(detail) ? (detail as Record<string, unknown>) : null;
+}
+
 async function request<T>(
   method: HttpMethod,
   endpoint: string,
@@ -155,6 +164,7 @@ async function request<T>(
         extractErrorMessage(payload, `Request failed (${response.status} ${response.statusText})`),
         response.status,
         extractReason(payload),
+        extractDetail(payload),
       );
     }
 

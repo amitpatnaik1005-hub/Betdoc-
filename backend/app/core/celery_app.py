@@ -26,7 +26,7 @@ FLEET_TICK_SECONDS = 5.0
 celery_app = Celery(
     "betdoc_omni",
     broker=_settings.celery_broker_url.get_secret_value(),
-    include=["app.workers.omni_poller", "app.workers.omni_quorum", "app.workers.cfo_settlement", "app.workers.sniper"],
+    include=["app.workers.omni_poller", "app.workers.omni_quorum", "app.workers.cfo_settlement", "app.workers.sniper", "app.workers.hive_worker"],
 )
 
 celery_app.conf.update(

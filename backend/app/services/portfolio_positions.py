@@ -119,7 +119,8 @@ def _iso(moment: datetime | None) -> str | None:
 
 
 async def load_open_bets(session: AsyncSession, user_id: uuid.UUID, *, fixture_id: str | None = None, market: str | None = None) -> list[OpenBet]:
-    query = select(PhantomLedger).where(PhantomLedger.user_id == user_id, PhantomLedger.status.in_(OPEN_STATUSES))
+    # The main account's book: a bot's positions live (and are hedged) inside its own sub-account
+    query = select(PhantomLedger).where(PhantomLedger.user_id == user_id, PhantomLedger.bot_id.is_(None), PhantomLedger.status.in_(OPEN_STATUSES))
     if fixture_id is not None:
         query = query.where(PhantomLedger.fixture_id == fixture_id)
     if market is not None:

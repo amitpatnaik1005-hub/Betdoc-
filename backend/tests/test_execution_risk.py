@@ -39,6 +39,7 @@ from app.core.security_vault import VaultCrypto
 from app.domain.math.arbitrage_calc import commission_adjusted_odds, raw_odds_for
 from app.models import BetLedger, ExchangeAccount, RiskMandate, User
 from app.models.cfo_vault import AuditLog, BankrollAccount, LedgerEntry, MarketResult, PhantomLedger, RiskGuardSettings
+from app.models.hive_bots import TradingBot
 from app.models.control_panel import SystemSettingsModel
 from app.models.execution import EntityMapping, ExecutionVenue
 from app.schemas.cfo_vault import ExecuteTradeRequest
@@ -61,6 +62,7 @@ TABLES = [
     RiskMandate.__table__,
     BetLedger.__table__,
     SystemSettingsModel.__table__,
+    TradingBot.__table__,  # bot sub-accounts reference it (Group 65)
     BankrollAccount.__table__,
     PhantomLedger.__table__,
     LedgerEntry.__table__,
