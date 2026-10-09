@@ -140,6 +140,9 @@ return 1
 """
 
 
+_MARKET_INDEX_TTL_SECONDS = 3 * 86_400  # a fixture's market index outlives its books
+
+
 class AryabhataKeys:
     __slots__ = ("active", "active_exp", "channel", "frames", "group", "prefix", "risk")
 
@@ -154,6 +157,10 @@ class AryabhataKeys:
 
     def books(self, market_key: str) -> str:
         return f"{self.prefix}:books:{market_key}"
+
+    def markets(self, fixture_id: str) -> str:
+        """Set: every market type a fixture has been quoted in (Ashoka's index; no keyspace scans)."""
+        return f"{self.prefix}:markets:{fixture_id}"
 
 
 def _utcnow() -> datetime:
@@ -186,6 +193,8 @@ async def _publish_frames(redis: Redis, quotes: Sequence[MarketQuote], settings:
             pipe = redis.pipeline(transaction=False)
             for quote in quotes:
                 pipe.xadd(keys.frames, {"q": quote.model_dump_json()}, maxlen=settings.ARYABHATA_STREAM_MAXLEN, approximate=True)
+                pipe.sadd(keys.markets(quote.match_id), quote.market_type)
+                pipe.expire(keys.markets(quote.match_id), _MARKET_INDEX_TTL_SECONDS)
             await pipe.execute()
     except (RedisError, OSError, TimeoutError):
         logger.warning("Aryabhata: %d market frame(s) not published; Redis unavailable", len(quotes))

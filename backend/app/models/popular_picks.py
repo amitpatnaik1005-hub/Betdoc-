@@ -21,6 +21,14 @@ class PickType(StrEnum):
     SHARP_MONEY = "SHARP_MONEY"
 
 
+class TrendCategory(StrEnum):
+    """Group 69: what Ashoka's trend scan made of a parlay."""
+
+    SHARP_STEAM = "SHARP_STEAM"  # sharp money moving the lines, and positive EV
+    PUBLIC_TRAP = "PUBLIC_TRAP"  # what the crowd backs, priced below fair by the vig
+    AI_HYBRID = "AI_HYBRID"  # a popular anchor leg with a sharp value leg on another fixture
+
+
 class ReviewDecision(StrEnum):
     ACCEPTED = "ACCEPTED"
     REJECTED = "REJECTED"
@@ -42,6 +50,8 @@ class PopularParlayModel(Base):
             name="ck_popular_parlays_success_rate_range",
         ),
         CheckConstraint("length(title) > 0", name="ck_popular_parlays_title_not_empty"),
+        CheckConstraint(f"category IS NULL OR {_in_clause('category', TrendCategory)}", name="ck_popular_parlays_category"),
+        CheckConstraint("public_share_pct IS NULL OR (public_share_pct >= 0 AND public_share_pct <= 100)", name="ck_popular_parlays_public_share"),
         Index("ix_popular_parlays_active_expires", "is_active", "expires_at"),
         Index("ix_popular_parlays_expires_at", "expires_at"),
         Index("ix_popular_parlays_pick_type", "pick_type"),
@@ -57,6 +67,15 @@ class PopularParlayModel(Base):
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True, server_default=true())
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    # Group 69: the trend scan's verdict. public_share_pct is only ever a measured share (BetDoc's own
+    # recorded bets, or a figure an administrator entered with its source), never an estimate.
+    category: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    true_ev_pct: Mapped[float | None] = mapped_column(Float, nullable=True)
+    true_probability: Mapped[float | None] = mapped_column(Float, nullable=True)
+    public_share_pct: Mapped[float | None] = mapped_column(Float, nullable=True)
+    public_share_source: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    warning: Mapped[str | None] = mapped_column(String(300), nullable=True)
+    analysis: Mapped[dict[str, Any] | None] = mapped_column(JSONPayload, nullable=True)
 
 
 class ParlayReviewGateModel(Base):

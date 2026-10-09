@@ -62,7 +62,7 @@ def _zoned_crontab(minute: str | int, hour: str | int, zone: str) -> ZonedCronta
 celery_app = Celery(
     "betdoc_omni",
     broker=_settings.celery_broker_url.get_secret_value(),
-    include=["app.workers.omni_poller", "app.workers.omni_quorum", "app.workers.cfo_settlement", "app.workers.sniper", "app.workers.hive_worker", "app.workers.lab_worker", "app.workers.nalanda_maintenance", "app.workers.sentinel_tasks"],
+    include=["app.workers.omni_poller", "app.workers.omni_quorum", "app.workers.cfo_settlement", "app.workers.sniper", "app.workers.hive_worker", "app.workers.lab_worker", "app.workers.nalanda_maintenance", "app.workers.sentinel_tasks", "app.workers.oracle_tasks"],
 )
 
 celery_app.conf.update(
@@ -131,6 +131,14 @@ celery_app.conf.update(
             "schedule": _settings.SENTINEL_HEARTBEAT_SECONDS,
             "options": {"expires": _settings.SENTINEL_HEARTBEAT_SECONDS},
         },
+        # Ashoka (Group 69): the users' placed bets settle, their scores arrive, the trend feed refreshes
+        "oracle-settle-user-bets": {
+            "task": "oracle.settle_user_bets",
+            "schedule": _settings.ORACLE_SETTLE_INTERVAL_SECONDS,
+            "options": {"expires": _settings.ORACLE_SETTLE_INTERVAL_SECONDS},
+        },
+        "oracle-poll-scores": {"task": "oracle.poll_scores", "schedule": 900.0, "options": {"expires": 900.0}},
+        "oracle-scan-trending": {"task": "oracle.scan_trending", "schedule": 600.0, "options": {"expires": 600.0}},
         "sentinel-market-forecast-hype": {
             "task": "sentinel.market_forecast_hype",
             "schedule": ZonedCrontab(minute=_settings.SENTINEL_HYPE_MINUTE, hour=_settings.SENTINEL_HYPE_HOUR, zone=_settings.SENTINEL_TIMEZONE),

@@ -161,3 +161,105 @@ def create_adapter(
 ) -> BookmakerAdapter:
     """Return a fresh adapter for ``bookmaker_name``, falling back to ``GenericAdapter``."""
     return bookmaker_registry.create(bookmaker_name, bookmaker_name, config)
+
+
+# =============================================================================================
+# Group 69: canonical bookmakers and each bookmaker's market naming (Ashoka's slips)
+# =============================================================================================
+# Feeds name books by their own keys (The Odds API: "onexbet", "betfair_ex_uk"). Ashoka speaks of five
+# books, in this priority. Odds for any of them come only from an authorised feed or from the price the
+# user types in: nothing here fetches a bookmaker's site.
+ASHOKA_BOOKMAKERS: Final[dict[str, str]] = {
+    "parimatch": "Parimatch",
+    "1xbet": "1xBet",
+    "stake": "Stake",
+    "pinnacle": "Pinnacle",
+    "betfair": "Betfair",
+}
+FEED_BOOKMAKER_ALIASES: Final[dict[str, str]] = {
+    "parimatch": "parimatch",
+    "pari_match": "parimatch",
+    "onexbet": "1xbet",
+    "1xbet": "1xbet",
+    "one_x_bet": "1xbet",
+    "stake": "stake",
+    "stake_com": "stake",
+    "pinnacle": "pinnacle",
+    "betfair": "betfair",
+    "betfair_ex_uk": "betfair",
+    "betfair_ex_eu": "betfair",
+    "betfair_ex_au": "betfair",
+}
+EXCHANGE_BOOKMAKERS: Final[frozenset[str]] = frozenset({"betfair"})  # back singles only: the exchange takes no multiples
+
+
+def canonical_bookmaker(raw: str | None) -> str | None:
+    """A feed's bookmaker key as one of Ashoka's five (``"onexbet"`` -> ``"1xbet"``), or None."""
+    if not raw:
+        return None
+    key = str(raw).strip().casefold().replace(" ", "_").replace("-", "_")
+    return FEED_BOOKMAKER_ALIASES.get(key) or (key if key in ASHOKA_BOOKMAKERS else None)
+
+
+def fixture_name(home: str, away: str) -> str:
+    """``"Arsenal vs Chelsea"``: the name both priority books search by."""
+    return f"{_clean_text('home', home)} vs {_clean_text('away', away)}"
+
+
+def _team(selection: str, home: str, away: str) -> str:
+    return {"HOME": home, "AWAY": away}.get(selection, selection.title())
+
+
+def market_selection_label(market_key: str, selection: str, home: str, away: str) -> str:
+    """The market and selection as the slip shows them: ``"1X2: Arsenal"``, ``"Totals: Over 2.5"``,
+    ``"Both Teams to Score: YES"``, ``"Asian Handicap: Arsenal (-0.5)"``."""
+    from app.domain.oracle.markets import MarketKind, parse_market  # noqa: PLC0415 - the oracle imports this module
+
+    ref = parse_market(market_key)
+    if ref is None:
+        return f"{market_key}: {selection}"
+    if ref.kind is MarketKind.MATCH_ODDS:
+        return f"1X2: {'Draw' if selection == 'DRAW' else _team(selection, home, away)}"
+    if ref.kind is MarketKind.TOTALS:
+        return f"Totals: {selection.title()} {ref.line:g}"
+    if ref.kind is MarketKind.BTTS:
+        return f"Both Teams to Score: {selection.upper()}"
+    if ref.kind is MarketKind.ASIAN_HANDICAP:
+        line = ref.line if selection == "HOME" else -float(ref.line)  # type: ignore[arg-type]
+        return f"Asian Handicap: {_team(selection, home, away)} ({line:+g})"
+    if ref.kind is MarketKind.DOUBLE_CHANCE:
+        pair = {"1X": f"{home} or Draw", "12": f"{home} or {away}", "X2": f"Draw or {away}"}[selection]
+        return f"Double Chance: {pair}"
+    return f"Draw No Bet: {_team(selection, home, away)}"
+
+
+def _search_codes(book: str, market_key: str, selection: str) -> str:
+    """The short code each book's own slip and search use (1xBet: W1/X/W2, Parimatch: 1/X/2)."""
+    from app.domain.oracle.markets import MarketKind, parse_market  # noqa: PLC0415
+
+    ref = parse_market(market_key)
+    if ref is None:
+        return selection
+    onex = book == "1xbet"
+    if ref.kind is MarketKind.MATCH_ODDS:
+        return ({"HOME": "W1", "DRAW": "X", "AWAY": "W2"} if onex else {"HOME": "1", "DRAW": "X", "AWAY": "2"})[selection]
+    if ref.kind is MarketKind.TOTALS:
+        return f"Total {selection.title()} ({ref.line:g})"
+    if ref.kind is MarketKind.BTTS:
+        return f"Both Teams To Score - {selection.title()}" if onex else f"Both teams to score: {selection.title()}"
+    if ref.kind is MarketKind.ASIAN_HANDICAP:
+        side, line = ("1", ref.line) if selection == "HOME" else ("2", -float(ref.line))  # type: ignore[arg-type]
+        return f"{'Asian Handicap' if onex else 'Handicap'} {side} ({line:+g})"
+    if ref.kind is MarketKind.DOUBLE_CHANCE:
+        return selection
+    return f"{'W1' if onex else '1'} (DNB)" if selection == "HOME" else f"{'W2' if onex else '2'} (DNB)"
+
+
+def slip_line(book: str, market_key: str, selection: str, home: str, away: str) -> dict[str, str]:
+    """Everything one leg needs on a bookmaker's view of a slip."""
+    return {
+        "fixture": fixture_name(home, away),
+        "market": market_selection_label(market_key, selection, home, away),
+        "search_code": _search_codes(book, market_key, selection),
+        "bookmaker": ASHOKA_BOOKMAKERS.get(book, book),
+    }

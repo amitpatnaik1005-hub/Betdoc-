@@ -8,6 +8,7 @@ class OddsSelection(BaseModel):
 
     name: str = Field(alias="name")
     price: float = Field(alias="price")
+    point: float | None = Field(default=None, alias="point")  # totals: the goal line; spreads: that side's handicap
 
 
 class OddsMarket(BaseModel):

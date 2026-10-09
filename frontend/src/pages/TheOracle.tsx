@@ -5,6 +5,8 @@ import { downloadCsv, formatDateTime, formatINR, formatOdds, formatPct, formatRa
 import { runMutation, useResource } from '../lib/resource';
 import { useExecutionStore } from '../store/useExecutionStore';
 import { CommanderHero, MOTIFS } from '../ui/hero';
+import { CashoutPanel, MyBets, ScorecardStrip, TrendingFeed, TwinPanel, VettedSlips } from '../components/oracle/AshokaDesk';
+import { ashokaHeadline, useSlips } from '../lib/oracle';
 import { Async, Button, EmptyState, Field, Meter, NumberInput, Page, Panel, Pill, Select, Stat, StatGrid, StatusBadge, num } from '../ui/kit';
 
 // ---------------------------------------------------------------------------
@@ -40,16 +42,6 @@ interface OracleResponse {
   total_capital_deployed: number;
 }
 
-interface PopularParlay {
-  id: string;
-  title: string;
-  pick_type: 'TRENDING' | 'AI_PREDICTED' | 'SHARP_MONEY';
-  legs: { match_id: string; selection: string; odds: number }[];
-  total_odds: number;
-  historical_success_rate: number;
-  is_active: boolean;
-  expires_at: string;
-}
 
 const SIDES: readonly Side[] = ['HOME', 'DRAW', 'AWAY'];
 
@@ -293,39 +285,6 @@ const GoldenAlpha = ({ bets }: { bets: ValueBetFlag[] }) => {
   );
 };
 
-const PopularPicks = () => {
-  const picks = useResource('popular-picks:list', () => apiClient.get<PopularParlay[]>('/popular-picks'), { intervalMs: 60_000 });
-  const review = (id: string, decision: 'ACCEPTED' | 'REJECTED') =>
-    runMutation(() => apiClient.post(`/popular-picks/${id}/review`, { decision }), {
-      invalidate: ['popular-picks'],
-      success: decision === 'ACCEPTED' ? 'Parlay accepted into review log' : 'Parlay rejected',
-      errorTitle: 'Review failed',
-    });
-  return (
-    <Panel title="Popular parlays · consensus" icon="local_fire_department" className="lg:col-span-12" updatedAt={picks.updatedAt}>
-      <Async resource={picks} isEmpty={(r) => r.length === 0} empty={<EmptyState icon="local_fire_department" title="No active parlays" />}>
-        {(rows) => (
-          <ul className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-            {rows.slice(0, 6).map((p) => (
-              <li key={p.id} className="rounded-xl bg-stone-50 p-3 dark:bg-white/[0.03]">
-                <div className="flex items-center justify-between gap-2">
-                  <span className="truncate text-sm font-semibold text-stone-800 dark:text-stone-100">{p.title}</span>
-                  <Pill tone={p.pick_type === 'SHARP_MONEY' ? 'good' : p.pick_type === 'AI_PREDICTED' ? 'info' : 'accent'}>{p.pick_type.replace('_', ' ')}</Pill>
-                </div>
-                <p className="mt-1 text-xs text-stone-500 dark:text-stone-400">{p.legs.length} legs · total {formatOdds(p.total_odds)} · hit rate {formatRatioPct(p.historical_success_rate)}</p>
-                <div className="mt-2 flex gap-1.5">
-                  <Button size="sm" variant="ghost" icon="check" onClick={() => void review(p.id, 'ACCEPTED')}>Accept</Button>
-                  <Button size="sm" variant="ghost" icon="close" onClick={() => void review(p.id, 'REJECTED')}>Reject</Button>
-                </div>
-              </li>
-            ))}
-          </ul>
-        )}
-      </Async>
-    </Panel>
-  );
-};
-
 // ---------------------------------------------------------------------------
 // NAMED EXPORT: THE ORACLE
 // ---------------------------------------------------------------------------
@@ -339,7 +298,9 @@ export const TheOracle = () => {
   const bets = useMemo(() => valueBets(rows, kellyFraction), [rows, kellyFraction]);
   const best = bets[0];
 
-  const headline = best
+  const summary = useDashboardSummary();
+  const slips = useSlips(summary.data?.total_bankroll ? Math.round(summary.data.total_bankroll) : null);  // stakes sized on the bankroll the header shows
+  const legacy = best
     ? `ASHOKA ACTIVE. ${bets.length} value bet${bets.length === 1 ? '' : 's'} across ${rows.length} fixtures. Best edge ${formatPct(best.expected_value * 100, 2)}.`
     : `ASHOKA ACTIVE. ${rows.length} fixtures priced; no side beats the consensus right now.`;
 
@@ -347,12 +308,12 @@ export const TheOracle = () => {
     <Page>
       <CommanderHero
         commander="ASHOKA"
-        headline={headline}
+        headline={slips.data ? ashokaHeadline(slips.data) : legacy}
         motif={MOTIFS.constellation}
-        detail="Consensus = vig-free average of every bookmaker's implied probability. Value = best available price above that consensus."
+        detail="Every slip runs 10,000 Monte Carlo paths through Poisson, Dixon-Coles and the de-vigged market, then the anti-correlation gate and the 1000% filter (joint EV ≥ +7.5% and at least 55% likely). Parimatch and 1xBet side by side; odds only from authorised feeds or what you type in."
         actions={
           <>
-            <Button variant="primary" icon="refresh" busy={odds.loading && odds.data !== undefined} onClick={() => void odds.refresh()}>Recompute</Button>
+            <Button variant="primary" icon="refresh" busy={(odds.loading && odds.data !== undefined) || (slips.loading && slips.data !== undefined)} onClick={() => { void odds.refresh(); void slips.refresh(); }}>Recompute</Button>
             <Button
               icon="download"
               disabled={bets.length === 0}
@@ -368,6 +329,13 @@ export const TheOracle = () => {
           </>
         }
       />
+
+      <ScorecardStrip />
+      <VettedSlips slips={slips} />
+      <CashoutPanel />
+      <TrendingFeed />
+      <MyBets />
+      <TwinPanel />
 
       <Panel title="Match predictor matrix" icon="query_stats" className="lg:col-span-7" updatedAt={odds.updatedAt} subtitle="market consensus">
         <Async resource={odds} skeletonRows={5} isEmpty={() => rows.length === 0} empty={<EmptyState icon="query_stats" title="No priced fixtures" detail="Predictions appear once the odds poller has stored bookmaker prices." />}>
@@ -421,7 +389,6 @@ export const TheOracle = () => {
 
       <GoldenAlpha bets={bets} />
       <EnginePanel rows={rows} />
-      <PopularPicks />
     </Page>
   );
 };

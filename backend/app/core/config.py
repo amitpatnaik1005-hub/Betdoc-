@@ -39,6 +39,9 @@ class Settings(BaseSettings):
     ODDS_API_BASE_URL: str = "https://api.the-odds-api.com/v4"
     ODDS_SPORT_KEYS: str = "soccer_epl"
     ODDS_API_REGIONS: str = "uk,eu"
+    # Markets per /odds call. Each costs regions x markets credits: "h2h" protects the quota; add
+    # "totals,spreads" for Ashoka's Over/Under and Asian handicap legs (BTTS is per event only).
+    ODDS_API_MARKETS: str = "h2h"
     ODDS_QUOTA_FLOOR: int = 10
 
     # Polymarket public Gamma API (no key). Leagues are Polymarket sport codes from GET /sports.
@@ -228,6 +231,25 @@ class Settings(BaseSettings):
     SENTINEL_HYPE_MIN_STEAM_MOVES: int = Field(default=3, ge=1)  # or sharp money moving this many lines
     SENTINEL_HTTP_TIMEOUT_SECONDS: float = Field(default=8.0, gt=0)
     SENTINEL_RESUME_CONFIRM_SECONDS: int = Field(default=120, ge=15)  # a Telegram /resume needs its code back within this
+
+    # ASHOKA, the Oracle (Group 69): vetted slips, odds shopping, the cashout advisor, the user's own bet ledger.
+    ASHOKA_MC_PATHS: int = Field(default=10_000, ge=1_000, le=200_000)  # Monte Carlo paths per candidate slip
+    ASHOKA_MIN_JOINT_EV: float = Field(default=0.075, gt=0)  # the "1000%" gate: joint EV at least +7.5% ...
+    ASHOKA_MIN_JOINT_PROBABILITY: float = Field(default=0.55, gt=0, lt=1)  # ... and >= 55% true joint probability for multi-leg slips
+    ASHOKA_MAX_QUOTE_AGE_SECONDS: float = Field(default=180.0, ge=10)  # an older price is "re-check" material, never vetted
+    ASHOKA_MIN_BOOKS: int = Field(default=2, ge=1)  # books a market needs for a consensus probability
+    ASHOKA_KELLY_FRACTION: float = Field(default=0.25, gt=0, le=1)
+    ASHOKA_MAX_STAKE_PCT: float = Field(default=0.02, gt=0, le=0.25)  # of bankroll, a vetted slip
+    ASHOKA_VALUE_MAX_STAKE_PCT: float = Field(default=0.005, gt=0, le=0.25)  # strictly bounded: EV clears, probability does not
+    ASHOKA_MAX_CANDIDATE_LEGS: int = Field(default=12, ge=3, le=40)  # the best legs the generator combines
+    ASHOKA_MAX_SLIPS: int = Field(default=12, ge=1, le=100)
+    ASHOKA_BOOKMAKER_PRIORITY: str = "parimatch,1xbet,stake,pinnacle,betfair"
+    ASHOKA_CASHOUT_HOLD_RATIO: float = Field(default=0.85, gt=0, le=1)  # an offer under 85% of fair value is penalised: HOLD
+    ORACLE_TIMEZONE: str = "Asia/Kolkata"  # today / this week / this month for the P&L scorecard
+    ORACLE_TDS_RATE: float = Field(default=0.30, ge=0, lt=1)  # the estimate the tax toggle applies to net winnings
+    ORACLE_SCORES_POLL_ENABLED: bool = True  # The Odds API /scores, only for fixtures a pending user bet waits on
+    ORACLE_SCORES_POLL_MINUTES: float = Field(default=30.0, ge=5)  # at most once per sport per this many minutes (2 credits)
+    ORACLE_SETTLE_INTERVAL_SECONDS: float = Field(default=300.0, ge=30)
 
     # The Wire: public sports RSS feeds (no key needed)
     WIRE_NEWS_FEEDS: List[str] = [

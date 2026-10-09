@@ -19,6 +19,8 @@ logger = logging.getLogger("betdoc.ashoka")
 
 MAX_ACTIVE_PICKS = 50
 
+# Demo data for seeding a development database by hand (``generate_mock_picks``). The API never serves it:
+# since Group 69 the list comes from Ashoka's live trend scan.
 MOCK_PARLAY_BLUEPRINTS: tuple[dict[str, Any], ...] = (
     {
         "title": "ASHOKA Trending: Weekend Favourites Treble",
@@ -64,6 +66,20 @@ def compute_total_odds(legs: Sequence[ParlayLegSchema]) -> float:
 class PopularPicksManager:
     def __init__(self, *, max_active_picks: int = MAX_ACTIVE_PICKS) -> None:
         self._max_active_picks = max_active_picks
+
+    async def scan_trending(self, db: AsyncSession, redis: Any, settings: Any, now: datetime | None = None) -> list[PopularParlayModel]:
+        """Group 69: sharp steam parlays, public traps and AI hybrids from the live market (``trends.scan``)."""
+        from app.domain.popular_picks import trends  # noqa: PLC0415 - pulls in the oracle engine
+
+        return await trends.scan(db, redis, settings, now or datetime.now(UTC))
+
+    async def submit_external(self, db: AsyncSession, redis: Any, settings: Any, body: Any, now: datetime | None = None) -> PopularParlayModel:
+        from app.domain.popular_picks import trends  # noqa: PLC0415
+
+        try:
+            return await trends.evaluate_external(db, redis, settings, now or datetime.now(UTC), body)
+        except ValueError as exc:
+            raise PopularPicksDomainError(str(exc)) from exc
 
     @staticmethod
     def _active_filter() -> tuple[Any, ...]:

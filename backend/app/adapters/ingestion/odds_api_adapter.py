@@ -19,6 +19,14 @@ from app.adapters.ingestion.base import BaseDataIngestor, IngestionBatch, Ingest
 from app.core.config import Settings
 
 _SPORT_KEY_RE = re.compile(r"^[a-z0-9_]+$")
+BULK_MARKETS = ("h2h", "spreads", "totals")  # what /sports/{sport}/odds serves; btts is per event only
+
+
+def odds_api_markets(settings: Settings) -> str:
+    """``ODDS_API_MARKETS`` restricted to what the bulk endpoint serves, h2h always first. Each market
+    multiplies the credits a call costs, so the default stays "h2h"."""
+    wanted = {m.strip().lower() for m in settings.ODDS_API_MARKETS.split(",") if m.strip()}
+    return ",".join(m for m in BULK_MARKETS if m == "h2h" or m in wanted)
 
 
 class OddsApiIngestor(BaseDataIngestor):
@@ -71,7 +79,7 @@ class OddsApiIngestor(BaseDataIngestor):
                 params={
                     "apiKey": self._api_key or "",
                     "regions": self._settings.ODDS_API_REGIONS,
-                    "markets": "h2h",
+                    "markets": odds_api_markets(self._settings),
                     "oddsFormat": "decimal",
                     "dateFormat": "iso",
                 },

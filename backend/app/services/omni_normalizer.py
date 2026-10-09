@@ -786,6 +786,69 @@ class OmniNormalizer:
                 bookmakers=tuple(names),
             )
             self.emit_fixture(report, fixture, batch.fetched_at, method)
+            try:
+                self._side_markets(report, event, fixture.sport, batch.fetched_at)
+            except _EVENT_ERRORS:
+                report.malformed += 1
+
+    def _side_markets(self, report: NormalizationReport, event: NormalizedMatchOdds, sport: str, fetched_at: datetime) -> None:
+        """Totals, Asian handicaps and both-teams-to-score, as Aryabhata frames under Ashoka's canonical
+        market names (``"Totals 2.5"``, ``"Asian Handicap -0.5"``: the home line, ``"BTTS"``).
+
+        One frame per market and line, every book's prices kept. Only complete two-way prices count: a
+        book quoting one side of a line, or a handicap whose sides do not mirror, is left out."""
+        grouped: dict[str, dict[str, dict[str, float]]] = defaultdict(dict)
+        seen: dict[str, datetime] = {}
+        for bookmaker in event.bookmakers:
+            for market in bookmaker.markets:
+                for market_type, prices in self._two_way(market.key, market.selections, event.home_team, event.away_team):
+                    grouped[market_type][bookmaker.key] = prices
+                    stamp = market.last_update or bookmaker.last_update
+                    if market_type not in seen or stamp > seen[market_type]:
+                        seen[market_type] = stamp
+        if not grouped:
+            return
+        home, away = self._side(sport, event.home_team, report), self._side(sport, event.away_team, report)
+        kickoff = event.commence_time.astimezone(UTC)
+        match_id = self._aliases.match_id(sport, home.id, away.id, kickoff)
+        for market_type, books in grouped.items():
+            observed = (seen.get(market_type) or fetched_at).astimezone(UTC)
+            quoted = tuple(
+                BookQuote(bookmaker_id=key[:64], prices={label: Decimal(str(price)) for label, price in prices.items()}, observed_at=observed)
+                for key, prices in books.items()
+            )
+            report.quotes.append(
+                MarketQuote(
+                    match_id=match_id, market_type=market_type, home_team=home.name, away_team=away.name, sport_key=sport,
+                    commence_time=kickoff, source=report.source_id, fetched_at=fetched_at.astimezone(UTC), books=quoted,
+                )
+            )
+
+    @staticmethod
+    def _two_way(key: str, outcomes: Sequence[Any], home_team: str, away_team: str) -> list[tuple[str, dict[str, float]]]:
+        """(canonical market type, prices) for one book's totals / spreads / btts market."""
+        def valid(price: float) -> bool:
+            return math.isfinite(price) and price > 1.0
+
+        if key == "btts":
+            prices = {o.name.strip().upper(): float(o.price) for o in outcomes if o.name.strip().upper() in ("YES", "NO") and valid(float(o.price))}
+            return [("BTTS", prices)] if len(prices) == 2 else []
+        if key == "totals":
+            lines: dict[float, dict[str, float]] = defaultdict(dict)
+            for o in outcomes:
+                side = o.name.strip().upper()
+                if side in ("OVER", "UNDER") and o.point is not None and valid(float(o.price)):
+                    lines[float(o.point)][side] = float(o.price)
+            return [(f"Totals {point:g}", prices) for point, prices in lines.items() if len(prices) == 2 and point >= 0 and abs(point * 4 - round(point * 4)) < 1e-9]
+        if key == "spreads":
+            home = next((o for o in outcomes if o.name == home_team and o.point is not None), None)
+            away = next((o for o in outcomes if o.name == away_team and o.point is not None), None)
+            if home is None or away is None or abs(float(home.point) + float(away.point)) > 1e-9 or abs(float(home.point) * 4 - round(float(home.point) * 4)) > 1e-9:
+                return []
+            if not (valid(float(home.price)) and valid(float(away.price))):
+                return []
+            return [(f"Asian Handicap {float(home.point):+g}", {"HOME": float(home.price), "AWAY": float(away.price)})]
+        return []
 
     # ---------------------------------------------------------------- Polymarket
     def _polymarket(self, payload: SourcePayload, batch: IngestionBatch, report: NormalizationReport, method: DevigMethod) -> None:  # noqa: ARG002 - exchange mids are already fair-ish: multiplicative only
