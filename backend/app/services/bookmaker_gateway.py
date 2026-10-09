@@ -38,6 +38,12 @@ class BookmakerOrder:
     stake_inr: Decimal
     min_acceptable_odds: Decimal  # slippage floor: the bookmaker must reject rather than fill below it
     user_id: uuid.UUID | None = None
+    currency: str = "INR"  # the venue account's currency
+    stake: Decimal | None = None  # the stake in that currency (None: stake_inr, an INR venue)
+
+    @property
+    def venue_stake(self) -> Decimal:
+        return self.stake_inr if self.stake is None else self.stake
 
 
 @dataclass(frozen=True, slots=True)
@@ -47,6 +53,9 @@ class BookmakerResult:
     reference: str | None = None  # the bookmaker's remote_bet_id
     http_status: int | None = None
     matched_odds: Decimal | None = None  # the price actually filled, when the venue reports it
+    # How much of the stake was matched, in the order's currency (None: all of it). Orders go out
+    # immediate-or-cancel, so an unmatched remainder lapses instead of waiting in the book.
+    filled_stake: Decimal | None = None
     venue_id: str | None = None
     request_payload: dict[str, Any] | None = None  # exactly what went out (never credentials)
     response_payload: Any = None  # exactly what came back
@@ -81,7 +90,8 @@ class PaperBookmaker:
             "selection": order.selection,
             "odds": str(order.odds),
             "min_acceptable_odds": str(order.min_acceptable_odds),
-            "stake": str(order.stake_inr),
+            "stake": str(order.venue_stake),
+            "currency": order.currency,
         }
         return BookmakerResult(
             BookmakerOutcome.ACCEPTED,
@@ -89,8 +99,9 @@ class PaperBookmaker:
             reference,
             200,
             matched_odds=order.odds,
+            filled_stake=order.venue_stake,
             venue_id="paper",
             request_payload=payload,
-            response_payload={"remote_bet_id": reference, "status": "OPEN", "matched_odds": str(order.odds)},
+            response_payload={"remote_bet_id": reference, "status": "OPEN", "matched_odds": str(order.odds), "matched_stake": str(order.venue_stake)},
             latency_ms=0,
         )

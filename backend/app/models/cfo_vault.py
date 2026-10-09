@@ -131,10 +131,12 @@ class PhantomLedger(Base):
             name="settlement_consistent",
         ),
         CheckConstraint("resolve_attempts >= 0", name="resolve_attempts_non_negative"),
+        CheckConstraint("requested_stake_inr IS NULL OR requested_stake_inr >= stake_inr", name="fill_within_request"),
         Index("ix_cfo_phantom_ledger_user_status", "user_id", "status"),
         Index("ix_cfo_phantom_ledger_user_fixture_status", "user_id", "fixture_id", "status"),
         Index("ix_cfo_phantom_ledger_fixture_market_status", "fixture_id", "market", "status"),
         Index("ix_cfo_phantom_ledger_status_next_resolve", "status", "next_resolve_at"),
+        Index("ix_cfo_phantom_ledger_user_group", "user_id", "group_id"),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
@@ -159,6 +161,13 @@ class PhantomLedger(Base):
     resolve_attempts: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
     next_resolve_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     last_resolve_error: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    # Group 64: a partly matched order keeps what was asked for; the legs of one arbitrage or hedge share a group
+    requested_stake_inr: Mapped[Decimal | None] = mapped_column(MONEY, nullable=True)
+    strategy: Mapped[str | None] = mapped_column(String(16), nullable=True)  # arbitrage | hedge (None: a single bet)
+    group_id: Mapped[uuid.UUID | None] = mapped_column(Uuid(as_uuid=True), nullable=True)
+    # A bet at a foreign-currency venue: its stake there (stake_inr is the rupees it cost); None = INR
+    currency: Mapped[str | None] = mapped_column(String(3), nullable=True)
+    stake_ccy: Mapped[Decimal | None] = mapped_column(MONEY, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, server_default=func.now())
     settled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 

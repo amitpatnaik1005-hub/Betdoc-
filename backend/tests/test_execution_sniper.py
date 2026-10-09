@@ -214,7 +214,7 @@ async def add_venue(sessions: async_sessionmaker[AsyncSession], vault: VaultCryp
                 place_path="/bets", status_path="/bets", events_path="/events", bets_per_second=D(rate), burst=burst,
                 routes=[], selection_codes={"HOME": "1", "DRAW": "X", "AWAY": "2"},
                 encrypted_credentials=vault.encrypt_key(json.dumps({"client_id": "sniper-client", "client_secret": "sniper-secret-123"})),
-                is_enabled=True, is_sandbox=False,
+                is_enabled=True, is_sandbox=False, currency="INR",  # a rupee account (unset, smarkets would default to GBP)
             )
         )
         await session.flush()  # the venue row first: its mappings reference it

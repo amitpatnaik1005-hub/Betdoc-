@@ -33,7 +33,7 @@ import uuid
 from collections.abc import Callable, Coroutine
 from dataclasses import dataclass, replace
 from datetime import UTC, datetime, timedelta
-from decimal import ROUND_UP, Decimal
+from decimal import ROUND_DOWN, ROUND_UP, Decimal
 from typing import Any, TypeVar
 
 from pydantic import ValidationError
@@ -42,6 +42,7 @@ from redis.exceptions import RedisError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.core.config import Settings
+from app.domain.math.arbitrage_calc import HOME_CURRENCY, from_inr, leg_cost_inr
 from app.models.cfo_vault import AuditEvent, AuditLog, BankrollAccount
 from app.schemas.aryabhata import EdgeSignal
 from app.schemas.cfo_vault import ExecuteTradeRequest, ExecutionReceipt
@@ -58,9 +59,13 @@ from app.services.cfo_ledger import (
     lock_bankroll,
     potential_profit,
     read_account,
+    reduce_to_fill,
     reserve,
     write_audit,
 )
+from app.services.fx_rates import FxRates, FxUnavailableError
+from app.services.portfolio_positions import mark_positions_dirty
+from app.services.venue_costs import bookmaker_terms
 from app.services.risk_guard import GuardLimits, GuardReport, RiskGuard, RiskGuardViolation, load_limits
 
 logger = logging.getLogger("betdoc.cfo")
@@ -68,6 +73,7 @@ logger = logging.getLogger("betdoc.cfo")
 T = TypeVar("T")
 _HUNDRED = Decimal(100)
 _ODDS_QUANTUM = Decimal("0.0001")
+_PAISA = Decimal("0.01")
 
 
 def slippage_floor(odds: Decimal, true_prob: Decimal | None, max_slippage_pct: Decimal) -> Decimal:
@@ -77,6 +83,18 @@ def slippage_floor(odds: Decimal, true_prob: Decimal | None, max_slippage_pct: D
     if true_prob is not None and true_prob > 0:
         floor = max(floor, (1 + MIN_EV) / true_prob)
     return min(odds, floor.quantize(_ODDS_QUANTUM, rounding=ROUND_UP))
+
+
+def filled_inr(order: BookmakerOrder, result: BookmakerResult) -> Decimal | None:
+    """The matched part of the stake in rupees (``None``: all of it). A foreign-currency fill is the
+    same share of the rupee reservation, rounded down to the paisa (never above what was reserved)."""
+    if result.filled_stake is None:
+        return None
+    asked = order.venue_stake
+    if asked <= 0 or result.filled_stake >= asked:
+        return None
+    share = order.stake_inr * result.filled_stake / asked
+    return max(_PAISA, share.quantize(_PAISA, rounding=ROUND_DOWN))
 
 
 def _utcnow() -> datetime:
@@ -127,6 +145,7 @@ class TradeExecutor:
 
     # -------------------------------------------------------------- entry point
     async def execute(self, user_id: uuid.UUID, request: ExecuteTradeRequest) -> ExecutionReceipt:
+        """One order from the betslip (or an Aryabhata signal)."""
         ticket = OrderTicket(
             user_id=user_id,
             idempotency_key=request.idempotency_key,
@@ -140,15 +159,42 @@ class TradeExecutor:
             signal_id=request.signal_id,
             commence_time=request.commence_time,
         )
+        return await self._execute(ticket, request=request)
+
+    async def execute_leg(
+        self,
+        ticket: OrderTicket,
+        *,
+        min_odds: Decimal,
+        risk_reducing: bool = False,
+    ) -> ExecutionReceipt:
+        """One leg of an arbitrage or hedge (``app.services.leg_executor``): the same two phases, with
+        the leg's own price floor. ``risk_reducing`` legs (a hedge that lowers the worst case) skip
+        every guard and cap except the kill switch."""
+        return await self._execute(ticket, min_odds=min_odds, risk_reducing=risk_reducing)
+
+    async def _execute(
+        self,
+        ticket: OrderTicket,
+        *,
+        request: ExecuteTradeRequest | None = None,
+        min_odds: Decimal | None = None,
+        risk_reducing: bool = False,
+    ) -> ExecutionReceipt:
         try:
             await self._claim(ticket)
-            edge = await self._check_signal(request)
-            if ticket.commence_time is None and edge is not None and edge.commence_time is not None:
-                ticket = replace(ticket, commence_time=edge.commence_time)
-            report, guard_limits = await self._pre_guards(ticket)
+            if request is not None:
+                edge = await self._check_signal(request)
+                if ticket.commence_time is None and edge is not None and edge.commence_time is not None:
+                    ticket = replace(ticket, commence_time=edge.commence_time)
+                ticket = await self._in_venue_currency(ticket)
+            report, guard_limits = await self._pre_guards(ticket, risk_reducing)
             limits = await load_risk_limits(self.redis, self.session_factory, self.settings)
-            self._check_limits(ticket, limits, equity=None)
-            min_odds = slippage_floor(ticket.odds, ticket.true_prob, guard_limits.max_slippage_pct)
+            self._check_limits(ticket, limits, equity=None, risk_reducing=risk_reducing)
+            if min_odds is None:
+                min_odds = slippage_floor(ticket.odds, ticket.true_prob, guard_limits.max_slippage_pct)
+            if not 1 < min_odds <= ticket.odds:
+                raise CfoError("INVALID_PRICE_FLOOR", "The price floor must be above 1 and no higher than the asked price", status_code=422)
             order = BookmakerOrder(
                 client_ref=str(ticket.idempotency_key),
                 bookmaker_id=ticket.bookmaker_id,
@@ -159,6 +205,8 @@ class TradeExecutor:
                 stake_inr=ticket.stake_inr,
                 min_acceptable_odds=min_odds,
                 user_id=ticket.user_id,
+                currency=ticket.currency,
+                stake=ticket.stake_ccy,
             )
             route = await self.gateway.prepare(order)  # routing + id translation: an unmapped id aborts here, nothing reserved
             if isinstance(route, BookmakerResult):
@@ -167,12 +215,15 @@ class TradeExecutor:
                 self._audit(AuditEvent.EXECUTION_ATTEMPT, "GUARDS_PASSED", ticket, detail={"risk": report.as_dict(), "min_acceptable_odds": str(min_odds)}),
                 required=True,
             )
-            outcome = await _run_to_completion(self._locked(ticket, report, limits, order, route))
+            outcome = await _run_to_completion(self._locked(ticket, report, limits, order, route, risk_reducing))
         except CfoError as exc:
             if not exc.audited:
                 await self._record(self._audit(AuditEvent.BLOCKED, exc.reason, ticket, detail={"message": exc.message, **exc.detail}))
             raise
-        return await self._conclude(ticket, outcome)
+        try:
+            return await self._conclude(ticket, outcome)
+        finally:
+            await mark_positions_dirty(self.redis, self.settings, ticket.user_id)
 
     # -------------------------------------------------------------- 1. idempotency + TTL
     async def _claim(self, ticket: OrderTicket) -> None:
@@ -214,18 +265,44 @@ class TradeExecutor:
             )
         return edge
 
+    async def _in_venue_currency(self, ticket: OrderTicket) -> OrderTicket:
+        """A betslip order routed to a venue that settles in another currency is converted at the
+        live rate: the venue stake rounds down to its unit, the rupee cost (what is reserved) is that
+        stake's cost rounded up to the paisa, never above what was asked. No live rate: refused, with
+        nothing reserved. Paper fills (no venue) stay in rupees."""
+        venue_for = getattr(self.gateway, "venue_for", None)
+        if venue_for is None or ticket.currency != HOME_CURRENCY:
+            return ticket
+        currency = bookmaker_terms(ticket.bookmaker_id, self.settings, await venue_for(ticket.bookmaker_id)).currency
+        if currency == HOME_CURRENCY:
+            return ticket
+        fx = FxRates(self.redis, self.settings, clock=lambda: self.clock().timestamp())
+        try:
+            quote = fx.quote(currency, await fx.snapshot())
+        except FxUnavailableError as exc:
+            raise CfoError(
+                "FX_UNAVAILABLE", f"{ticket.bookmaker_id} settles in {currency} and there is no live {currency}/INR rate", status_code=409
+            ) from exc
+        stake_ccy = from_inr(ticket.stake_inr, quote)
+        if stake_ccy <= 0:
+            raise CfoError("INVALID_STAKE", f"The stake is less than one {currency} unit", status_code=422)
+        return replace(ticket, currency=currency, stake_ccy=stake_ccy, stake_inr=leg_cost_inr(stake_ccy, quote))
+
     # -------------------------------------------------------------- 2. the five guards + stake limits
-    async def _pre_guards(self, ticket: OrderTicket) -> tuple[GuardReport, GuardLimits]:
+    async def _pre_guards(self, ticket: OrderTicket, risk_reducing: bool = False) -> tuple[GuardReport, GuardLimits]:
         async with self.session_factory() as session:
             account = await read_account(session, ticket.user_id)
-            report = await self.guard.check(session, ticket, account)
+            report = await self.guard.check(session, ticket, account, risk_reducing=risk_reducing)
             return report, await load_limits(session, ticket.user_id)
 
     @staticmethod
-    def _check_limits(ticket: OrderTicket, limits: RiskLimits, equity: Decimal | None) -> None:
-        """Group 61's limits bind executions too: the bankroll % cap and execution's absolute max bet."""
+    def _check_limits(ticket: OrderTicket, limits: RiskLimits, equity: Decimal | None, *, risk_reducing: bool = False) -> None:
+        """Group 61's limits bind executions too: the bankroll % cap and execution's absolute max bet.
+        A risk-reducing hedge leg is only held to the emergency stop."""
         if limits.halted:
             raise RiskGuardViolation("BLOCKED_BY_KILL_SWITCH", "Trading is halted by the emergency stop")
+        if risk_reducing:
+            return
         if limits.max_bet_size is not None and ticket.stake_inr > limits.max_bet_size:
             raise RiskGuardViolation(
                 "STAKE_ABOVE_MAX_BET",
@@ -241,12 +318,14 @@ class TradeExecutor:
             raise RiskGuardViolation("STAKE_ABOVE_CAP", f"Stake exceeds the {pct}% bankroll cap ({cap})", status_code=409, detail={"cap": str(cap)})
 
     # -------------------------------------------------------------- 3-7. the locked section
-    async def _locked(self, ticket: OrderTicket, report: GuardReport, limits: RiskLimits, order: BookmakerOrder, route: Any) -> _Outcome:
+    async def _locked(
+        self, ticket: OrderTicket, report: GuardReport, limits: RiskLimits, order: BookmakerOrder, route: Any, risk_reducing: bool = False
+    ) -> _Outcome:
         async with self.session_factory() as session:
             try:
                 account = await self._lock_with_queue(session, ticket.user_id)
-                await self.guard.recheck_locked(session, ticket, account, report)
-                self._check_limits(ticket, limits, equity=account.equity)
+                await self.guard.recheck_locked(session, ticket, account, report, risk_reducing=risk_reducing)
+                self._check_limits(ticket, limits, equity=account.equity, risk_reducing=risk_reducing)
                 entry = await reserve(session, account, ticket)
                 ledger_id, potential = entry.id, entry.potential_pnl
                 available, exposure = account.available_balance, account.exposure_balance
@@ -259,12 +338,17 @@ class TradeExecutor:
                     return _Outcome(result, None, ledger_id, error)
 
                 now = self.clock()
+                requested = entry.stake_inr
                 if result.outcome is BookmakerOutcome.ACCEPTED:
                     entry.remote_bet_id = result.reference  # the receipt: how the resolver finds this bet again
                     if result.matched_odds is not None and result.matched_odds != entry.odds:
                         entry.odds = result.matched_odds  # the price actually struck is the one that settles
                         entry.potential_pnl = potential_profit(entry.stake_inr, result.matched_odds)
-                        potential = entry.potential_pnl
+                    filled = filled_inr(order, result)
+                    if filled is not None and filled < entry.stake_inr:
+                        reduce_to_fill(session, account, entry, filled, result.filled_stake)  # the unmatched rest lapsed: back to AVAILABLE
+                    potential = entry.potential_pnl
+                    available, exposure = account.available_balance, account.exposure_balance
                     entry.next_resolve_at = now + timedelta(seconds=self.settings.SNIPER_OPEN_POLL_SECONDS)
                     status, message = "EXECUTED", "Placed. The stake is now in exposure until the market settles."
                 else:
@@ -290,12 +374,17 @@ class TradeExecutor:
                     bookmaker_id=ticket.bookmaker_id,
                     fixture_id=ticket.fixture_id,
                     selection=ticket.selection,
-                    stake_inr=ticket.stake_inr,
+                    stake_inr=entry.stake_inr,
                     odds=result.matched_odds or ticket.odds,
                     potential_pnl=potential,
                     available_balance=available,
                     exposure_balance=exposure,
                     execution_mode=self.settings.CFO_EXECUTION_MODE,
+                    requested_stake_inr=requested if entry.stake_inr != requested else None,
+                    partial_fill=entry.stake_inr != requested,
+                    group_id=ticket.group_id,
+                    strategy=ticket.strategy,
+                    stake_ccy=entry.stake_ccy,
                 )
                 return _Outcome(result, receipt, ledger_id)
             except BaseException:
@@ -328,6 +417,9 @@ class TradeExecutor:
             "venue_id": result.venue_id,
             "latency_ms": result.latency_ms,
             "matched_odds": None if result.matched_odds is None else str(result.matched_odds),
+            "filled_stake": None if result.filled_stake is None else str(result.filled_stake),
+            "strategy": ticket.strategy,
+            "group_id": None if ticket.group_id is None else str(ticket.group_id),
             "request_payload": result.request_payload,  # the payload inspector shows exactly these
             "response_payload": result.response_payload,
         }

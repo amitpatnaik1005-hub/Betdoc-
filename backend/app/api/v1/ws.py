@@ -16,6 +16,7 @@ from app.models import User
 from app.schemas.aryabhata import TradeSignal  # noqa: F401  (payload contract for /signals)
 from app.schemas.market import MarketTick  # noqa: F401  (payload contract for this channel)
 from app.services.aryabhata_pipeline import run_signal_socket
+from app.services.portfolio_stream import PortfolioKeys, watch
 
 logger = logging.getLogger(__name__)
 
@@ -133,6 +134,62 @@ async def signals_stream(websocket: WebSocket, user: WsUser) -> None:
     then ``signals`` with new or updated lines plus the ``withdrawn`` keys of edges that closed.
     """
     await run_signal_socket(websocket, user.id, getattr(websocket.app.state, "redis", None), AsyncSessionLocal, settings)
+
+
+@router.websocket("/portfolio")
+async def portfolio_stream(websocket: WebSocket, user: WsUser) -> None:
+    """The Active Portfolio, live: this user's books marked to the live books 5x a second, and the
+    arbitrage scan whenever it changes. The socket heartbeats its user into the publisher's watch set."""
+    redis = getattr(websocket.app.state, "redis", None)
+    if redis is None:
+        await websocket.close(code=status.WS_1011_INTERNAL_ERROR, reason="Live stream unavailable")
+        return
+    keys = PortfolioKeys(settings)
+    pubsub = redis.pubsub(ignore_subscribe_messages=True)
+    try:
+        await pubsub.subscribe(keys.channel(user.id), keys.arbitrage)
+        await watch(redis, settings, user.id)
+        first = [await redis.get(keys.last(user.id)), await redis.get(keys.arbitrage_last)]
+    except Exception:  # noqa: BLE001 - Redis down: refuse the socket, the client falls back to polling
+        await websocket.close(code=status.WS_1011_INTERNAL_ERROR, reason="Live stream unavailable")
+        return
+    await websocket.accept()
+    send_lock = asyncio.Lock()
+    for raw in first:
+        if raw:
+            await websocket.send_text(raw)
+
+    async def pump() -> None:
+        async for message in pubsub.listen():
+            if message.get("type") == "message":
+                async with send_lock:
+                    await websocket.send_text(message["data"])
+
+    async def heartbeat() -> None:
+        while True:
+            await asyncio.sleep(max(1.0, settings.PORTFOLIO_WATCH_TTL_SECONDS / 3))
+            try:
+                await watch(redis, settings, user.id)
+            except Exception:  # noqa: BLE001 - a missed beat only pauses the stream until the next one
+                logger.debug("Portfolio watch heartbeat failed")
+
+    async def drain() -> None:
+        while True:
+            if await websocket.receive_text() == "ping":
+                async with send_lock:
+                    await websocket.send_text('{"type":"pong"}')
+
+    tasks = [asyncio.create_task(pump()), asyncio.create_task(heartbeat()), asyncio.create_task(drain())]
+    try:
+        await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
+    finally:
+        for task in tasks:
+            task.cancel()
+        try:
+            await pubsub.unsubscribe()
+            await pubsub.aclose()
+        except Exception:  # noqa: BLE001
+            pass
 
 
 @router.websocket("/sniper")

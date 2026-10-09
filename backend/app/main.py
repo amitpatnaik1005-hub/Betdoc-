@@ -26,6 +26,7 @@ from app.services.omni_fleet import FleetDeps, run_inprocess_fallback
 from app.domain.the_hive import HiveOrchestrator
 from app.core.live_odds import run_live_odds_relay
 from app.services.aryabhata_pipeline import run_aryabhata
+from app.services.portfolio_stream import run_portfolio_publisher
 from app.services.bookmaker_gateway import PaperBookmaker
 from app.services.sniper_runtime import build_sniper_runtime, ensure_sandbox_venue
 from app.core.websockets import manager as live_odds_manager
@@ -89,6 +90,13 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     if settings.ARYABHATA_ENABLED:
         # Each worker joins the Aryabhata consumer group: every frame is priced once, wherever it lands
         background.append(asyncio.create_task(run_aryabhata(redis, settings), name="aryabhata"))
+    if settings.PORTFOLIO_STREAM_ENABLED:
+        # One worker at a time (a Redis lease) marks every watched portfolio 5x a second and scans for arbs
+        background.append(
+            asyncio.create_task(
+                run_portfolio_publisher(redis, AsyncSessionLocal, settings, app.state.sniper.gateway.venues), name="portfolio-publisher"
+            )
+        )
     if settings.OMNI_FLEET_INPROCESS_FALLBACK:
         # Runs ingestion here only while no Celery worker heartbeats; replaces the old odds poller loop
         background.append(asyncio.create_task(run_inprocess_fallback(app.state.fleet_deps), name="fleet-fallback"))

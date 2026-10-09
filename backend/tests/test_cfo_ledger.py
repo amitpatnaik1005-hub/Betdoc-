@@ -260,6 +260,7 @@ async def wire(sessions: async_sessionmaker[AsyncSession], redis: Redis, setting
                 auth_type="static_bearer", place_path="/bets", status_path="/bets", bets_per_second=D("50"), burst=50,
                 routes=[], selection_codes={"HOME": "1", "DRAW": "X", "AWAY": "2"},
                 encrypted_credentials=vault.encrypt_key(json.dumps({"api_key": "test-key-0001"})), is_enabled=True, is_sandbox=False,
+                currency="INR",  # the partner account is in rupees (unset, smarkets would default to GBP)
             )
         )
         await session.flush()  # the venue row first: its mappings reference it

@@ -250,10 +250,15 @@ class RiskGuard:
             )
 
     # -------------------------------------------------------------- composition
-    async def check(self, session: AsyncSession, ticket: OrderTicket, account: BankrollAccount | None) -> GuardReport:
-        """All five pillars, kill switch first. Raises the first violation."""
+    async def check(self, session: AsyncSession, ticket: OrderTicket, account: BankrollAccount | None, *, risk_reducing: bool = False) -> GuardReport:
+        """All five pillars, kill switch first. Raises the first violation.
+
+        ``risk_reducing``: a leg of a hedge whose completed plan lowers the worst case. Only the kill
+        switch applies: the other pillars stop new risk, and blocking a hedge would keep risk on."""
         report = GuardReport()
         await self.kill_switch(session)
+        if risk_reducing:
+            return report
         limits = await load_limits(session, ticket.user_id)
         await self.drawdown(session, ticket.user_id, limits, account, report)
         await self.loss_streak(session, ticket.user_id, limits, report)
@@ -261,8 +266,12 @@ class RiskGuard:
         await self.velocity(ticket, limits, report)
         return report
 
-    async def recheck_locked(self, session: AsyncSession, ticket: OrderTicket, account: BankrollAccount, report: GuardReport) -> GuardReport:
+    async def recheck_locked(
+        self, session: AsyncSession, ticket: OrderTicket, account: BankrollAccount, report: GuardReport, *, risk_reducing: bool = False
+    ) -> GuardReport:
         """The stateful pillars again, now that this transaction holds the bankroll lock."""
+        if risk_reducing:
+            return report
         limits = await load_limits(session, ticket.user_id)
         await self.drawdown(session, ticket.user_id, limits, account, report)
         await self.market_exposure(session, ticket, limits, account, report)

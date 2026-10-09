@@ -70,6 +70,17 @@ def _decimal(value: object) -> Decimal | None:
     return number if number.is_finite() and number > 1 else None
 
 
+def _amount(value: object) -> Decimal | None:
+    """A stake amount (zero allowed); anything unparseable is treated as not reported."""
+    if value is None or isinstance(value, bool):
+        return None
+    try:
+        number = Decimal(str(value))
+    except (InvalidOperation, ValueError, TypeError):
+        return None
+    return number if number.is_finite() and number >= 0 else None
+
+
 def _body(response: httpx.Response) -> Any:
     try:
         return response.json()
@@ -95,8 +106,9 @@ class BaseExecutionAdapter(ABC):
     def place_payload(self, order: BookmakerOrder, remote: RemoteIds) -> dict[str, Any]: ...
 
     @abstractmethod
-    def parse_receipt(self, body: Any) -> tuple[str | None, Decimal | None]:
-        """(remote_bet_id, matched_odds) from a 2xx answer; a missing id makes the outcome UNKNOWN."""
+    def parse_receipt(self, body: Any) -> tuple[str | None, Decimal | None, Decimal | None]:
+        """(remote_bet_id, matched_odds, matched_stake) from a 2xx answer; a missing id makes the
+        outcome UNKNOWN, a missing matched stake means the whole stake was matched."""
 
     @abstractmethod
     def status_params(self, remote_ids: Sequence[str], client_refs: Sequence[str]) -> dict[str, str]: ...
@@ -139,11 +151,18 @@ class BaseExecutionAdapter(ABC):
             if isinstance(body, Mapping) and str(body.get("error", "")).upper() in ("PRICE_BELOW_MINIMUM", "SLIPPAGE", "ODDS_CHANGED"):
                 reason = "SLIPPAGE_REJECTED"  # the price moved below min_acceptable_odds in flight
             return self._result(BookmakerOutcome.REJECTED, reason, payload, response=response, body=body, latency=latency)
-        remote_bet_id, matched = self.parse_receipt(body)
+        remote_bet_id, matched, filled = self.parse_receipt(body)
         if not remote_bet_id:
             # A success code without a bet id: it may well be placed, so it is not a rejection
             return self._result(BookmakerOutcome.UNKNOWN, "BOOKMAKER_BAD_RESPONSE", payload, response=response, body=body, latency=latency)
-        reason = "BOOKMAKER_ACCEPTED"
+        requested = order.venue_stake
+        if filled is not None and filled > requested:
+            # More matched than asked for: the bet exists, but not as reserved. Keep it in exposure for a person
+            return self._result(BookmakerOutcome.UNKNOWN, "FILL_EXCEEDS_REQUEST", payload, response=response, body=body, latency=latency)
+        if filled is not None and filled <= 0:
+            # Immediate-or-cancel with nothing matched: the order lapsed, no bet exists
+            return self._result(BookmakerOutcome.REJECTED, "NOT_MATCHED", payload, response=response, body=body, latency=latency)
+        reason = "BOOKMAKER_ACCEPTED" if filled is None or filled == requested else "PARTIAL_FILL"
         if matched is not None and matched < order.min_acceptable_odds:
             reason = "SLIPPAGE_VIOLATION"  # the venue filled below our floor: the bet exists, flag it
         return BookmakerResult(
@@ -152,6 +171,7 @@ class BaseExecutionAdapter(ABC):
             remote_bet_id,
             response.status_code,
             matched_odds=matched,
+            filled_stake=requested if filled is None else filled,
             venue_id=self.venue.id,
             request_payload=payload,
             response_payload=body,
@@ -246,8 +266,10 @@ class BaseExecutionAdapter(ABC):
 class GenericJsonExecutionAdapter(BaseExecutionAdapter):
     """BetDoc's canonical order API (the sandbox speaks it; so can any partner that adopts it).
 
-    Place   POST {place_path}  {client_ref, event_id, selection_id, odds, min_acceptable_odds, stake, currency}
-            -> {remote_bet_id, status, matched_odds}
+    Place   POST {place_path}  {client_ref, event_id, selection_id, odds, min_acceptable_odds, stake, currency,
+                                time_in_force: "IOC"}
+            -> {remote_bet_id, status, matched_odds, matched_stake}  (matched_stake < stake: a partial fill,
+               the remainder lapsed; absent: matched in full)
     Status  GET  {status_path}?ids=..&client_refs=.. -> {bets: [{remote_bet_id, client_ref, status, matched_odds}]}
     Events  GET  {events_path} -> {events: [{id, sport_key, home, away, commence_time, outcomes: {HOME: id, ...}}]}
     """
@@ -259,16 +281,18 @@ class GenericJsonExecutionAdapter(BaseExecutionAdapter):
             "selection_id": remote.selection_id,
             "odds": str(order.odds),
             "min_acceptable_odds": str(order.min_acceptable_odds),
-            "stake": str(order.stake_inr),
-            "currency": "INR",
+            "stake": str(order.venue_stake),
+            "currency": order.currency,
+            "time_in_force": "IOC",  # match what you can now, cancel the rest: nothing sits unmatched
         }
 
-    def parse_receipt(self, body: Any) -> tuple[str | None, Decimal | None]:
+    def parse_receipt(self, body: Any) -> tuple[str | None, Decimal | None, Decimal | None]:
         if not isinstance(body, Mapping):
-            return None, None
+            return None, None, None
         remote = body.get("remote_bet_id") or body.get("bet_id") or body.get("id")
         remote_id = str(remote).strip()[:128] if isinstance(remote, str | int) and str(remote).strip() else None
-        return remote_id, _decimal(body.get("matched_odds"))
+        filled = next((_amount(body[k]) for k in ("matched_stake", "filled_stake", "size_matched") if body.get(k) is not None), None)
+        return remote_id, _decimal(body.get("matched_odds")), filled
 
     def status_params(self, remote_ids: Sequence[str], client_refs: Sequence[str]) -> dict[str, str]:
         params: dict[str, str] = {}

@@ -3,6 +3,7 @@ import { apiClient } from '../api/client';
 import { StakeCapPanel } from '../components/arena/StakeCapPanel';
 import { RiskManagement } from '../components/cfo/RiskManagement';
 import { SniperTerminal } from '../components/sniper/SniperTerminal';
+import { ActivePortfolio } from '../components/portfolio/ActivePortfolio';
 import { FleetCommand } from '../components/fleet/FleetCommand';
 import { type ControlSettings, emergencyStop, resumeTrading, useControls, useExchanges } from '../lib/api';
 import { formatAgo, formatINR, formatRatioPct, humanize } from '../lib/format';
@@ -19,10 +20,11 @@ interface SportConfig { id: string; sport_name: string; is_active: boolean; conf
 interface OmniHealth { generated_at: string; total: number; active: number; degraded: number; open_circuits: number; redis_available: boolean; providers: { provider_id: string; provider_name: string; category_code: string; is_active: boolean; health_status: string; breaker_state: string; recent_failures: number | null }[] }
 
 const SPORTS = ['cricket', 'basketball', 'tennis'] as const;
-type ControlTab = 'system' | 'risk' | 'terminal';
+type ControlTab = 'system' | 'risk' | 'portfolio' | 'terminal';
 const TABS = [
   { value: 'system', label: 'System', icon: 'tune' },
   { value: 'risk', label: 'Risk management', icon: 'shield_lock' },
+  { value: 'portfolio', label: 'Active portfolio', icon: 'monitoring' },
   { value: 'terminal', label: 'Execution terminal', icon: 'terminal' },
 ] as const;
 const EXCHANGES = ['Pinnacle', 'Betfair'] as const;
@@ -358,6 +360,8 @@ export const ControlPanel = () => {
         </>
       ) : tab === 'terminal' ? (
         <SniperTerminal />
+      ) : tab === 'portfolio' ? (
+        <ActivePortfolio />
       ) : (
         <>
           <RiskManagement />

@@ -83,6 +83,8 @@ async def venues(request: Request, user: CurrentUser, sessions: SessionFactory) 
                 credentials_hint=row.credentials_hint,
                 fixtures_mapped=int(counts.get(row.id, 0)),
                 session=VenueSession(**await gateway.sessions.describe(config)),
+                commission_rate=row.commission_rate,
+                currency=row.currency,
             )
         )
     return out

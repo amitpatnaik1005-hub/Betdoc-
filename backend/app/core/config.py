@@ -113,9 +113,40 @@ class Settings(BaseSettings):
     SNIPER_SANDBOX_TOKEN_TTL_SECONDS: int = Field(default=600, ge=60)
     SNIPER_SANDBOX_BETS_PER_SECOND: float = Field(default=2.0, gt=0)
 
+    # Liquidity per order: a stake above this is only partly matched (0 = fill everything)
+    SNIPER_SANDBOX_MAX_MATCH_INR: float = Field(default=0.0, ge=0)
+
     @property
     def sniper_sandbox_active(self) -> bool:
         return self.SNIPER_SANDBOX_ENABLED and self.ENVIRONMENT != "production"
+
+    # ---- Hedging, arbitrage, live portfolio (Group 64) -----------------------
+    PORTFOLIO_STREAM_ENABLED: bool = True  # one API worker at a time (Redis leader lock) publishes every watched portfolio
+    PORTFOLIO_CHANNEL_PREFIX: str = "betdoc:live_portfolio"  # pub/sub <prefix>:<user_id>
+    PORTFOLIO_TICK_SECONDS: float = Field(default=0.2, ge=0.05, le=5)  # 5 updates a second
+    PORTFOLIO_POSITIONS_REFRESH_SECONDS: float = Field(default=15.0, gt=0)  # open positions re-read from the DB at most this often (or on change)
+    PORTFOLIO_WATCH_TTL_SECONDS: int = Field(default=30, ge=5)  # a socket heartbeats its user into the watch set
+    PORTFOLIO_PRICE_MAX_AGE_SECONDS: float = Field(default=120.0, gt=0)  # an older book price can't hedge or arb
+    ARB_SCAN_INTERVAL_SECONDS: float = Field(default=1.0, ge=0.2)
+    ARB_MIN_MARGIN_PCT: float = Field(default=0.1, ge=0, le=50)  # thinner arbs are noise (stale books, rounding)
+    ARB_REFERENCE_STAKE_INR: float = Field(default=10_000.0, gt=0)  # the scanner sizes every arb at this total
+    ARB_MAX_RESULTS: int = Field(default=25, ge=1, le=200)
+    # Exchange commission on net winnings, by bookmaker id. A venue row's own rate overrides it.
+    EXCHANGE_COMMISSION_RATES: dict[str, float] = {
+        "betfair": 0.05,
+        "betfair_ex_uk": 0.05,
+        "betfair_ex_eu": 0.05,
+        "betfair_ex_au": 0.05,
+        "matchbook": 0.02,
+        "smarkets": 0.02,
+        "betdaq": 0.02,
+        "pinnacle": 0.0,
+    }
+    # Account currency by bookmaker id. Unset: the book's own (see app.services.venue_costs). A venue row overrides both.
+    BOOKMAKER_CURRENCIES: dict[str, str] = {}
+    FX_RATES_KEY: str = "betdoc:fx:rates"  # hash: currency -> {"inr_per_unit", "as_of", "source"}
+    FX_MAX_AGE_SECONDS: int = Field(default=3600, ge=60)  # an older rate is refused: legs in that currency can't be priced
+    FX_HAIRCUT_PCT: float = Field(default=0.5, ge=0, lt=20)  # taken off every foreign payout coming home
 
     # The Wire: public sports RSS feeds (no key needed)
     WIRE_NEWS_FEEDS: List[str] = [

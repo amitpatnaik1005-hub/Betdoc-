@@ -71,6 +71,12 @@ class ExecutionReceipt(BaseModel):
     available_balance: WireDecimal
     exposure_balance: WireDecimal
     execution_mode: Literal["paper", "live"]
+    # Group 64: a partly matched order (the unmatched rest lapsed and went back to AVAILABLE)
+    requested_stake_inr: WireDecimal | None = None
+    partial_fill: bool = False
+    group_id: UUID | None = None
+    strategy: str | None = None
+    stake_ccy: WireDecimal | None = None  # a foreign venue's stake in its own currency (what actually matched)
 
 
 class RiskSettingsRead(BaseModel):
@@ -116,6 +122,9 @@ class PositionRead(BaseModel):
     commence_time: datetime | None = None
     resolve_attempts: int = 0
     last_resolve_error: str | None = None
+    requested_stake_inr: WireDecimal | None = None
+    strategy: str | None = None
+    group_id: UUID | None = None
     created_at: datetime
     settled_at: datetime | None
 

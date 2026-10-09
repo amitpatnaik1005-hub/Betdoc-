@@ -8,7 +8,10 @@ resolve), so the live pipeline can be exercised end to end without a partner acc
 * ``GET /events``: its catalog is the fixtures on BetDoc's live board, under its own ids.
 * ``POST /bets``: bearer auth (401 when missing or expired), its own rate limit (429 above
   ``SNIPER_SANDBOX_BETS_PER_SECOND``), idempotent per ``client_ref``, priced off the live board:
-  a price below ``min_acceptable_odds`` is refused (409 ``PRICE_BELOW_MINIMUM``).
+  a price below ``min_acceptable_odds`` is refused (409 ``PRICE_BELOW_MINIMUM``). Orders are
+  immediate-or-cancel: with ``SNIPER_SANDBOX_MAX_MATCH_INR`` set, a larger stake is only matched up
+  to it (``matched_stake``, in the order's own currency units) and the rest lapses, the partial fill
+  a thin exchange market gives. It takes each book's currency, since it stands in for all of them.
 * ``GET /bets``: "my bets", graded from BetDoc's recorded market results.
 
 No money moves anywhere. The credentials derive from SECRET_KEY, so nothing secret is hardcoded.
@@ -152,10 +155,15 @@ def build_sandbox_app(redis: Redis, session_factory: async_sessionmaker[AsyncSes
             return _err(422, "invalid_order")
         if not (odds > 1 and floor > 1 and stake > 0 and floor <= odds):
             return _err(422, "invalid_order")
+        currency = str(body.get("currency", "INR")).upper()  # it stands in for every book, so it takes each one's currency
+        if len(currency) != 3 or not currency.isalpha():
+            return _err(422, "invalid_order")
         existing = await redis.hget(f"{prefix}:refs", client_ref)
         if existing:  # the same order again (a retry after a 401, say): the same bet, never a second one
             bet = json.loads(await redis.hget(f"{prefix}:bets", existing) or "{}")
-            return JSONResponse({"remote_bet_id": existing, "status": bet.get("status", "OPEN"), "matched_odds": bet.get("matched_odds")})
+            return JSONResponse(
+                {"remote_bet_id": existing, "status": bet.get("status", "OPEN"), "matched_odds": bet.get("matched_odds"), "matched_stake": bet.get("matched_stake")}
+            )
         match_id = await redis.hget(f"{prefix}:events", event_id)
         label = CODE_LABELS.get(selection_id.rsplit("-", 1)[-1]) if selection_id.startswith(f"{event_id}-") else None
         if match_id is None or label is None:
@@ -166,16 +174,19 @@ def build_sandbox_app(redis: Redis, session_factory: async_sessionmaker[AsyncSes
         if current < floor:
             return _err(409, "PRICE_BELOW_MINIMUM", current_odds=str(current))
         matched = odds if current >= odds else current  # filled at the asked price, or the slipped one above the floor
+        liquidity = Decimal(str(settings.SNIPER_SANDBOX_MAX_MATCH_INR))
+        matched_stake = min(stake, liquidity) if liquidity > 0 else stake  # the rest lapses (IOC)
         remote_id = f"SBX-B-{uuid.uuid4().hex[:12].upper()}"
         bet = {
             "client_ref": client_ref, "event_id": event_id, "selection_id": selection_id, "fixture_id": match_id, "selection": label,
-            "odds": str(odds), "matched_odds": str(matched), "stake": str(stake), "placed_at": datetime.now(UTC).isoformat(),
+            "odds": str(odds), "matched_odds": str(matched), "stake": str(stake), "matched_stake": str(matched_stake), "currency": currency,
+            "placed_at": datetime.now(UTC).isoformat(),
         }
         await redis.hset(f"{prefix}:bets", remote_id, json.dumps(bet))
         await redis.hset(f"{prefix}:refs", client_ref, remote_id)
         for key in (f"{prefix}:bets", f"{prefix}:refs"):
             await redis.expire(key, 86_400 * 30)
-        return JSONResponse({"remote_bet_id": remote_id, "status": "OPEN", "matched_odds": str(matched)})
+        return JSONResponse({"remote_bet_id": remote_id, "status": "OPEN", "matched_odds": str(matched), "matched_stake": str(matched_stake)})
 
     @router.get("/bets")
     async def my_bets(

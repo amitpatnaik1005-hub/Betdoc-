@@ -420,6 +420,23 @@ def _pairs(flat: Sequence[str]) -> dict[str, str]:
     return {flat[i]: flat[i + 1] for i in range(0, len(flat) - 1, 2)}
 
 
+async def read_market_books(redis: Redis, settings: Settings, market_keys: Sequence[str]) -> dict[str, tuple[BookLine, ...]]:
+    """Every book the stream holds for each market (``"<fixture>|<market type>"``), one pipelined
+    read. Stale and suspended books are included: callers filter by age for their own purpose."""
+    if not market_keys:
+        return {}
+    keys = AryabhataKeys(settings.ARYABHATA_PREFIX)
+    async with asyncio.timeout(_REDIS_TIMEOUT_SECONDS):
+        pipe = redis.pipeline(transaction=False)
+        for market_key in market_keys:
+            pipe.hgetall(keys.books(market_key))
+        results: list[dict[str, str]] = await pipe.execute()
+    return {
+        market_key: tuple(line for name, raw in (fields or {}).items() if not name.startswith("~") and (line := _book_line(raw)) is not None)
+        for market_key, fields in zip(market_keys, results, strict=True)
+    }
+
+
 class AryabhataConsumer:
     """One member of the ``aryabhata`` consumer group. ``run`` loops until cancelled."""
 

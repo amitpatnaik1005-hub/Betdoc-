@@ -30,6 +30,8 @@ class VenueConfig:
     encrypted_credentials: str | None = None
     is_sandbox: bool = False
     is_enabled: bool = True
+    commission_rate: Decimal | None = None  # None: the bookmaker's default (settings)
+    currency: str | None = None  # None: the bookmaker's default (settings), else INR
 
     @classmethod
     def from_row(cls, row: ExecutionVenue) -> VenueConfig:
@@ -51,6 +53,8 @@ class VenueConfig:
             encrypted_credentials=row.encrypted_credentials,
             is_sandbox=bool(row.is_sandbox),
             is_enabled=bool(row.is_enabled),
+            commission_rate=None if row.commission_rate is None else Decimal(row.commission_rate),
+            currency=row.currency,
         )
 
     def url(self, path: str) -> str:

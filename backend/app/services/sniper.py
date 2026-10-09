@@ -39,6 +39,7 @@ from app.services.bookmaker_gateway import BookmakerOrder, BookmakerOutcome, Boo
 from app.services.id_mapper import IdMapper, RemoteIds, UnmappedEntityError
 from app.services.omni_throttle import TokenBucket
 from app.services.session_manager import SessionManager
+from app.services.venue_costs import bookmaker_terms
 
 logger = logging.getLogger("betdoc.sniper")
 
@@ -180,6 +181,10 @@ class SniperGateway:
             await emit("route", f"No execution venue for {order.bookmaker_id}: aborted", "error")
             return BookmakerResult(BookmakerOutcome.REJECTED, "NO_EXECUTION_VENUE")
         await emit("route", f"Routing to {venue.display_name}{' (sandbox)' if venue.is_sandbox else ''}")
+        currency = bookmaker_terms(order.bookmaker_id, self.settings, venue).currency
+        if currency != order.currency:
+            await emit("route", f"{venue.display_name} settles in {currency}, the order is in {order.currency}: aborted", "error")
+            return BookmakerResult(BookmakerOutcome.REJECTED, "CURRENCY_MISMATCH", venue_id=venue.id)
         await emit("map", "Translating IDs…")
         try:
             remote = await self.mapper.resolve(venue, order.fixture_id, order.market, order.selection)
@@ -199,8 +204,10 @@ class SniperGateway:
         venue = route.venue
         result = await self.adapter(venue).place(order, route.remote, lambda step, message: emit(step, message))
         if result.outcome is BookmakerOutcome.ACCEPTED:
-            level = "warning" if result.reason == "SLIPPAGE_VIOLATION" else "success"
+            level = "warning" if result.reason in ("SLIPPAGE_VIOLATION", "PARTIAL_FILL") else "success"
             await emit("result", f"{result.http_status} OK - remote_id: {result.reference}" + (f" @ {result.matched_odds}" if result.matched_odds else ""), level)
+            if result.reason == "PARTIAL_FILL":
+                await emit("fill", f"Partial fill: {result.filled_stake} of {order.venue_stake} {order.currency} matched, the rest lapsed", "warning")
         elif result.outcome is BookmakerOutcome.REJECTED:
             status = f"{result.http_status} " if result.http_status else ""
             await emit("result", f"{status}{result.reason}: rejected, rolling back", "error")

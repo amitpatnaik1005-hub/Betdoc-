@@ -34,6 +34,8 @@ class ExecutionVenue(Base):
         CheckConstraint("burst >= 1 AND burst <= 50", name="burst_range"),
         CheckConstraint(f"auth_type IN ({', '.join(repr(a) for a in AUTH_TYPES)})", name="auth_type_valid"),
         CheckConstraint(f"adapter IN ({', '.join(repr(a) for a in ADAPTERS)})", name="adapter_valid"),
+        CheckConstraint("commission_rate IS NULL OR (commission_rate >= 0 AND commission_rate < 0.5)", name="commission_range"),
+        CheckConstraint("currency IS NULL OR length(currency) = 3", name="currency_code"),
     )
 
     id: Mapped[str] = mapped_column(String(64), primary_key=True)  # the bookmaker_id signals carry
@@ -56,6 +58,9 @@ class ExecutionVenue(Base):
     credentials_hint: Mapped[str | None] = mapped_column(String(64), nullable=True)  # pre-masked, never decrypted to show
     is_enabled: Mapped[bool] = mapped_column(Boolean, default=True)
     is_sandbox: Mapped[bool] = mapped_column(Boolean, default=False)  # the in-process simulated bookmaker
+    # Group 64: commission on net winnings and the account currency (None: the bookmaker's defaults in settings)
+    commission_rate: Mapped[Decimal | None] = mapped_column(Numeric(6, 4), nullable=True)
+    currency: Mapped[str | None] = mapped_column(String(3), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, onupdate=utc_now)
 

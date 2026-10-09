@@ -38,6 +38,8 @@ class VenueRead(BaseModel):
     credentials_hint: str | None
     fixtures_mapped: int
     session: VenueSession
+    commission_rate: WireDecimal | None = None  # None: the bookmaker default (settings)
+    currency: str | None = None
 
 
 class VenueUpsert(BaseModel):
@@ -60,6 +62,9 @@ class VenueUpsert(BaseModel):
     routes: list[Annotated[str, Field(min_length=1, max_length=64)]] = Field(default_factory=list, max_length=50)
     selection_codes: dict[str, Annotated[str, Field(min_length=1, max_length=64)]] = Field(default_factory=dict)
     is_enabled: bool = True
+    # Commission on net winnings (0.05 = 5%) and the account's currency; None keeps the bookmaker defaults
+    commission_rate: Annotated[Decimal, Field(ge=0, lt=Decimal("0.5"), max_digits=6, decimal_places=4, allow_inf_nan=False)] | None = None
+    currency: Annotated[str, Field(pattern="^[A-Z]{3}$")] | None = None
 
     @field_validator("id")
     @classmethod

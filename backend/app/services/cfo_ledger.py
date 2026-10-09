@@ -41,6 +41,7 @@ from sqlalchemy.exc import DBAPIError, IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.core.config import Settings
+from app.services.portfolio_positions import mark_positions_dirty
 from app.models.cfo_vault import (
     OPEN_STATUSES,
     AuditEvent,
@@ -250,6 +251,10 @@ class OrderTicket:
     true_prob: Decimal | None = None
     signal_id: uuid.UUID | None = None
     commence_time: datetime | None = None
+    strategy: str | None = None  # arbitrage | hedge: one leg of a multi-leg order
+    group_id: uuid.UUID | None = None
+    currency: str = "INR"  # the venue account's currency
+    stake_ccy: Decimal | None = None  # the stake in that currency (None: an INR venue, stake_inr itself)
 
 
 async def reserve(session: AsyncSession, account: BankrollAccount, ticket: OrderTicket) -> PhantomLedger:
@@ -286,6 +291,10 @@ async def reserve(session: AsyncSession, account: BankrollAccount, ticket: Order
         potential_pnl=potential_profit(stake, ticket.odds),
         status=LedgerStatus.PENDING,
         commence_time=ticket.commence_time,
+        strategy=ticket.strategy,
+        group_id=ticket.group_id,
+        currency=None if ticket.currency == "INR" else ticket.currency,
+        stake_ccy=ticket.stake_ccy if ticket.currency != "INR" else None,
     )
     session.add(entry)
     try:
@@ -295,6 +304,26 @@ async def reserve(session: AsyncSession, account: BankrollAccount, ticket: Order
     _post(session, account, PostingKind.RESERVE, {LedgerAccount.AVAILABLE: -stake, LedgerAccount.EXPOSURE: stake}, entry.id)
     await session.flush()
     return entry
+
+
+def reduce_to_fill(session: AsyncSession, account: BankrollAccount, entry: PhantomLedger, filled_inr: Decimal, filled_ccy: Decimal | None = None) -> Decimal:
+    """A partial fill: the unmatched part of the reserved stake goes back EXPOSURE -> AVAILABLE and
+    the bet is what actually matched. Returns the amount released."""
+    filled = to_money(filled_inr, "filled_inr")
+    if entry.status is not LedgerStatus.PENDING:
+        raise LedgerInvariantError("NOT_PENDING", "Only a pending bet can be partly filled")
+    if not ZERO < filled <= entry.stake_inr:
+        raise LedgerInvariantError("BAD_FILL", "A fill must be positive and no more than the reserved stake")
+    unfilled = entry.stake_inr - filled
+    if unfilled == ZERO:
+        return ZERO
+    _post(session, account, PostingKind.RELEASE, {LedgerAccount.EXPOSURE: -unfilled, LedgerAccount.AVAILABLE: unfilled}, entry.id)
+    entry.requested_stake_inr = entry.requested_stake_inr or entry.stake_inr
+    entry.stake_inr = filled
+    if entry.stake_ccy is not None and filled_ccy is not None:
+        entry.stake_ccy = filled_ccy
+    entry.potential_pnl = potential_profit(filled, entry.odds)
+    return unfilled
 
 
 def release(session: AsyncSession, account: BankrollAccount, entry: PhantomLedger, status: LedgerStatus, now: datetime | None = None) -> None:
@@ -542,6 +571,7 @@ async def settle_markets(
                 mark_peak(account)
                 await session.commit()
                 summary.users += 1
+                await mark_positions_dirty(redis, settings, user_id)
             except BankrollLockedError:
                 await session.rollback()
                 summary.skipped_locked += 1  # an execution holds the row: the next sweep settles it
