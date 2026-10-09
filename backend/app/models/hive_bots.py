@@ -182,6 +182,7 @@ class HiveShadowPosition(Base):
     __table_args__ = (
         CheckConstraint("stake_inr > 0", name="stake_positive"),
         CheckConstraint("odds > 1", name="odds_above_one"),
+        CheckConstraint("commission_rate >= 0 AND commission_rate < 0.5", name="commission_rate_range"),
         Index("ix_hive_shadow_positions_bot_status", "bot_id", "status"),
         Index("ix_hive_shadow_positions_fixture_status", "fixture_id", "market", "status"),
     )
@@ -195,6 +196,7 @@ class HiveShadowPosition(Base):
     selection: Mapped[str] = mapped_column(String(64))
     bookmaker_id: Mapped[str] = mapped_column(String(64))
     odds: Mapped[Decimal] = mapped_column(ODDS)
+    commission_rate: Mapped[Decimal] = mapped_column(Numeric(6, 4), default=Decimal(0), server_default="0")  # graded net of it
     stake_inr: Mapped[Decimal] = mapped_column(MONEY)
     true_prob: Mapped[Decimal | None] = mapped_column(PROBABILITY, nullable=True)
     status: Mapped[ShadowStatus] = mapped_column(_enum(ShadowStatus, "hive_shadow_status"), default=ShadowStatus.OPEN)

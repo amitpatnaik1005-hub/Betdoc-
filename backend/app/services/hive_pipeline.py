@@ -7,8 +7,9 @@
    of the selection's fair probability: the de-vig methods from the current books, the time-series
    models from the selection's consensus-probability history. A model that cannot produce one has
    no opinion; it never counts as a confirmation. Conviction is the mean of the estimates; EV
-   ``p * odds - 1`` must clear the bot's minimum edge (and Aryabhata's +0.5% floor, under +25%).
-3. Staking. Kelly on the conviction (``math.kelly_criterion``, required in every pipeline), times the
+   ``p * net_odds - 1``, net of the venue's commission on winnings, must clear the bot's minimum edge
+   (and Aryabhata's +0.5% floor, under +25%).
+3. Staking. Kelly on the conviction at the net price (``math.kelly_criterion``, required in every pipeline), times the
    bot's multiplier, of its sub-bankroll's equity, capped at ``max_stake_pct``.
 4. Risk. Each selected risk model reads the bot's own history (per-bet returns, equity curve, open
    stakes) against a limit: under half of it, no change; between half and all of it, the stake
@@ -132,6 +133,12 @@ async def load_market(redis: Redis, settings: Settings, edge: EdgeSignal, now: d
     return LiveMarket(edge, labels, quoting, tuple(history))
 
 
+def _open_edge(true_prob: Decimal, odds: Decimal, commission: Decimal | None) -> tuple[float, float]:
+    """(EV, net odds) of an open bet, both net of the venue's commission."""
+    net = (Decimal(odds) - ONE) * (ONE - Decimal(commission or ZERO)) + ONE
+    return float(Decimal(true_prob) * net - ONE), float(net)
+
+
 async def load_risk_context(session: AsyncSession, bot: TradingBot, now: datetime) -> RiskContext:
     """The bot's own money and record: its sub-account (or, in shadow mode, its hypothetical book)."""
     allocated = Decimal(bot.allocated_capital)
@@ -144,7 +151,7 @@ async def load_risk_context(session: AsyncSession, bot: TradingBot, now: datetim
             if row.status is ShadowStatus.OPEN:
                 open_stakes[row.fixture_id] = open_stakes.get(row.fixture_id, ZERO) + Decimal(row.stake_inr)
                 if row.true_prob is not None:
-                    open_edges.append((float(Decimal(row.true_prob) * Decimal(row.odds) - ONE), float(row.odds)))
+                    open_edges.append(_open_edge(row.true_prob, row.odds, row.commission_rate))
             elif row.status in (ShadowStatus.WON, ShadowStatus.LOST) and row.pnl_inr is not None:
                 pnls.append(Decimal(row.pnl_inr))
         equity = allocated + sum(pnls, ZERO)
@@ -162,7 +169,7 @@ async def load_risk_context(session: AsyncSession, bot: TradingBot, now: datetim
             if row.status in OPEN_STATUSES:
                 open_stakes[row.fixture_id] = open_stakes.get(row.fixture_id, ZERO) + Decimal(row.stake_inr)
                 if row.true_prob is not None:
-                    open_edges.append((float(Decimal(row.true_prob) * Decimal(row.odds) - ONE), float(row.odds)))
+                    open_edges.append(_open_edge(row.true_prob, row.odds, row.commission_rate))
             elif row.status in (LedgerStatus.WON, LedgerStatus.LOST) and row.realized_pnl is not None:
                 pnls.append(Decimal(row.realized_pnl))
     base = float(allocated) if allocated > 0 else 1.0
@@ -458,15 +465,16 @@ def evaluate(bot: TradingBot, readings: MarketReadings, ctx: RiskContext) -> Pro
     if not opinions:
         return Rejection(bot.id, "MODEL_NO_OPINION", {"math": shown})
     conviction = sum(opinions, ZERO) / len(opinions)
-    odds = Decimal(edge.odds)
-    ev = conviction * odds - ONE
+    odds, commission = Decimal(edge.odds), Decimal(edge.commission)
+    net = (odds - ONE) * (ONE - commission) + ONE
+    ev = conviction * net - ONE
     floor = max(Decimal(bot.min_edge_pct) / HUNDRED, MIN_EV)
     if ev < floor:
         return Rejection(bot.id, "EDGE_BELOW_MINIMUM", {"ev": str(ev.quantize(Decimal("0.0001"))), "required": str(floor), "math": shown})
     if ev > MAX_PLAUSIBLE_EV:
         return Rejection(bot.id, "EDGE_IMPLAUSIBLE", {"ev": str(ev.quantize(Decimal("0.0001"))), "math": shown})
 
-    kelly_stake = (kelly_fraction(conviction, odds) * Decimal(bot.kelly_multiplier) * ctx.equity).quantize(PAISA, rounding=ROUND_DOWN)
+    kelly_stake = (kelly_fraction(conviction, odds, commission) * Decimal(bot.kelly_multiplier) * ctx.equity).quantize(PAISA, rounding=ROUND_DOWN)
     cap = (ctx.equity * Decimal(bot.max_stake_pct) / HUNDRED).quantize(PAISA, rounding=ROUND_DOWN)
     stake = min(kelly_stake, cap, ctx.available)
     risk: list[RiskReading] = []
@@ -474,7 +482,7 @@ def evaluate(bot: TradingBot, readings: MarketReadings, ctx: RiskContext) -> Pro
         adapter = RISK_ADAPTERS.get(key)
         if adapter is None:
             return Rejection(bot.id, "RISK_MODEL_NOT_LIVE", {"model": key})
-        reading = adapter(bot, ctx, stake, float(ev), float(odds))
+        reading = adapter(bot, ctx, stake, float(ev), float(net))
         risk.append(reading)
         if reading.veto:
             return Rejection(bot.id, "RISK_VETO", {"model": key, "reading": reading.as_dict(), "math": shown})

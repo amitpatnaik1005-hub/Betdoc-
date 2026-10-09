@@ -480,10 +480,10 @@ async def test_a_fill_inside_the_tolerance_books_the_struck_price(sessions: asyn
     await add_venue(sessions, vault)
     venue = MockVenue(place=lambda body, token: httpx.Response(200, json={"remote_bet_id": "BK-S", "matched_odds": "2.49"}))
     receipt = await TradeExecutor(sessions, redis, settings, gateway(sessions, redis, settings, vault, venue)).execute(user_id, request())
-    assert receipt.odds == D("2.49") and receipt.potential_pnl == D("149.00")
+    assert receipt.odds == D("2.49") and receipt.potential_pnl == D("146.02")  # 100 * 1.49 net of smarkets' 2%
     async with sessions() as session:
         entry = await session.get(PhantomLedger, receipt.ledger_id)
-        assert entry is not None and entry.odds == D("2.49") and entry.potential_pnl == D("149.00")
+        assert entry is not None and entry.odds == D("2.49") and entry.potential_pnl == D("146.02") and entry.commission_rate == D("0.02")
 
 
 # ================================================================ the order resolver and its DLQ
@@ -522,8 +522,8 @@ async def test_a_won_statement_settles_through_the_ledger_engine(sessions: async
     summary = await OrderResolver(sniper, sessions, settings, clock).run()
     assert summary.graded == 1
     entry = await entry_of(sessions, ledger_id)
-    assert entry.status is LedgerStatus.WON and entry.realized_pnl == D("150.00")
-    assert await balances(sessions, user_id) == (D("10150.00"), D("0.00"))
+    assert entry.status is LedgerStatus.WON and entry.realized_pnl == D("147.00")  # 100 * 1.50, less smarkets' 2% of the net win
+    assert await balances(sessions, user_id) == (D("10147.00"), D("0.00"))
     async with sessions() as session:
         settled = await session.scalar(select(AuditLog).where(AuditLog.event == AuditEvent.SETTLED))
         assert settled is not None and settled.detail["source"] == "bookmaker:smarkets"

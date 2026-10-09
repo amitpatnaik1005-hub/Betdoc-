@@ -14,8 +14,10 @@ Pipeline for one market (``evaluate_market``):
    preconditions fail hands over to the next; ``DevigResult.fallbacks`` records why.
 3. Consensus: per selection, the median of every fresh book's fair probability after Tukey-fence
    outlier rejection, renormalised to sum to exactly 1.
-4. Edge: the best fresh price per selection against the consensus. ``EV = p * odds - 1``; anything
-   under ``MIN_EV`` is noise, anything over ``MAX_PLAUSIBLE_EV`` is a bad quote, not an edge.
+4. Edge: the best fresh price per selection against the consensus, both judged net of the venue's
+   commission on winnings: ``net = (odds - 1) * (1 - c) + 1`` and ``EV = p * net - 1``. A 2.10 at an
+   exchange charging 5% returns 2.045, so a 2.06 at a bookmaker beats it. Anything under ``MIN_EV``
+   is noise, anything over ``MAX_PLAUSIBLE_EV`` is a bad quote, not an edge.
 5. Stake (``recommend_stake``, per user): ``kelly_multiplier * f*`` of the bankroll, never above
    the bankroll % cap from the Control Panel or its absolute max bet, rounded down to the paisa.
 6. Steam (``update_ema``): an exponential moving average of each selection's consensus probability
@@ -50,6 +52,7 @@ from app.schemas.aryabhata import SIGNAL_TTL, DevigMethod, EdgeSignal, StakeBind
 MIN_EV = Decimal("0.005")  # below +0.5% EV a line is variance noise: discarded, never staked
 MAX_PLAUSIBLE_EV = Decimal("0.25")  # above +25% it is a stale or palpable-error quote, not an edge
 MIN_BOOKS = 2  # a consensus needs at least two independent books
+MAX_COMMISSION = Decimal("0.5")  # a commission rate at or above this prices the venue as worthless
 MIN_STAKE_PCT = Decimal("1")  # the Control Panel cap slider's range, enforced here too
 MAX_STAKE_PCT = Decimal("10")
 PAISA = Decimal("0.01")
@@ -352,22 +355,44 @@ def consensus_probabilities(books: Sequence[Mapping[str, Decimal]], labels: Sequ
 
 # ---------------------------------------------------------------- edge and stake
 @_exact
-def expected_value(true_prob: object, odds: object) -> Decimal | None:
-    """EV per unit staked: ``p * odds - 1`` (0.03 = +3%). None when either input is unusable."""
-    p, price = to_decimal(true_prob), to_decimal(odds)
-    if p is None or price is None or not _ZERO <= p <= _ONE or price <= _ONE:
+def net_odds(odds: object, commission: object = _ZERO) -> Decimal | None:
+    """What one unit returns after the venue's commission on the net win: ``(odds - 1) * (1 - c) + 1``.
+    None for unusable odds; a rate outside ``[0, 0.5)`` is a misconfiguration and prices nothing."""
+    price, rate = to_decimal(odds), to_decimal(commission)
+    if price is None or rate is None or price <= _ONE or not _ZERO <= rate < MAX_COMMISSION:
+        return None
+    return (price - _ONE) * (_ONE - rate) + _ONE
+
+
+@_exact
+def expected_value(true_prob: object, odds: object, commission: object = _ZERO) -> Decimal | None:
+    """EV per unit staked, net of commission: ``p * net_odds - 1`` (0.03 = +3%). None when an input
+    is unusable."""
+    p, price = to_decimal(true_prob), net_odds(odds, commission)
+    if p is None or price is None or not _ZERO <= p <= _ONE:
         return None
     return p * price - _ONE
 
 
 @_exact
-def kelly_fraction(true_prob: object, odds: object) -> Decimal:
-    """Full Kelly ``f* = (b*p - q) / b = (p*odds - 1) / (odds - 1)``; 0 for no edge or bad input."""
-    ev = expected_value(true_prob, odds)
-    price = to_decimal(odds)
+def kelly_fraction(true_prob: object, odds: object, commission: object = _ZERO) -> Decimal:
+    """Full Kelly on the net price ``f* = (b*p - q) / b`` with ``b = net_odds - 1``; 0 for no edge
+    or bad input."""
+    ev = expected_value(true_prob, odds, commission)
+    price = net_odds(odds, commission)
     if ev is None or price is None or ev <= _ZERO:
         return _ZERO
     return min(ev / (price - _ONE), _ONE)
+
+
+@_exact
+def break_even_odds(true_prob: object, commission: object = _ZERO, min_ev: Decimal = MIN_EV) -> Decimal | None:
+    """The lowest raw price at which ``p`` still clears ``min_ev`` net of commission:
+    ``1 + ((1 + min_ev) / p - 1) / (1 - c)``. None when no price can (p = 0, bad rate)."""
+    p, rate = to_decimal(true_prob), to_decimal(commission)
+    if p is None or rate is None or not _ZERO < p <= _ONE or not _ZERO <= rate < MAX_COMMISSION:
+        return None
+    return _ONE + ((_ONE + min_ev) / p - _ONE) / (_ONE - rate)
 
 
 @dataclass(frozen=True, slots=True)
@@ -557,9 +582,13 @@ def evaluate_market(
     ema: Mapping[str, EmaState] | None = None,
     steam_period_seconds: int = STEAM_PERIOD_SECONDS,
     steam_periods: int = STEAM_PERIODS,
+    commissions: Mapping[str, Decimal] | None = None,
 ) -> MarketEvaluation:
     """Consensus fair probabilities from every fresh book, then every line worth staking.
 
+    ``commissions`` (bookmaker id -> rate on net winnings, absent: none) prices each line as what it
+    actually pays: the best line is the best net price, and EV and Kelly are both net. De-vig reads
+    the raw prices: a commission is the winner's cost, not part of the market's implied probability.
     Only pre-match markets are priced: the sanctioned feeds are polled, so an in-play price is
     already stale by the time it arrives.
     """
@@ -616,11 +645,17 @@ def evaluate_market(
         if not lines:
             skipped["no_fresh_line"] += 1
             continue
-        # Best price; ties go to the sharper book (lower margin), then a stable bookmaker order
-        book, result = max(lines, key=lambda pair: (pair[0].prices[label], -pair[1].overround, pair[0].bookmaker_id))
+        rates = commissions or {}
+        payable = [(book, result, net) for book, result in lines if (net := net_odds(book.prices[label], rates.get(book.bookmaker_id, _ZERO))) is not None]
+        if not payable:
+            skipped["commission"] += 1
+            continue
+        # Best net price; ties go to the sharper book (lower margin), then a stable bookmaker order
+        book, result, _ = max(payable, key=lambda item: (item[2], -item[1].overround, item[0].bookmaker_id))
         price = book.prices[label]
+        commission = rates.get(book.bookmaker_id, _ZERO)
         p = consensus[label]
-        ev = expected_value(p, price)
+        ev = expected_value(p, price, commission)
         if ev is None or ev < MIN_EV:
             continue
         if ev > MAX_PLAUSIBLE_EV:
@@ -641,10 +676,11 @@ def evaluate_market(
                 bookmaker_id=book.bookmaker_id,
                 source=book.source,
                 odds=price,
+                commission=commission,
                 true_prob=true_prob,
                 ev=ev,
                 ev_percent=(ev * _HUNDRED).quantize(_EV_PCT_QUANTUM),
-                full_kelly=kelly_fraction(p, price),
+                full_kelly=kelly_fraction(p, price, commission),
                 devig_method=method,
                 overround=result.overround,
                 books=len(priced),

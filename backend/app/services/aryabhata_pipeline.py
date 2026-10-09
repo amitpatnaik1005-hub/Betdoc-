@@ -31,7 +31,7 @@ import logging
 import os
 import socket
 import time
-from collections.abc import Callable, Sequence
+from collections.abc import Awaitable, Callable, Iterable, Sequence
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
@@ -45,6 +45,7 @@ from redis.exceptions import RedisError, ResponseError
 from sqlalchemy import case, func, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from app.adapters.execution.venue import VenueConfig
 from app.core.config import Settings
 from app.domain.dashboard.summary_builder import SETTLED_STATUSES
 from app.models import BetLedger, ExchangeAccount
@@ -69,6 +70,7 @@ from app.services.aryabhata_engine import (
     recommend_stake,
     to_decimal,
 )
+from app.services.venue_costs import TermsTable
 
 logger = logging.getLogger("betdoc.aryabhata")
 
@@ -447,9 +449,11 @@ class AryabhataConsumer:
         *,
         name: str | None = None,
         clock: Callable[[], datetime] = _utcnow,
+        venues: Callable[[], Awaitable[Sequence[VenueConfig]]] | None = None,
     ) -> None:
         self.redis = redis
         self.settings = settings
+        self.venues = venues  # the execution venues: a venue row's own commission overrides the settings table
         self.keys = AryabhataKeys(settings.ARYABHATA_PREFIX)
         self.name = name or f"{socket.gethostname()}:{os.getpid()}"
         self.clock = clock
@@ -562,6 +566,7 @@ class AryabhataConsumer:
             )
             merged.append((quote, str(version), state, ema))
 
+        commissions = await self.commissions(state for _, _, state, _ in merged)
         now = self.clock()
         line_age = timedelta(seconds=self.settings.ARYABHATA_LINE_MAX_AGE_SECONDS)
         book_age = timedelta(seconds=self.settings.ARYABHATA_BOOK_MAX_AGE_SECONDS)
@@ -569,7 +574,14 @@ class AryabhataConsumer:
         evaluations = await asyncio.to_thread(
             lambda: [
                 evaluate_market(
-                    state, now=now, line_max_age=line_age, book_max_age=book_age, ema=ema, steam_period_seconds=period, steam_periods=periods
+                    state,
+                    now=now,
+                    line_max_age=line_age,
+                    book_max_age=book_age,
+                    ema=ema,
+                    steam_period_seconds=period,
+                    steam_periods=periods,
+                    commissions=commissions,
                 )
                 for _, _, state, ema in merged
             ]
@@ -600,6 +612,19 @@ class AryabhataConsumer:
         return evaluations
 
 
+    async def commissions(self, states: Iterable[MarketState]) -> dict[str, Decimal]:
+        """Each quoting bookmaker's commission on net winnings, resolved once per batch. Venues that
+        cannot be read leave the settings table in force: an exchange is never priced as free."""
+        venues: Sequence[VenueConfig] = ()
+        if self.venues is not None:
+            try:
+                venues = await self.venues()
+            except Exception:  # noqa: BLE001 - the venue table is an override, the settings rates still apply
+                logger.warning("Aryabhata: execution venues unreadable; commissions from settings", exc_info=True)
+        terms = TermsTable(self.settings, venues)
+        return {book.bookmaker_id: terms(book.bookmaker_id).commission for state in states for book in state.books}
+
+
 async def publish_hive_signals(redis: Redis, settings: Settings, edges: Sequence[EdgeSignal]) -> None:
     """Committed edges onto the Hive's stream (Group 65): its consumer group decides each once,
     whichever worker reads it. A missed append costs the bots one frame, never the commit."""
@@ -615,8 +640,8 @@ async def publish_hive_signals(redis: Redis, settings: Settings, edges: Sequence
         logger.warning("Aryabhata: %d edge(s) not handed to the Hive; Redis unavailable", len(edges))
 
 
-async def run_aryabhata(redis: Redis, settings: Settings) -> None:
-    await AryabhataConsumer(redis, settings).run()
+async def run_aryabhata(redis: Redis, settings: Settings, venues: Callable[[], Awaitable[Sequence[VenueConfig]]] | None = None) -> None:
+    await AryabhataConsumer(redis, settings, venues=venues).run()
 
 
 # ---------------------------------------------------------------- /ws/signals

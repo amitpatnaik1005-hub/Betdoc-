@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends
 
 from app.api.deps import get_current_user
-from app.api.v1 import auth, bet, exchange, ingestion, ws, execution, admin, odds, engine, capital, bet_calculator, oracle, vault, arena, market_signals, dashboard, the_wire, the_lab, the_hive, the_core, popular_picks, competitive_intel, oracle_scout, archive, control_panel, cfo_execution, sniper, portfolio, hive_trading
+from app.api.v1 import auth, bet, exchange, ingestion, ws, execution, admin, odds, engine, capital, bet_calculator, oracle, vault, arena, market_signals, dashboard, the_wire, the_lab, the_hive, the_core, popular_picks, competitive_intel, oracle_scout, archive, control_panel, cfo_execution, sniper, portfolio, hive_trading, lab_quant
 from app.api.v1 import bookmakers, cfo, human_touch, omni, omni_admin, omni_fleet, phantom, sports
 
 api_router = APIRouter(prefix="/api/v1")
@@ -48,3 +48,4 @@ api_router.include_router(cfo_execution.router, dependencies=_authenticated)  # 
 api_router.include_router(sniper.router, dependencies=_authenticated)  # /omni/venues, executions, dlq, sniper feed
 api_router.include_router(portfolio.router, dependencies=_authenticated)  # /omni/portfolio, hedge, arbitrage, fx-rates
 api_router.include_router(hive_trading.router, dependencies=_authenticated)  # /hive/trading: autonomous bots, registry, master halt
+api_router.include_router(lab_quant.router, dependencies=_authenticated)  # /lab/quant: backtests on the market history (Group 66)

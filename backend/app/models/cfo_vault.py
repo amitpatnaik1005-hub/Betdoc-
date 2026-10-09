@@ -49,6 +49,7 @@ MONEY = Numeric(18, 2)
 ODDS = Numeric(10, 4)
 PROBABILITY = Numeric(12, 10)
 PERCENT = Numeric(5, 2)
+RATE = Numeric(6, 4)  # a commission on net winnings, 0.0500 = 5%
 JsonColumn = JSON().with_variant(JSONB(), "postgresql")
 
 
@@ -140,6 +141,7 @@ class PhantomLedger(Base):
         CheckConstraint("stake_inr > 0", name="stake_positive"),
         CheckConstraint("odds > 1", name="odds_above_one"),
         CheckConstraint("potential_pnl >= 0", name="potential_pnl_non_negative"),
+        CheckConstraint("commission_rate >= 0 AND commission_rate < 0.5", name="commission_rate_range"),
         CheckConstraint(
             "(status IN ('PENDING', 'REQUIRES_MANUAL_INTERVENTION') AND settled_at IS NULL)"
             " OR (status NOT IN ('PENDING', 'REQUIRES_MANUAL_INTERVENTION') AND settled_at IS NOT NULL)",
@@ -167,7 +169,8 @@ class PhantomLedger(Base):
     stake_inr: Mapped[Decimal] = mapped_column(MONEY)
     odds: Mapped[Decimal] = mapped_column(ODDS)
     true_prob: Mapped[Decimal | None] = mapped_column(PROBABILITY, nullable=True)
-    potential_pnl: Mapped[Decimal] = mapped_column(MONEY)  # profit if it wins: stake * (odds - 1)
+    potential_pnl: Mapped[Decimal] = mapped_column(MONEY)  # profit if it wins: stake * (odds - 1) * (1 - commission_rate)
+    commission_rate: Mapped[Decimal] = mapped_column(RATE, default=Decimal(0), server_default="0")  # the venue's cut of the net win
     realized_pnl: Mapped[Decimal | None] = mapped_column(MONEY, nullable=True)
     status: Mapped[LedgerStatus] = mapped_column(_enum(LedgerStatus, "cfo_ledger_status"), default=LedgerStatus.PENDING)
     # The bookmaker's answer never arrived: the bet may be live, so its stake stays in exposure

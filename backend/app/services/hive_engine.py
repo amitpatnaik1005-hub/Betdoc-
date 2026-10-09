@@ -279,8 +279,8 @@ class HiveEngine:
                 session.add(
                     HiveShadowPosition(
                         user_id=bot.user_id, bot_id=bot.id, signal_id=edge.signal_id, fixture_id=edge.fixture_id, market=edge.market_type,
-                        selection=edge.selection, bookmaker_id=edge.bookmaker_id, odds=Decimal(edge.odds), stake_inr=proposal.stake,
-                        true_prob=proposal.conviction, created_at=self.clock(),
+                        selection=edge.selection, bookmaker_id=edge.bookmaker_id, odds=Decimal(edge.odds), commission_rate=Decimal(edge.commission),
+                        stake_inr=proposal.stake, true_prob=proposal.conviction, created_at=self.clock(),
                     )
                 )
                 await session.commit()
@@ -303,7 +303,7 @@ class HiveEngine:
         return OrderTicket(
             user_id=bot.user_id, idempotency_key=key, fixture_id=edge.fixture_id, market=edge.market_type, selection=edge.selection,
             bookmaker_id=edge.bookmaker_id, stake_inr=stake, odds=Decimal(edge.odds), true_prob=conviction, signal_id=edge.signal_id,
-            commence_time=edge.commence_time, strategy="hive", group_id=group, bot_id=bot.id,
+            commence_time=edge.commence_time, strategy="hive", group_id=group, bot_id=bot.id, commission=Decimal(edge.commission),
         )
 
     async def _execute(
@@ -311,7 +311,7 @@ class HiveEngine:
     ) -> Decision:
         async with self.session_factory() as session:
             limits = await load_limits(session, bot.user_id)
-        floor = slippage_floor(ticket.odds, conviction, limits.max_slippage_pct)
+        floor = slippage_floor(ticket.odds, conviction, limits.max_slippage_pct, ticket.commission)
         executor = TradeExecutor(self.session_factory, self.redis, self.settings, gateway, self.clock)
         try:
             receipt = await executor.execute_leg(ticket, min_odds=floor)
@@ -372,8 +372,10 @@ class HiveEngine:
         edge = await (active_edge or self._active_edge)(plan.fixture_id, plan.selection)
         async with self.session_factory() as session:
             limits = await load_limits(session, bot.user_id)
-        floor = slippage_floor(Decimal(plan.odds), Decimal(plan.true_prob), limits.max_slippage_pct)
-        if edge is None or edge.expires_at <= self.clock() or Decimal(edge.odds) < floor:
+        if edge is None or edge.expires_at <= self.clock():
+            return await cancel("EDGE_GONE")
+        floor = slippage_floor(Decimal(plan.odds), Decimal(plan.true_prob), limits.max_slippage_pct, Decimal(edge.commission))
+        if Decimal(edge.odds) < floor:
             return await cancel("EDGE_GONE")
         gateway = self.gateway_for(bot.execution_mode)
         if gateway is None:
@@ -575,7 +577,8 @@ class HiveEngine:
                 if result.is_void:
                     position.status, position.pnl_inr = ShadowStatus.VOID, ZERO
                 elif result.winning_selection == position.selection:
-                    position.status, position.pnl_inr = ShadowStatus.WON, (stake * (odds - ONE)).quantize(PAISA, rounding=ROUND_DOWN)
+                    net_win = stake * (odds - ONE) * (ONE - Decimal(position.commission_rate or ZERO))
+                    position.status, position.pnl_inr = ShadowStatus.WON, net_win.quantize(PAISA, rounding=ROUND_DOWN)
                 else:
                     position.status, position.pnl_inr = ShadowStatus.LOST, -stake
                 position.settled_at = now

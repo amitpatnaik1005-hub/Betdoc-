@@ -81,7 +81,8 @@ class EdgeSignal(BaseModel):
     commence_time: datetime | None = None
     bookmaker_id: str
     source: str
-    odds: ExactDecimal
+    odds: ExactDecimal  # the venue's raw price: what an order asks for
+    commission: ExactDecimal = Decimal(0)  # the venue's cut of net winnings; ev and full_kelly are net of it
     true_prob: ExactDecimal
     ev: ExactDecimal
     ev_percent: ExactDecimal
@@ -92,6 +93,11 @@ class EdgeSignal(BaseModel):
     timestamp: datetime
     expires_at: datetime
     is_steam_move: bool = False  # consensus spiked > 5% above its 60s EMA: sharp money is moving the line
+
+    @property
+    def net_odds(self) -> Decimal:
+        """What one unit returns after the venue's commission: ``(odds - 1) * (1 - commission) + 1``."""
+        return (self.odds - 1) * (1 - self.commission) + 1
 
     @property
     def key(self) -> str:

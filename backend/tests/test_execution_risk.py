@@ -282,7 +282,8 @@ async def test_partial_fill_response_scales_leg_b_down_before_it_fires(
     ledger = {row.selection: row for row in await rows(sessions)}
     assert (ledger["HOME"].stake_inr, ledger["HOME"].requested_stake_inr, ledger["HOME"].remote_bet_id) == (D("4000.00"), D("10000.00"), "BF-1001")
     assert ledger["HOME"].strategy == ledger["AWAY"].strategy == "arbitrage" and ledger["HOME"].group_id == ledger["AWAY"].group_id
-    assert ledger["HOME"].potential_pnl == D("4800.00")  # 4,000 * 1.20: the matched stake settles, not the asked one
+    # 4,000 * 1.20 * 0.95: the matched stake settles, not the asked one, net of Betfair's 5% (= 4,000 * 2.14 - 4,000)
+    assert ledger["HOME"].potential_pnl == D("4560.00")
     assert await bank(sessions, user_id) == (BANK - D("8000.00"), D("8000.00"))  # the unmatched ₹6,000 is back
 
 

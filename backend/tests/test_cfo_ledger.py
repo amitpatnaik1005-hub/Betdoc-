@@ -420,7 +420,8 @@ async def test_an_accepted_order_commits(sessions: async_sessionmaker[AsyncSessi
     request = order(stake="250.00", odds="2.50")
     receipt = await TradeExecutor(sessions, redis, settings, book.gateway(wire)).execute(opened, request)
     assert receipt.status == "EXECUTED" and receipt.remote_bet_id == "BK-77"
-    assert receipt.available_balance == D("9750.00") and receipt.exposure_balance == D("250.00") and receipt.potential_pnl == D("375.00")
+    # 250 * 1.50 = 375 gross; smarkets keeps 2% of the net win, so the ledger books 367.50
+    assert receipt.available_balance == D("9750.00") and receipt.exposure_balance == D("250.00") and receipt.potential_pnl == D("367.50")
     assert book.calls[0]["stake"] == "250.00" and book.calls[0]["client_ref"] == str(request.idempotency_key)
     assert await balances(sessions, opened) == (D("9750.00"), D("250.00"), D("10000.00"))
     async with sessions() as session:

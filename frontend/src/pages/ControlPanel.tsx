@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent } from 'react';
+import { lazy, Suspense, useEffect, useState, type FormEvent } from 'react';
 import { apiClient } from '../api/client';
 import { StakeCapPanel } from '../components/arena/StakeCapPanel';
 import { RiskManagement } from '../components/cfo/RiskManagement';
@@ -11,7 +11,7 @@ import { formatAgo, formatINR, formatRatioPct, humanize } from '../lib/format';
 import { runMutation, useResource } from '../lib/resource';
 import { useSystemStore } from '../store/useSystemStore';
 import { CommanderHero, MOTIFS } from '../ui/hero';
-import { Async, Button, ConfirmButton, EmptyState, Field, KeyValues, NumberInput, Page, Panel, Segmented, Pill, Select, StatusBadge, TextInput, Toggle, num } from '../ui/kit';
+import { Async, Button, ConfirmButton, EmptyState, Field, KeyValues, NumberInput, Page, Panel, Segmented, Pill, Select, Skeleton, StatusBadge, TextInput, Toggle, num } from '../ui/kit';
 
 // ---------------------------------------------------------------------------
 // CONTRACTS
@@ -20,13 +20,17 @@ interface BookmakerConfig { id: string; name: string; is_active: boolean; base_u
 interface SportConfig { id: string; sport_name: string; is_active: boolean; config: Record<string, unknown>; updated_at: string }
 interface OmniHealth { generated_at: string; total: number; active: number; degraded: number; open_circuits: number; redis_available: boolean; providers: { provider_id: string; provider_name: string; category_code: string; is_active: boolean; health_status: string; breaker_state: string; recent_failures: number | null }[] }
 
+// The Lab carries the charting library: loaded when its tab first opens, not with the Control Panel
+const QuantLab = lazy(() => import('../components/lab/QuantLab').then((m) => ({ default: m.QuantLab })));
+
 const SPORTS = ['cricket', 'basketball', 'tennis'] as const;
-type ControlTab = 'system' | 'risk' | 'portfolio' | 'hive' | 'terminal';
+type ControlTab = 'system' | 'risk' | 'portfolio' | 'hive' | 'lab' | 'terminal';
 const TABS = [
   { value: 'system', label: 'System', icon: 'tune' },
   { value: 'risk', label: 'Risk management', icon: 'shield_lock' },
   { value: 'portfolio', label: 'Active portfolio', icon: 'monitoring' },
   { value: 'hive', label: 'Hive bots', icon: 'hub' },
+  { value: 'lab', label: 'The Lab', icon: 'science' },
   { value: 'terminal', label: 'Execution terminal', icon: 'terminal' },
 ] as const;
 const EXCHANGES = ['Pinnacle', 'Betfair'] as const;
@@ -366,6 +370,10 @@ export const ControlPanel = () => {
         <ActivePortfolio />
       ) : tab === 'hive' ? (
         <HiveBots />
+      ) : tab === 'lab' ? (
+        <Suspense fallback={<div className="lg:col-span-12"><Skeleton rows={6} /></div>}>
+          <QuantLab />
+        </Suspense>
       ) : (
         <>
           <RiskManagement />

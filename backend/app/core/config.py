@@ -165,6 +165,17 @@ class Settings(BaseSettings):
     HIVE_EVENT_DEDUPE_SECONDS: int = Field(default=60, ge=1)  # one "skipped for the same reason" row per minute
     HIVE_HISTORY_POINTS: int = Field(default=60, ge=5)  # probability history the time-series models read
 
+    # The Lab (Group 66): quantitative backtests on the lab_hist_* market history
+    LAB_BACKTEST_EXECUTOR: Literal["inline", "celery"] = "inline"  # inline: a worker thread in the API process
+    LAB_MAX_CONCURRENT_RUNS: int = Field(default=2, ge=1, le=10)  # per user
+    LAB_RUN_STALE_SECONDS: int = Field(default=900, ge=60)  # a RUNNING run silent this long is marked FAILED
+    LAB_FX_MAX_AGE_HOURS: float = Field(default=96.0, gt=0)  # an older historical fixing hands over to the static map
+    # Simulation-only reference rates (INR per unit) for instants no historical fixing covers. Never
+    # used for a live order: live pricing fails closed without a current rate (app.services.fx_rates).
+    LAB_STATIC_FX_RATES: dict[str, str] = {
+        "GBP": "107.50", "EUR": "92.00", "USD": "84.00", "AUD": "55.50", "CAD": "61.50", "SEK": "8.40", "DKK": "12.30", "NOK": "8.10",
+    }
+
     # The Wire: public sports RSS feeds (no key needed)
     WIRE_NEWS_FEEDS: List[str] = [
         "https://feeds.bbci.co.uk/sport/rss.xml",

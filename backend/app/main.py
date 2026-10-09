@@ -90,7 +90,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     ]
     if settings.ARYABHATA_ENABLED:
         # Each worker joins the Aryabhata consumer group: every frame is priced once, wherever it lands
-        background.append(asyncio.create_task(run_aryabhata(redis, settings), name="aryabhata"))
+        background.append(asyncio.create_task(run_aryabhata(redis, settings, app.state.sniper.gateway.venues), name="aryabhata"))
     if settings.PORTFOLIO_STREAM_ENABLED:
         # One worker at a time (a Redis lease) marks every watched portfolio 5x a second and scans for arbs
         background.append(

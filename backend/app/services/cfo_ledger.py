@@ -120,9 +120,10 @@ def to_money(value: object, field_name: str = "amount") -> Decimal:
     return quantized
 
 
-def potential_profit(stake: Decimal, odds: Decimal) -> Decimal:
-    """Profit if the bet wins, rounded down to the paisa (the ledger never credits a fraction it can't pay)."""
-    return (stake * (odds - 1)).quantize(PAISA, rounding=ROUND_DOWN)
+def potential_profit(stake: Decimal, odds: Decimal, commission: Decimal = ZERO) -> Decimal:
+    """Profit if the bet wins, after the venue's commission on the net win, rounded down to the paisa
+    (the ledger never credits a fraction it can't pay)."""
+    return (stake * (odds - 1) * (1 - commission)).quantize(PAISA, rounding=ROUND_DOWN)
 
 
 def _utcnow() -> datetime:
@@ -270,6 +271,7 @@ class OrderTicket:
     currency: str = "INR"  # the venue account's currency
     stake_ccy: Decimal | None = None  # the stake in that currency (None: an INR venue, stake_inr itself)
     bot_id: uuid.UUID | None = None  # a Hive bot's order: reserved and settled inside its sub-account
+    commission: Decimal | None = None  # the venue's cut of net winnings (None: the executor resolves it from the venue terms)
 
 
 async def reserve(session: AsyncSession, account: BankrollAccount, ticket: OrderTicket) -> PhantomLedger:
@@ -279,6 +281,9 @@ async def reserve(session: AsyncSession, account: BankrollAccount, ticket: Order
         raise CfoError("INVALID_STAKE", "Stake must be positive")
     if ticket.odds <= 1:
         raise CfoError("INVALID_ODDS", "Odds must be greater than 1")
+    commission = ticket.commission if ticket.commission is not None else ZERO
+    if not ZERO <= commission < Decimal("0.5"):
+        raise CfoError("INVALID_COMMISSION", "A commission rate must be in [0, 0.5)")
     if account.bot_id != ticket.bot_id or account.user_id != ticket.user_id:
         raise LedgerInvariantError("WRONG_ACCOUNT", "An order reserves only in its own account")
     if stake > account.available_balance:
@@ -305,7 +310,8 @@ async def reserve(session: AsyncSession, account: BankrollAccount, ticket: Order
         stake_inr=stake,
         odds=ticket.odds,
         true_prob=ticket.true_prob,
-        potential_pnl=potential_profit(stake, ticket.odds),
+        potential_pnl=potential_profit(stake, ticket.odds, commission),
+        commission_rate=commission,
         status=LedgerStatus.PENDING,
         commence_time=ticket.commence_time,
         strategy=ticket.strategy,
@@ -340,7 +346,7 @@ def reduce_to_fill(session: AsyncSession, account: BankrollAccount, entry: Phant
     entry.stake_inr = filled
     if entry.stake_ccy is not None and filled_ccy is not None:
         entry.stake_ccy = filled_ccy
-    entry.potential_pnl = potential_profit(filled, entry.odds)
+    entry.potential_pnl = potential_profit(filled, entry.odds, entry.commission_rate or ZERO)
     return unfilled
 
 

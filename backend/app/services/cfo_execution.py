@@ -46,7 +46,7 @@ from app.domain.math.arbitrage_calc import HOME_CURRENCY, from_inr, leg_cost_inr
 from app.models.cfo_vault import AuditEvent, AuditLog, BankrollAccount
 from app.schemas.aryabhata import EdgeSignal
 from app.schemas.cfo_vault import ExecuteTradeRequest, ExecutionReceipt
-from app.services.aryabhata_engine import MAX_STAKE_PCT, MIN_EV, MIN_STAKE_PCT, RiskLimits
+from app.services.aryabhata_engine import MAX_STAKE_PCT, MIN_EV, MIN_STAKE_PCT, RiskLimits, break_even_odds
 from app.services.aryabhata_pipeline import AryabhataKeys, load_risk_limits
 from app.services.bookmaker_gateway import BookmakerGateway, BookmakerOrder, BookmakerOutcome, BookmakerResult
 from app.services.cfo_ledger import (
@@ -76,12 +76,15 @@ _ODDS_QUANTUM = Decimal("0.0001")
 _PAISA = Decimal("0.01")
 
 
-def slippage_floor(odds: Decimal, true_prob: Decimal | None, max_slippage_pct: Decimal) -> Decimal:
+def slippage_floor(odds: Decimal, true_prob: Decimal | None, max_slippage_pct: Decimal, commission: Decimal | None = None) -> Decimal:
     """``min_acceptable_odds``: the slippage tolerance below the requested price, but never below the
-    price where the edge would drop under Aryabhata's +0.5% EV floor, and never above the request."""
+    price where the edge, net of the venue's commission, would drop under Aryabhata's +0.5% EV floor,
+    and never above the request."""
     floor = odds * (1 - max(max_slippage_pct, Decimal(0)) / _HUNDRED)
     if true_prob is not None and true_prob > 0:
-        floor = max(floor, (1 + MIN_EV) / true_prob)
+        even = break_even_odds(true_prob, commission or Decimal(0), MIN_EV)
+        if even is not None:
+            floor = max(floor, even)
     return min(odds, floor.quantize(_ODDS_QUANTUM, rounding=ROUND_UP))
 
 
@@ -188,11 +191,12 @@ class TradeExecutor:
                 if ticket.commence_time is None and edge is not None and edge.commence_time is not None:
                     ticket = replace(ticket, commence_time=edge.commence_time)
             ticket = await self._in_venue_currency(ticket)  # betslip and Hive orders; multi-leg tickets carry their own
+            ticket = await self._with_commission(ticket)
             report, guard_limits = await self._pre_guards(ticket, risk_reducing)
             limits = await load_risk_limits(self.redis, self.session_factory, self.settings)
             self._check_limits(ticket, limits, equity=None, risk_reducing=risk_reducing)
             if min_odds is None:
-                min_odds = slippage_floor(ticket.odds, ticket.true_prob, guard_limits.max_slippage_pct)
+                min_odds = slippage_floor(ticket.odds, ticket.true_prob, guard_limits.max_slippage_pct, ticket.commission)
             if not 1 < min_odds <= ticket.odds:
                 raise CfoError("INVALID_PRICE_FLOOR", "The price floor must be above 1 and no higher than the asked price", status_code=422)
             order = BookmakerOrder(
@@ -289,6 +293,15 @@ class TradeExecutor:
             raise CfoError("INVALID_STAKE", f"The stake is less than one {currency} unit", status_code=422)
         return replace(ticket, currency=currency, stake_ccy=stake_ccy, stake_inr=leg_cost_inr(stake_ccy, quote))
 
+    async def _with_commission(self, ticket: OrderTicket) -> OrderTicket:
+        """The venue's commission on net winnings, from its terms (a venue row, else the settings
+        table): the ledger books the profit net of it, so paper P&L is what the venue would pay."""
+        if ticket.commission is not None:
+            return ticket
+        venue_for = getattr(self.gateway, "venue_for", None)
+        venue = await venue_for(ticket.bookmaker_id) if venue_for is not None else None
+        return replace(ticket, commission=bookmaker_terms(ticket.bookmaker_id, self.settings, venue).commission)
+
     # -------------------------------------------------------------- 2. the five guards + stake limits
     async def _pre_guards(self, ticket: OrderTicket, risk_reducing: bool = False) -> tuple[GuardReport, GuardLimits]:
         async with self.session_factory() as session:
@@ -344,7 +357,7 @@ class TradeExecutor:
                     entry.remote_bet_id = result.reference  # the receipt: how the resolver finds this bet again
                     if result.matched_odds is not None and result.matched_odds != entry.odds:
                         entry.odds = result.matched_odds  # the price actually struck is the one that settles
-                        entry.potential_pnl = potential_profit(entry.stake_inr, result.matched_odds)
+                        entry.potential_pnl = potential_profit(entry.stake_inr, result.matched_odds, entry.commission_rate or Decimal(0))
                     filled = filled_inr(order, result)
                     if filled is not None and filled < entry.stake_inr:
                         reduce_to_fill(session, account, entry, filled, result.filled_stake)  # the unmatched rest lapsed: back to AVAILABLE
