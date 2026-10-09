@@ -176,6 +176,32 @@ class Settings(BaseSettings):
         "GBP": "107.50", "EUR": "92.00", "USD": "84.00", "AUD": "55.50", "CAD": "61.50", "SEK": "8.40", "DKK": "12.30", "NOK": "8.10",
     }
 
+    # Nalanda (Group 67): the tick lake and the hash-chained settlement warehouse
+    NALANDA_ENABLED: bool = True
+    NALANDA_PREFIX: str = "nalanda"  # Redis keys: <prefix>:firehose (stream), :stats, :leader, :verify
+    NALANDA_STREAM_MAXLEN: int = Field(default=2_000_000, ge=10_000)  # approximate: a firehose outage this long loses the oldest
+    NALANDA_BATCH: int = Field(default=2_000, ge=10, le=50_000)  # stream entries per bulk insert
+    NALANDA_WEEKS_AHEAD: int = Field(default=8, ge=2, le=52)  # weekly partitions kept pre-allocated
+    NALANDA_ROLLUP_AFTER_DAYS: int = Field(default=30, ge=1)  # ticks older than this are rolled into 1-minute candles
+    NALANDA_COLD_AFTER_DAYS: int = Field(default=90, ge=7)  # tick partitions older than this go to Parquet and leave PostgreSQL
+    NALANDA_CANDLE_RETENTION_DAYS: int = Field(default=730, ge=30)  # candles older than this go to Parquet too
+    NALANDA_ARCHIVE_DIR: str = "data/archive"  # the Parquet cold tier and the chain anchors (relative to the backend)
+    NALANDA_S3_BUCKET: str | None = None  # set to mirror the cold tier (scripts/s3_mirror.py); unset: local only
+    NALANDA_S3_PREFIX: str = "nalanda"
+    NALANDA_REQUIRE_MIRROR_BEFORE_DROP: bool = False  # True: a partition leaves PostgreSQL only once its file is mirrored
+    NALANDA_VACUUM_MIN_DEAD_TUPLES: int = Field(default=1_000, ge=0)
+    NALANDA_READ_WORK_MEM: str = Field(default="32MB", pattern=r"^\d{1,6}(kB|MB|GB)$")  # per-sort memory for a forensic read
+    NALANDA_READ_STATEMENT_TIMEOUT_MS: int = Field(default=30_000, ge=1_000)
+    NALANDA_READ_POOL_SIZE: int = Field(default=4, ge=1, le=50)  # reads never borrow the writers' connections
+    NALANDA_READ_DATABASE_URL: SecretStr | None = None  # a replica for reads; unset: the primary, on its own pool
+    NALANDA_ANOMALY_WINDOW: int = Field(default=20, ge=5, le=500)  # recent prices a tick is scored against
+    NALANDA_ANOMALY_Z: float = Field(default=4.0, gt=1)  # |z| of log-odds that makes a tick a suspect
+    NALANDA_ANOMALY_MIN_JUMP: float = Field(default=0.25, gt=0)  # and a log-odds jump at least this big (~28%)
+    NALANDA_ANOMALY_HOLD_SECONDS: float = Field(default=3.0, gt=0)  # a suspect that reverts within this is a ghost spike
+    NALANDA_MIRROR_INTERVAL_SECONDS: float = Field(default=60.0, ge=5)  # the ledger mirror sweep
+    NALANDA_MIRROR_OVERLAP_SECONDS: int = Field(default=300, ge=0)  # re-read behind the watermark: late commits are never missed
+    NALANDA_MIRROR_BATCH: int = Field(default=5_000, ge=100)
+
     # The Wire: public sports RSS feeds (no key needed)
     WIRE_NEWS_FEEDS: List[str] = [
         "https://feeds.bbci.co.uk/sport/rss.xml",

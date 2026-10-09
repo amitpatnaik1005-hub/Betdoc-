@@ -65,7 +65,9 @@ from app.services.cfo_ledger import (
 )
 from app.services.fx_rates import FxRates, FxUnavailableError
 from app.services.portfolio_positions import mark_positions_dirty
+from app.services.nalanda_chain import ArchiveRecord
 from app.services.venue_costs import bookmaker_terms
+from app.workers.nalanda_firehose import emit_record_soon
 from app.services.risk_guard import GuardLimits, GuardReport, RiskGuard, RiskGuardViolation, load_limits
 
 logger = logging.getLogger("betdoc.cfo")
@@ -439,13 +441,29 @@ class TradeExecutor:
         }
         if outcome.error is not None:
             event = AuditEvent.COMMIT_FAILED if outcome.error.reason == "LEDGER_COMMIT_FAILED" else AuditEvent.BOOKMAKER_REJECTED
+            self._archive_response(event, ticket, result, outcome.ledger_id, detail)
             await self._record(self._audit(event, outcome.error.reason, ticket, ledger_id=outcome.ledger_id, detail=detail))
             outcome.error.audited = True
             raise outcome.error
         assert outcome.receipt is not None
         event = AuditEvent.EXECUTED if result.outcome is BookmakerOutcome.ACCEPTED else AuditEvent.EXECUTION_UNKNOWN
+        self._archive_response(event, ticket, result, outcome.ledger_id, detail)
         await self._record(self._audit(event, result.reason, ticket, ledger_id=outcome.ledger_id, detail=detail))
         return outcome.receipt
+
+    def _archive_response(self, event: AuditEvent, ticket: OrderTicket, result: BookmakerResult, ledger_id: uuid.UUID | None, detail: dict[str, Any]) -> None:
+        """The bookmaker's answer, verbatim, straight to Nalanda's warehouse (fire-and-forget: the order
+        path never waits on it; the audit row the mirror copies is the second, durable path)."""
+        emit_record_soon(
+            self.redis, self.settings,
+            ArchiveRecord(
+                "BOOKMAKER_RESPONSE", f"bookmaker:{result.venue_id or ticket.bookmaker_id}", f"{ticket.idempotency_key}:{event}:{result.reason}"[:160],
+                {**detail, "event": event, "reason": result.reason, "outcome": result.outcome, "bookmaker_id": ticket.bookmaker_id, "fixture_id": ticket.fixture_id,
+                 "market": ticket.market, "selection": ticket.selection, "odds": ticket.odds, "stake_inr": ticket.stake_inr, "stake_ccy": ticket.stake_ccy,
+                 "currency": ticket.currency, "commission": ticket.commission, "idempotency_key": ticket.idempotency_key},
+                user_id=ticket.user_id, bot_id=ticket.bot_id, ledger_id=ledger_id, fixture_id=ticket.fixture_id, amount_inr=ticket.stake_inr, occurred_at=self.clock(),
+            ),
+        )
 
     # -------------------------------------------------------------- helpers
     async def _record(self, row: AuditLog, *, required: bool = False) -> None:

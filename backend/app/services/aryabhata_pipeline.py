@@ -71,6 +71,7 @@ from app.services.aryabhata_engine import (
     to_decimal,
 )
 from app.services.venue_costs import TermsTable
+from app.workers.nalanda_firehose import emit_quotes
 
 logger = logging.getLogger("betdoc.aryabhata")
 
@@ -166,9 +167,19 @@ def _token(value: str) -> str:
 
 # ---------------------------------------------------------------- producers
 async def publish_market_quotes(redis: Redis | None, quotes: Sequence[MarketQuote], settings: Settings) -> bool:
-    """XADD frames for the engine. Never raises: a missed frame costs one signal, not an ingestion run."""
-    if redis is None or not quotes or not settings.ARYABHATA_ENABLED:
+    """XADD frames for the engine, and the same frames to Nalanda's firehose (Group 67: the tick lake).
+    Never raises: a missed frame costs one signal, not an ingestion run."""
+    if redis is None or not quotes:
         return redis is not None
+    try:
+        return await _publish_frames(redis, quotes, settings)
+    finally:
+        await emit_quotes(redis, settings, quotes)  # its own round trip, after the engine's; never raises
+
+
+async def _publish_frames(redis: Redis, quotes: Sequence[MarketQuote], settings: Settings) -> bool:
+    if not settings.ARYABHATA_ENABLED:
+        return True
     keys = AryabhataKeys(settings.ARYABHATA_PREFIX)
     try:
         async with asyncio.timeout(_REDIS_TIMEOUT_SECONDS):

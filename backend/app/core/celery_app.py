@@ -12,6 +12,7 @@ intervals live in Fleet Command, so the schedule itself stays fixed) and the quo
 from __future__ import annotations
 
 from celery import Celery
+from celery.schedules import crontab
 from celery.signals import setup_logging
 from kombu import Queue
 
@@ -26,7 +27,7 @@ FLEET_TICK_SECONDS = 5.0
 celery_app = Celery(
     "betdoc_omni",
     broker=_settings.celery_broker_url.get_secret_value(),
-    include=["app.workers.omni_poller", "app.workers.omni_quorum", "app.workers.cfo_settlement", "app.workers.sniper", "app.workers.hive_worker", "app.workers.lab_worker"],
+    include=["app.workers.omni_poller", "app.workers.omni_quorum", "app.workers.cfo_settlement", "app.workers.sniper", "app.workers.hive_worker", "app.workers.lab_worker", "app.workers.nalanda_maintenance"],
 )
 
 celery_app.conf.update(
@@ -73,6 +74,16 @@ celery_app.conf.update(
             "schedule": 60.0,  # well inside the 5-minute refresh margin
             "options": {"expires": 60.0},
         },
+        # Nalanda (Group 67): partitions ahead of need, the archive's upkeep, the cold tier
+        "nalanda-preallocate-partitions": {"task": "nalanda.preallocate_partitions", "schedule": crontab(minute=5, hour=0, day_of_week="sun")},
+        "nalanda-vacuum-partitions": {"task": "nalanda.vacuum_partitions", "schedule": crontab(minute=30, hour=3)},
+        "nalanda-compress-historical-ticks": {"task": "nalanda.compress_historical_ticks", "schedule": crontab(minute=15, hour=2)},
+        "nalanda-mirror-ledger": {
+            "task": "nalanda.mirror_ledger",
+            "schedule": _settings.NALANDA_MIRROR_INTERVAL_SECONDS,
+            "options": {"expires": _settings.NALANDA_MIRROR_INTERVAL_SECONDS},
+        },
+        "nalanda-anchor-chain": {"task": "nalanda.anchor_chain", "schedule": crontab(minute=0)},
     },
 )
 

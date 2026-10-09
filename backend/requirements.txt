@@ -26,3 +26,4 @@ psutil>=5.9  # Core engine telemetry (process CPU / memory)
 numpy>=1.26.0
 scipy>=1.11.0
 scikit-learn>=1.5
+pyarrow>=21  # Nalanda's cold tier: Parquet files

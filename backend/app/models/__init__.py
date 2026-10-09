@@ -223,3 +223,6 @@ from app.models.cfo_vault import AuditLog, BankrollAccount, LedgerEntry, MarketR
 from app.models.execution import EntityMapping, ExecutionVenue  # noqa: E402,F401
 from app.models.hive_bots import HiveBotEvent, HiveOrderPlan, HiveShadowPosition, TradingBot  # noqa: E402,F401
 from app.models.lab_quant import LabBacktestRun, LabFixture, LabFixtureResult, LabFxRate, LabOddsTick  # noqa: E402,F401
+from app.models.nalanda_lake import (  # noqa: E402,F401
+    ChainState, ColdExport, MaintenanceLog, MirrorCursor, MirrorIndex, NalandaCandle, NalandaTick, RollupLog, SettlementArchive,
+)

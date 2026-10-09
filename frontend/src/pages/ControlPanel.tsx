@@ -22,15 +22,17 @@ interface OmniHealth { generated_at: string; total: number; active: number; degr
 
 // The Lab carries the charting library: loaded when its tab first opens, not with the Control Panel
 const QuantLab = lazy(() => import('../components/lab/QuantLab').then((m) => ({ default: m.QuantLab })));
+const NalandaArchive = lazy(() => import('../components/nalanda/NalandaArchive').then((m) => ({ default: m.NalandaArchive })));
 
 const SPORTS = ['cricket', 'basketball', 'tennis'] as const;
-type ControlTab = 'system' | 'risk' | 'portfolio' | 'hive' | 'lab' | 'terminal';
+type ControlTab = 'system' | 'risk' | 'portfolio' | 'hive' | 'lab' | 'nalanda' | 'terminal';
 const TABS = [
   { value: 'system', label: 'System', icon: 'tune' },
   { value: 'risk', label: 'Risk management', icon: 'shield_lock' },
   { value: 'portfolio', label: 'Active portfolio', icon: 'monitoring' },
   { value: 'hive', label: 'Hive bots', icon: 'hub' },
   { value: 'lab', label: 'The Lab', icon: 'science' },
+  { value: 'nalanda', label: 'Nalanda archive', icon: 'account_balance' },
   { value: 'terminal', label: 'Execution terminal', icon: 'terminal' },
 ] as const;
 const EXCHANGES = ['Pinnacle', 'Betfair'] as const;
@@ -373,6 +375,10 @@ export const ControlPanel = () => {
       ) : tab === 'lab' ? (
         <Suspense fallback={<div className="lg:col-span-12"><Skeleton rows={6} /></div>}>
           <QuantLab />
+        </Suspense>
+      ) : tab === 'nalanda' ? (
+        <Suspense fallback={<div className="lg:col-span-12"><Skeleton rows={6} /></div>}>
+          <NalandaArchive />
         </Suspense>
       ) : (
         <>

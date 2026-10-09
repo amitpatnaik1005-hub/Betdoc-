@@ -28,6 +28,8 @@ from app.core.live_odds import run_live_odds_relay
 from app.services.aryabhata_pipeline import run_aryabhata
 from app.services.portfolio_stream import run_portfolio_publisher
 from app.workers.hive_worker import run_hive_worker
+from app.workers.nalanda_firehose import run_nalanda_firehose
+from app.workers.nalanda_maintenance import Housekeeper
 from app.services.bookmaker_gateway import PaperBookmaker
 from app.services.sniper_runtime import build_sniper_runtime, ensure_sandbox_venue
 from app.core.websockets import manager as live_odds_manager
@@ -102,6 +104,11 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         # The Hive: every worker joins the bots' consumer group (each signal decided once); one leads maintenance
         live_gateway = app.state.sniper.gateway if settings.CFO_EXECUTION_MODE == "live" else None
         background.append(asyncio.create_task(run_hive_worker(redis, AsyncSessionLocal, settings, live_gateway), name="hive-worker"))
+    if settings.NALANDA_ENABLED:
+        # Nalanda: one process at a time (a lease) drains the tick firehose into the lake; the housekeeper
+        # mirrors the CFO ledger into the hash chain, anchors it and keeps partitions pre-allocated
+        background.append(asyncio.create_task(run_nalanda_firehose(redis, AsyncSessionLocal, settings), name="nalanda-firehose"))
+        background.append(asyncio.create_task(Housekeeper(engine, AsyncSessionLocal, redis, settings).run(), name="nalanda-housekeeper"))
     if settings.OMNI_FLEET_INPROCESS_FALLBACK:
         # Runs ingestion here only while no Celery worker heartbeats; replaces the old odds poller loop
         background.append(asyncio.create_task(run_inprocess_fallback(app.state.fleet_deps), name="fleet-fallback"))
