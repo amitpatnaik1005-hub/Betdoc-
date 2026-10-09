@@ -41,7 +41,7 @@ from app.services.aryabhata_engine import BookLine, EmaState, MarketState, evalu
 from app.services.backtesting.fx_router import HistoricalFxRouter
 from app.services.backtesting.time_lock import AS_OF, DataLeakageError, SimulationClock, install_time_lock
 from app.services.fx_rates import FxUnavailableError
-from app.services.hive_pipeline import LiveMarket, MarketReadings
+from app.services.hive_pipeline import LiveMarket, MarketReadings, flash_swing
 
 LABELS: dict[str, tuple[str, ...]] = {"Match Odds": ("HOME", "DRAW", "AWAY"), "Over/Under 2.5": ("OVER", "UNDER")}
 SOURCE = "lab"
@@ -369,18 +369,20 @@ class ReplayEngine:
         return stream
 
     def _shock(self, cell: str, points: list[tuple[datetime, float]], now: datetime, window: timedelta, last: dict[str, datetime]) -> MarketShock | None:
-        recent = [p for at, p in points if now - at <= window and 0.0 < p < 1.0]
-        if len(recent) < self.settings.HIVE_FLASH_MIN_POINTS:
-            return None
-        low, high = min(recent), max(recent)
-        swing = (high - low) / low * 100
-        if swing <= self.settings.HIVE_FLASH_THRESHOLD_PCT:
+        recent = [p for at, p in points if now - at <= window]
+        swing = flash_swing(
+            recent,
+            threshold_pct=self.settings.HIVE_FLASH_THRESHOLD_PCT,
+            min_points=self.settings.HIVE_FLASH_MIN_POINTS,
+            min_probability=self.settings.HIVE_FLASH_MIN_PROBABILITY,
+        )
+        if swing is None:
             return None
         previous = last.get(cell)
         if previous is not None and now - previous <= window:
             return None  # the same shock, still inside its window
         last[cell] = now
-        return MarketShock(now, cell, round(swing, 2), low, high, len(recent))
+        return MarketShock(now, cell, round(swing.swing_pct, 2), swing.low, swing.high, swing.points)
 
     @staticmethod
     def _volume(books: Mapping[str, Mapping[str, TickRow]], quoting: Sequence[BookLine], selection: str, router: HistoricalFxRouter) -> Decimal | None:

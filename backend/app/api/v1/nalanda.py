@@ -36,6 +36,7 @@ from app.services import nalanda_query as q
 from app.services.nalanda_chain import RECORD_KINDS, anchor_path, read_anchors, verify_chain
 from app.services.nalanda_mirror import rebuild_financial_state, sweep
 from app.services.nalanda_tiering import archive_root
+from app.services.sentinel_watch import watch_ledger
 from app.workers.nalanda_firehose import NalandaKeys
 from app.workers.nalanda_maintenance import TASKS, run_maintenance
 
@@ -173,6 +174,7 @@ async def verify_ledger(request: Request, user: CurrentUser, reader: ReadSession
             await redis.set(key, json.dumps(report))
         except (RedisError, OSError):
             pass
+    await watch_ledger(redis, settings, report)  # a broken chain is the Sentinel's FATAL
     return {**report, "cached": False}
 
 

@@ -48,6 +48,7 @@ from app.core.security_vault import (
 )
 from app.services.omni_fleet import Action, FleetDeps, fleet_tick as plan_and_dispatch, run_source
 from app.services.omni_quorum_buffer import buffer_event_sync
+from app.services.sentinel_health import beat
 from app.models.omni_vault import (
     WS_STRATEGIES,
     OmniAuthStrategy,
@@ -534,6 +535,7 @@ async def _tick() -> dict[str, Any]:
     async with _fleet_deps() as deps:
         with contextlib.suppress(RedisError, OSError):
             await deps.redis.set(_keys.fleet_heartbeat(), "1", ex=int(_settings.OMNI_FLEET_HEARTBEAT_SECONDS))
+        await beat(deps.redis, _settings, runner="celery")  # Garuda's heartbeat for the Sentinel's dead man's switch
 
         async def enqueue(source_id: str, scope: list[str], action: Action, interval: float) -> None:
             # expires: a run no worker picks up within one interval is dropped, never burst later

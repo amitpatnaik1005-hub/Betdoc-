@@ -80,6 +80,36 @@ _P_FLOOR, _P_CEIL = 0.001, 0.999
 MIN_RISK_HISTORY = 5  # settled bets before a returns-based risk model has a view
 
 
+# ---------------------------------------------------------------- flash crash
+@dataclass(frozen=True, slots=True)
+class FlashSwing:
+    swing_pct: float
+    low: float
+    high: float
+    points: int
+
+
+def flash_swing(probabilities: Sequence[float], *, threshold_pct: float, min_points: int, min_probability: float) -> FlashSwing | None:
+    """A consensus-probability swing big enough to halt every bot, or None.
+
+    The swing is relative, ``(high - low) / low``, so a longshot's ordinary drift (3% -> 4% is +33%)
+    would read as a crash. Only a selection the market rates at ``min_probability`` or more at some
+    point in the window (``HIVE_FLASH_MIN_PROBABILITY``, 10%: decimal odds 10.0 or shorter) can
+    trigger one; a favourite collapsing below 10% still counts, because its high is above the floor.
+    The live scan (``HiveEngine.flash_crash_scan``) and the backtester (``ReplayEngine._shock``) both
+    decide with this function, so a backtest halts exactly where production would."""
+    clean = [p for p in probabilities if math.isfinite(p) and 0.0 < p < 1.0]
+    if len(clean) < min_points:
+        return None
+    low, high = min(clean), max(clean)
+    if high < min_probability:
+        return None
+    swing = (high - low) / low * 100
+    if swing <= threshold_pct:
+        return None
+    return FlashSwing(swing, low, high, len(clean))
+
+
 # ---------------------------------------------------------------- inputs
 @dataclass(frozen=True, slots=True)
 class LiveMarket:

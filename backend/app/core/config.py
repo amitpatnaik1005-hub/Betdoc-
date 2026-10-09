@@ -1,3 +1,4 @@
+from decimal import Decimal
 from functools import lru_cache
 from typing import Literal, List
 
@@ -157,6 +158,8 @@ class Settings(BaseSettings):
     HIVE_FLASH_WINDOW_SECONDS: float = Field(default=120.0, ge=10)
     HIVE_FLASH_THRESHOLD_PCT: float = Field(default=15.0, gt=0, le=100)  # consensus swing that halts every bot
     HIVE_FLASH_MIN_POINTS: int = Field(default=3, ge=2)
+    # Only selections priced at 10% or more (decimal odds <= 10.0) can trip it: a longshot's relative swing is noise
+    HIVE_FLASH_MIN_PROBABILITY: float = Field(default=0.10, gt=0, lt=1)
     HIVE_SCAN_INTERVAL_SECONDS: float = Field(default=5.0, ge=1)  # flash-crash scan, breakers, shadow grading
     HIVE_SLICE_DELAY_MIN_SECONDS: int = Field(default=60, ge=1)
     HIVE_SLICE_DELAY_MAX_SECONDS: int = Field(default=120, ge=1)
@@ -201,6 +204,30 @@ class Settings(BaseSettings):
     NALANDA_MIRROR_INTERVAL_SECONDS: float = Field(default=60.0, ge=5)  # the ledger mirror sweep
     NALANDA_MIRROR_OVERLAP_SECONDS: int = Field(default=300, ge=0)  # re-read behind the watermark: late commits are never missed
     NALANDA_MIRROR_BATCH: int = Field(default=5_000, ge=100)
+
+    # The Sentinel (Group 68): alert bus, dependency health, dead man's switch, outbound dispatchers.
+    # Channel credentials live in the database, encrypted with MASTER_VAULT_KEY (Control Panel, Sentinel tab).
+    SENTINEL_ENABLED: bool = True
+    SENTINEL_STREAM: str = "sentinel_alerts"  # the Redis stream every alert lands on; pub/sub fan-out on <stream>:live
+    SENTINEL_PREFIX: str = "sentinel"  # every other Sentinel key
+    SENTINEL_STREAM_MAXLEN: int = Field(default=20_000, ge=100)
+    SENTINEL_DEBOUNCE_SECONDS: float = Field(default=30.0, ge=1)  # at most one CRITICAL message per channel per window
+    SENTINEL_HEALTH_INTERVAL_SECONDS: float = Field(default=30.0, ge=5)  # Postgres, Redis and bookmaker APIs
+    SENTINEL_HEALTH_TIMEOUT_SECONDS: float = Field(default=3.0, gt=0)
+    SENTINEL_HEALTH_REMIND_SECONDS: float = Field(default=900.0, ge=60)  # a dependency still down is re-raised this often
+    SENTINEL_HEARTBEAT_SECONDS: float = Field(default=5.0, gt=0)  # Garuda (the ingestion fleet) beats this often
+    SENTINEL_LIVENESS_TIMEOUT_SECONDS: float = Field(default=60.0, ge=10)  # silent this long = FATAL
+    SENTINEL_SOURCE_STALE_INTERVALS: float = Field(default=10.0, ge=2)  # a source with no success in this many intervals is down
+    SENTINEL_WHALE_STAKE_INR: Decimal = Field(default=Decimal("50000"), gt=0)  # one order this big is a whale
+    SENTINEL_MARGIN_UTILISATION: Decimal = Field(default=Decimal("0.90"), gt=0, le=1)  # exposure / equity that is a margin call
+    SENTINEL_HYPE_HOUR: int = Field(default=8, ge=0, le=23)  # the daily market forecast, local time
+    SENTINEL_HYPE_MINUTE: int = Field(default=0, ge=0, le=59)
+    SENTINEL_TIMEZONE: str = "Asia/Kolkata"
+    SENTINEL_HYPE_MIN_FIXTURES: int = Field(default=6, ge=1)  # a day worth hyping: this many fixtures today ...
+    SENTINEL_HYPE_MIN_TOTAL_EV_PCT: Decimal = Field(default=Decimal("8"), gt=0)  # ... and live edges worth this much EV, summed
+    SENTINEL_HYPE_MIN_STEAM_MOVES: int = Field(default=3, ge=1)  # or sharp money moving this many lines
+    SENTINEL_HTTP_TIMEOUT_SECONDS: float = Field(default=8.0, gt=0)
+    SENTINEL_RESUME_CONFIRM_SECONDS: int = Field(default=120, ge=15)  # a Telegram /resume needs its code back within this
 
     # The Wire: public sports RSS feeds (no key needed)
     WIRE_NEWS_FEEDS: List[str] = [

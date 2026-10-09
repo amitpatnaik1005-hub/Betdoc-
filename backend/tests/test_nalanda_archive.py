@@ -63,7 +63,7 @@ from app.services.nalanda_tiering import S3Mirror, export_cold, rollup_day, writ
 from app.workers.nalanda_firehose import NalandaFirehose, NalandaKeys, emit, emit_quotes, emit_record_soon
 
 D = Decimal
-TEST_REDIS_URL = os.environ.get("TEST_REDIS_URL", "redis://localhost:6379/15")
+TEST_REDIS_URL = os.environ["TEST_REDIS_URL"]  # forced onto the isolated test database by tests/conftest.py
 TEST_POSTGRES_URL = os.environ.get("TEST_POSTGRES_URL")
 _SENTINEL = "betdoc:test-sentinel"
 NOW = datetime(2026, 10, 9, 12, 0, tzinfo=UTC)
@@ -122,7 +122,7 @@ async def redis() -> AsyncIterator[Redis]:
     client = Redis.from_url(TEST_REDIS_URL, decode_responses=True)
     try:
         await client.ping()
-        if await client.dbsize() and not await client.exists(_SENTINEL):
+        if await client.dbsize() and not await client.exists(_SENTINEL) and not os.environ.get("BETDOC_TEST_REDIS_CLAIMED"):  # claimed by tests/conftest.py
             pytest.skip(f"{TEST_REDIS_URL} holds data that is not ours; refusing to flush it")
     except (RedisError, OSError):
         await client.aclose()

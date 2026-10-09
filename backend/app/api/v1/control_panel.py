@@ -12,7 +12,9 @@ from app.domain.control_panel.errors import ControlPanelDomainError
 from app.domain.control_panel.manager import ControlPanelManager
 from app.schemas.control_panel import REDACTED, SECRET_FIELDS, SettingsRead, SettingsUpdate
 from app.services.aryabhata_pipeline import publish_risk_limits
-from app.services.risk_guard import set_kill_switch
+from app.services.risk_guard import kill_switch_engaged, set_kill_switch
+from app.services.sentinel_bus import emit_alert
+from app.services.sentinel_watch import kill_switch_alert
 
 logger = logging.getLogger("betdoc.control_panel")
 
@@ -56,7 +58,10 @@ async def update_settings(payload: SettingsUpdate, request: Request, db: DbSessi
     redis = getattr(request.app.state, "redis", None)
     await publish_risk_limits(redis, settings, app_settings)
     if "max_daily_exposure" in payload.model_fields_set and settings.max_daily_exposure > 0:
+        engaged = await kill_switch_engaged(redis, app_settings)
         await set_kill_switch(redis, app_settings, engaged=False)  # trading resumed
+        if engaged:
+            await emit_alert(redis, app_settings, kill_switch_alert(engaged=False, by="control-panel"))
     return _redact(SettingsRead.model_validate(settings))
 
 
@@ -70,4 +75,5 @@ async def emergency_stop(request: Request, db: DbSession, manager: Manager) -> S
     redis = getattr(request.app.state, "redis", None)
     await set_kill_switch(redis, app_settings, engaged=True)  # every Omni execution checks this first
     await publish_risk_limits(redis, settings, app_settings)  # stakes drop to 0
+    await emit_alert(redis, app_settings, kill_switch_alert(engaged=True, by="control-panel"))  # the Sentinel
     return _redact(SettingsRead.model_validate(settings))

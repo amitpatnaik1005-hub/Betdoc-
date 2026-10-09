@@ -63,7 +63,7 @@ TABLES = [
     TradingBot.__table__, BankrollAccount.__table__, PhantomLedger.__table__, LedgerEntry.__table__, AuditLog.__table__, RiskGuardSettings.__table__,
     MarketResult.__table__, ExecutionVenue.__table__, EntityMapping.__table__,
 ]
-TEST_REDIS_URL = os.environ.get("TEST_REDIS_URL", "redis://localhost:6379/15")
+TEST_REDIS_URL = os.environ["TEST_REDIS_URL"]  # forced onto the isolated test database by tests/conftest.py
 _SENTINEL = "betdoc:test-sentinel"
 FIXTURE = "fx-ars-lee"
 KICKOFF = datetime.now(UTC) + timedelta(days=2)
@@ -162,7 +162,7 @@ async def redis() -> AsyncIterator[Redis]:
     client = Redis.from_url(TEST_REDIS_URL, decode_responses=True)
     try:
         await client.ping()
-        if await client.dbsize() and not await client.exists(_SENTINEL):
+        if await client.dbsize() and not await client.exists(_SENTINEL) and not os.environ.get("BETDOC_TEST_REDIS_CLAIMED"):  # claimed by tests/conftest.py
             pytest.skip(f"{TEST_REDIS_URL} holds data that is not ours; refusing to flush it")
     except (RedisError, OSError):
         await client.aclose()

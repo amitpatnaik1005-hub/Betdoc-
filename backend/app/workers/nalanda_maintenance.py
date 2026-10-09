@@ -34,6 +34,7 @@ from app.core.celery_app import celery_app
 from app.core.config import Settings, get_settings
 from app.models.nalanda_lake import MaintenanceLog
 from app.services.nalanda_chain import anchor_path, read_anchors, verify_chain, write_anchor
+from app.services.sentinel_watch import watch_ledger
 from app.services.nalanda_mirror import sweep
 from app.services.nalanda_partitions import preallocate, vacuum_partitions
 from app.services.nalanda_tiering import archive_root, backup_archive, export_cold, rollup_due
@@ -77,6 +78,7 @@ async def _verify(engine: AsyncEngine, sessions: async_sessionmaker[AsyncSession
     if redis is not None:
         with contextlib.suppress(RedisError, OSError):
             await redis.set(NalandaKeys(settings).verify, json.dumps(report))
+    await watch_ledger(redis, settings, report)  # a broken chain is the Sentinel's FATAL
     return report
 
 
@@ -109,7 +111,7 @@ async def run_maintenance(
 class Housekeeper:
     """The cheap, idempotent tasks on their own clock, one process at a time (a Redis lease)."""
 
-    SCHEDULE = (("mirror", None), ("anchor", 3_600.0), ("preallocate", 21_600.0))
+    SCHEDULE = (("mirror", None), ("anchor", 3_600.0), ("verify", 3_600.0), ("preallocate", 21_600.0))
 
     def __init__(self, engine: AsyncEngine, sessions: async_sessionmaker[AsyncSession], redis: Redis, settings: Settings) -> None:
         self.engine, self.sessions, self.redis, self.settings = engine, sessions, redis, settings
@@ -183,3 +185,9 @@ def mirror_ledger() -> dict[str, Any]:
 @celery_app.task(name="nalanda.anchor_chain", acks_late=True)
 def anchor_chain() -> dict[str, Any]:
     return asyncio.run(_celery("anchor"))
+
+
+@celery_app.task(name="nalanda.verify_ledger", acks_late=True)
+def verify_ledger() -> dict[str, Any]:
+    """Hourly: walk the settlement chain; a failure reaches the Sentinel as FATAL (Group 68)."""
+    return asyncio.run(_celery("verify"))

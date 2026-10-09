@@ -5,14 +5,20 @@ Processes (docker-compose runs each as its own service):
 * worker: ``celery -A app.core.celery_app:celery_app worker -l info``
 * beat:   ``celery -A app.core.celery_app:celery_app beat -l info -s /tmp/celerybeat-schedule``
 
-Beat drives two things: the ingestion fleet tick (which enqueues each due source; per-source
-intervals live in Fleet Command, so the schedule itself stays fixed) and the quorum sweep.
+Beat drives the ingestion fleet tick (which enqueues each due source; per-source intervals live in
+Fleet Command, so the schedule itself stays fixed), the quorum sweep, the CFO, Nalanda and the
+Sentinel's checks (see each entry).
 """
 
 from __future__ import annotations
 
+from datetime import UTC, datetime, timedelta
+from functools import partial
+from zoneinfo import ZoneInfo
+
 from celery import Celery
 from celery.schedules import crontab
+from celery.utils.time import ffwd
 from celery.signals import setup_logging
 from kombu import Queue
 
@@ -24,10 +30,39 @@ _settings = get_settings()
 # Fleet tick cadence: the finest interval granularity a source can have
 FLEET_TICK_SECONDS = 5.0
 
+
+def _now_in(zone: str) -> datetime:
+    return datetime.now(ZoneInfo(zone))
+
+
+class ZonedCrontab(crontab):
+    """A crontab read in one time zone. Celery's own reads the hour in ``last_run_at``'s zone, which
+    beat keeps in the app's (UTC): "08:00" would fire at 13:30 in Kolkata. This one converts first,
+    so 08:00 means 08:00 in ``zone``, daylight saving included, and it pickles by its arguments."""
+
+    def __init__(self, minute: str | int = "*", hour: str | int = "*", *, zone: str) -> None:
+        self.zone = zone
+        super().__init__(minute=minute, hour=hour, nowfun=partial(_now_in, zone))
+
+    def remaining_delta(self, last_run_at: datetime, tz: object = None, ffwd: type = ffwd) -> tuple[datetime, timedelta, datetime]:  # type: ignore[override]
+        aware = last_run_at if last_run_at.tzinfo else last_run_at.replace(tzinfo=UTC)
+        return super().remaining_delta(aware.astimezone(ZoneInfo(self.zone)), tz, ffwd)
+
+    def __reduce__(self) -> tuple[object, tuple[object, ...]]:
+        return (_zoned_crontab, (self._orig_minute, self._orig_hour, self.zone))
+
+    def __repr__(self) -> str:
+        return f"<zoned crontab: {self._orig_minute} {self._orig_hour} * * * {self.zone}>"
+
+
+def _zoned_crontab(minute: str | int, hour: str | int, zone: str) -> ZonedCrontab:
+    return ZonedCrontab(minute, hour, zone=zone)
+
+
 celery_app = Celery(
     "betdoc_omni",
     broker=_settings.celery_broker_url.get_secret_value(),
-    include=["app.workers.omni_poller", "app.workers.omni_quorum", "app.workers.cfo_settlement", "app.workers.sniper", "app.workers.hive_worker", "app.workers.lab_worker", "app.workers.nalanda_maintenance"],
+    include=["app.workers.omni_poller", "app.workers.omni_quorum", "app.workers.cfo_settlement", "app.workers.sniper", "app.workers.hive_worker", "app.workers.lab_worker", "app.workers.nalanda_maintenance", "app.workers.sentinel_tasks"],
 )
 
 celery_app.conf.update(
@@ -84,6 +119,22 @@ celery_app.conf.update(
             "options": {"expires": _settings.NALANDA_MIRROR_INTERVAL_SECONDS},
         },
         "nalanda-anchor-chain": {"task": "nalanda.anchor_chain", "schedule": crontab(minute=0)},
+        "nalanda-verify-ledger": {"task": "nalanda.verify_ledger", "schedule": crontab(minute=30)},  # a broken chain pages (Sentinel)
+        # The Sentinel (Group 68): dependency health, the dead man's switch on Garuda, the 08:00 forecast
+        "sentinel-dependency-health": {
+            "task": "sentinel.dependency_health",
+            "schedule": _settings.SENTINEL_HEALTH_INTERVAL_SECONDS,
+            "options": {"expires": _settings.SENTINEL_HEALTH_INTERVAL_SECONDS},
+        },
+        "sentinel-liveness-check": {
+            "task": "sentinel.liveness_check",
+            "schedule": _settings.SENTINEL_HEARTBEAT_SECONDS,
+            "options": {"expires": _settings.SENTINEL_HEARTBEAT_SECONDS},
+        },
+        "sentinel-market-forecast-hype": {
+            "task": "sentinel.market_forecast_hype",
+            "schedule": ZonedCrontab(minute=_settings.SENTINEL_HYPE_MINUTE, hour=_settings.SENTINEL_HYPE_HOUR, zone=_settings.SENTINEL_TIMEZONE),
+        },
     },
 )
 

@@ -497,7 +497,7 @@ def test_pushed_ticks_become_one_book_per_source() -> None:
 
 
 # ================================================================ Redis pipeline
-TEST_REDIS_URL = os.environ.get("TEST_REDIS_URL", "redis://localhost:6379/15")
+TEST_REDIS_URL = os.environ["TEST_REDIS_URL"]  # forced onto the isolated test database by tests/conftest.py
 _SENTINEL = "betdoc:test-sentinel"
 
 
@@ -506,7 +506,7 @@ async def redis() -> AsyncIterator[Redis]:
     client = Redis.from_url(TEST_REDIS_URL, decode_responses=True)
     try:
         await client.ping()
-        if await client.dbsize() and not await client.exists(_SENTINEL):
+        if await client.dbsize() and not await client.exists(_SENTINEL) and not os.environ.get("BETDOC_TEST_REDIS_CLAIMED"):  # claimed by tests/conftest.py
             pytest.skip(f"{TEST_REDIS_URL} holds data that is not ours; refusing to flush it")
     except (RedisError, OSError):
         await client.aclose()
@@ -717,7 +717,7 @@ def ws_app(monkeypatch: pytest.MonkeyPatch) -> Iterator[TestClient]:
     try:
         probe = redis_sync.Redis.from_url(TEST_REDIS_URL)
         probe.ping()
-        if probe.dbsize() and not probe.exists(_SENTINEL):
+        if probe.dbsize() and not probe.exists(_SENTINEL) and not os.environ.get("BETDOC_TEST_REDIS_CLAIMED"):  # claimed by tests/conftest.py
             pytest.skip(f"{TEST_REDIS_URL} holds data that is not ours")
         probe.flushdb()
         probe.set(_SENTINEL, "1")

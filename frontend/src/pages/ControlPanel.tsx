@@ -20,19 +20,21 @@ interface BookmakerConfig { id: string; name: string; is_active: boolean; base_u
 interface SportConfig { id: string; sport_name: string; is_active: boolean; config: Record<string, unknown>; updated_at: string }
 interface OmniHealth { generated_at: string; total: number; active: number; degraded: number; open_circuits: number; redis_available: boolean; providers: { provider_id: string; provider_name: string; category_code: string; is_active: boolean; health_status: string; breaker_state: string; recent_failures: number | null }[] }
 
-// The Lab carries the charting library: loaded when its tab first opens, not with the Control Panel
+// Quant Lab carries the charting library: loaded when its tab first opens, not with the Control Panel
 const QuantLab = lazy(() => import('../components/lab/QuantLab').then((m) => ({ default: m.QuantLab })));
 const NalandaArchive = lazy(() => import('../components/nalanda/NalandaArchive').then((m) => ({ default: m.NalandaArchive })));
+const SentinelPanel = lazy(() => import('../components/sentinel/SentinelPanel').then((m) => ({ default: m.SentinelPanel })));
 
 const SPORTS = ['cricket', 'basketball', 'tennis'] as const;
-type ControlTab = 'system' | 'risk' | 'portfolio' | 'hive' | 'lab' | 'nalanda' | 'terminal';
+type ControlTab = 'system' | 'risk' | 'portfolio' | 'hive' | 'lab' | 'nalanda' | 'sentinel' | 'terminal';
 const TABS = [
   { value: 'system', label: 'System', icon: 'tune' },
   { value: 'risk', label: 'Risk management', icon: 'shield_lock' },
   { value: 'portfolio', label: 'Active portfolio', icon: 'monitoring' },
   { value: 'hive', label: 'Hive bots', icon: 'hub' },
-  { value: 'lab', label: 'The Lab', icon: 'science' },
+  { value: 'lab', label: 'Quant Lab', icon: 'science' },
   { value: 'nalanda', label: 'Nalanda archive', icon: 'account_balance' },
+  { value: 'sentinel', label: 'The Sentinel', icon: 'shield' },
   { value: 'terminal', label: 'Execution terminal', icon: 'terminal' },
 ] as const;
 const EXCHANGES = ['Pinnacle', 'Betfair'] as const;
@@ -379,6 +381,10 @@ export const ControlPanel = () => {
       ) : tab === 'nalanda' ? (
         <Suspense fallback={<div className="lg:col-span-12"><Skeleton rows={6} /></div>}>
           <NalandaArchive />
+        </Suspense>
+      ) : tab === 'sentinel' ? (
+        <Suspense fallback={<div className="lg:col-span-12"><Skeleton rows={6} /></div>}>
+          <SentinelPanel />
         </Suspense>
       ) : (
         <>

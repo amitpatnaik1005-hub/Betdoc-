@@ -226,3 +226,4 @@ from app.models.lab_quant import LabBacktestRun, LabFixture, LabFixtureResult, L
 from app.models.nalanda_lake import (  # noqa: E402,F401
     ChainState, ColdExport, MaintenanceLog, MirrorCursor, MirrorIndex, NalandaCandle, NalandaTick, RollupLog, SettlementArchive,
 )
+from app.models.sentinel import SentinelAlertLog, SentinelChannel, SentinelCommandLog, SentinelDelivery, SentinelRouting  # noqa: E402,F401

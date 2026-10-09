@@ -1,5 +1,6 @@
 /**
- * Control Panel, The Lab: the quantitative backtester (Group 66).
+ * Control Panel, Quant Lab: the quantitative backtester (Group 66; renamed from "The Lab" in Group 68,
+ * which is the sidebar section's name).
  *
  * - Dataset: what market history is loaded (ticks, fixtures, books and their commissions, FX).
  * - Parameters: window, target bots, train/test split, walk-forward, the Kelly sweep, simulated
@@ -493,7 +494,7 @@ const DatasetPanel = ({ data }: { data: Dataset }) => {
       <EmptyState
         icon="database"
         title="No market history loaded"
-        detail="The Lab backtests against lab_hist_* rows. Load the synthetic year (10,000 ticks) to start, or run python -m app.db.seed_historical_ticks."
+        detail="Quant Lab backtests against lab_hist_* rows. Load the synthetic year (10,000 ticks) to start, or run python -m app.db.seed_historical_ticks."
         action={isAdmin ? <Button variant="primary" icon="download" busy={busy} onClick={() => void seed()}>Load synthetic dataset</Button> : undefined}
       />
     );
@@ -730,7 +731,7 @@ export const QuantLab = () => {
 
   return (
     <>
-      <Panel title="The Lab · quant laboratory" icon="science" className="lg:col-span-12" subtitle="historical replay through the live Aryabhata scorer and Hive pipeline">
+      <Panel title="Quant Lab · backtesting" icon="science" className="lg:col-span-12" subtitle="historical replay through the live Aryabhata scorer and Hive pipeline">
         <Async resource={dataset} skeletonRows={2}>{(data) => <DatasetPanel data={data} />}</Async>
       </Panel>
       <Panel title="New backtest" icon="tune" className="lg:col-span-5">

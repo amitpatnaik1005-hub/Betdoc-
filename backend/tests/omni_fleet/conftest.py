@@ -27,7 +27,7 @@ from app.models.canonical import CanonicalEntity
 from app.models.odds import OddsSnapshot
 from app.models.omni_vault import OmniFleetSource, OmniQuarantineLog
 
-TEST_REDIS_URL = os.environ.get("TEST_REDIS_URL", "redis://localhost:6379/15")
+TEST_REDIS_URL = os.environ["TEST_REDIS_URL"]  # forced onto the isolated test database by tests/conftest.py
 _SENTINEL = "betdoc:test-sentinel"
 _TABLES = [OmniFleetSource.__table__, CanonicalEntity.__table__, OddsSnapshot.__table__, OmniQuarantineLog.__table__]
 
@@ -38,7 +38,7 @@ async def redis() -> AsyncIterator[Redis]:
     try:
         await client.ping()
         size = await client.dbsize()
-        if size and not await client.exists(_SENTINEL):
+        if size and not await client.exists(_SENTINEL) and not os.environ.get("BETDOC_TEST_REDIS_CLAIMED"):  # claimed by tests/conftest.py
             pytest.skip(f"{TEST_REDIS_URL} holds data that is not ours; refusing to flush it")
     except (RedisError, OSError):
         await client.aclose()

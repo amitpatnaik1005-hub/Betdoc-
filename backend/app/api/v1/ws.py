@@ -17,6 +17,7 @@ from app.schemas.aryabhata import TradeSignal  # noqa: F401  (payload contract f
 from app.schemas.market import MarketTick  # noqa: F401  (payload contract for this channel)
 from app.services.aryabhata_pipeline import run_signal_socket
 from app.services.portfolio_stream import PortfolioKeys, watch
+from app.services.sentinel_bus import SentinelKeys
 
 logger = logging.getLogger(__name__)
 
@@ -249,3 +250,13 @@ async def live_odds_snapshot(request: Request, user: CurrentUser) -> Response:  
     snapshot = await read_snapshot(getattr(request.app.state, "redis", None))
     ticks = snapshot if snapshot is not None else manager.snapshot()
     return Response(content=encode_ticks(ticks), media_type="application/json", headers={"Cache-Control": "no-store"})
+
+
+@router.websocket("/sentinel")
+async def sentinel_stream(websocket: WebSocket, user: WsUser) -> None:
+    """The Sentinel's live feed (Group 68), administrators only: every alert the moment it is emitted
+    (undebounced, for the tab's sirens), digests as they go out, health and debouncer updates."""
+    if user.role != "ADMIN":
+        await websocket.close(code=status.WS_1008_POLICY_VIOLATION, reason="Administrators only")
+        return
+    await relay_channel(websocket, getattr(websocket.app.state, "redis", None), SentinelKeys(settings).live)

@@ -11,6 +11,10 @@ brings the bots back.
 The swing is checked on both sides of the line (14.9% holds, 15.1% halts) and then against the
 formula itself over a few hundred seeded random price paths, including points that fall outside the
 window. SQLite ledger, real Redis on the flushed test index (see ``test_hive_automation``).
+
+Group 68 gap patch: only a selection priced at ``HIVE_FLASH_MIN_PROBABILITY`` (10%, decimal odds
+10.0 or shorter) somewhere in the window can trip the breaker. A longshot drifting 3% -> 5% is a
+67% relative swing and means nothing; the live scan and the backtester both ignore it.
 """
 
 from __future__ import annotations
@@ -217,12 +221,12 @@ async def test_the_breaker_matches_the_formula_on_random_paths(sessions: async_s
     tripped = held = 0
     for i in range(300):
         cell = f"fx-rand-{i}|Match Odds|DRAW"
-        base = rng.uniform(0.15, 0.7)
+        base = rng.uniform(0.02, 0.7)  # longshots under the 10% floor as well as real contenders
         inside = [(rng.uniform(1, window - 5), min(max(base * (1 + rng.gauss(0, 0.07)), 0.01), 0.99)) for _ in range(rng.randint(1, 7))]
         outside = [(rng.uniform(window + 10, window + 600), rng.uniform(0.01, 0.99)) for _ in range(rng.randint(0, 3))]
         await board(redis, settings, cell, inside + outside)
         probs = [p for _, p in inside]
-        expected = len(probs) >= min_points and (max(probs) - min(probs)) / min(probs) * 100 > threshold
+        expected = len(probs) >= min_points and max(probs) >= settings.HIVE_FLASH_MIN_PROBABILITY and (max(probs) - min(probs)) / min(probs) * 100 > threshold
         flag = await hive.flash_crash_scan()
         assert (flag is not None) is expected, (inside, outside, flag)
         tripped += expected
@@ -232,3 +236,46 @@ async def test_the_breaker_matches_the_formula_on_random_paths(sessions: async_s
         await redis.delete(f"{settings.LIVE_ODDS_CHANNEL}:hist:{cell}")
         await redis.zrem(f"{settings.LIVE_ODDS_CHANNEL}:board:ts", cell)
     assert tripped > 20 and held > 20  # the sample exercises both sides of the line
+
+
+@pytest.mark.asyncio
+async def test_a_longshot_swing_never_halts_the_hive_live_or_in_a_backtest(
+    sessions: async_sessionmaker[AsyncSession], redis: Redis, settings: Settings, owner: uuid.UUID  # noqa: ARG001
+) -> None:
+    """Relative swings on longshots are noise: 3% -> 5% (odds 33 -> 20) is +67% and holds, as does
+    9.9% -> 9.0%-> 9.99%. The floor is the window's high, so a favourite collapsing from 40% to 8%
+    still halts, and 10.0% exactly (odds 10.0) is eligible. The backtester's shock detector reaches
+    the same verdict on the same points."""
+    from datetime import UTC, datetime, timedelta  # noqa: PLC0415
+
+    from app.services.backtesting.replay_engine import ReplayEngine  # noqa: PLC0415
+    from app.services.hive_pipeline import flash_swing  # noqa: PLC0415
+
+    assert settings.HIVE_FLASH_MIN_PROBABILITY == 0.10
+    hive = engine_for(sessions, redis, settings)
+    cases = [
+        ([(90, 0.03), (60, 0.04), (30, 0.05)], False),  # +67%, a longshot: noise
+        ([(90, 0.099), (60, 0.0901), (30, 0.0999)], False),  # under the floor throughout
+        ([(90, 0.08), (60, 0.09), (30, 0.10)], True),  # +25% and reaching 10.0% (odds 10.0): eligible
+        ([(90, 0.40), (60, 0.20), (30, 0.08)], True),  # a favourite collapsing below 10%: its high counts
+        ([(90, 0.05), (60, 0.30), (30, 0.06)], True),  # a longshot spiking into contention
+    ]
+    replay = ReplayEngine.__new__(ReplayEngine)  # only _shock is exercised: it reads settings alone
+    replay.settings = settings
+    t0 = datetime(2026, 10, 9, 12, tzinfo=UTC)
+    for i, (path, trips) in enumerate(cases):
+        cell = f"fx-long-{i}|Match Odds|AWAY"
+        await board(redis, settings, cell, path)
+        flag = await hive.flash_crash_scan()
+        assert (flag is not None) is trips, (path, flag)
+        probs = [p for _, p in path]
+        pure = flash_swing(probs, threshold_pct=settings.HIVE_FLASH_THRESHOLD_PCT, min_points=settings.HIVE_FLASH_MIN_POINTS, min_probability=settings.HIVE_FLASH_MIN_PROBABILITY)
+        assert (pure is not None) is trips
+        points = [(t0 + timedelta(seconds=120 - ago), p) for ago, p in path]
+        shock = replay._shock(cell, points, points[-1][0], timedelta(seconds=settings.HIVE_FLASH_WINDOW_SECONDS), {})  # noqa: SLF001
+        assert (shock is not None) is trips, (path, shock)
+        if flag is not None:
+            assert flag["detail"]["swing_pct"] == shock.swing_pct  # type: ignore[union-attr]
+            await clear_halt(redis, settings)
+        await redis.delete(f"{settings.LIVE_ODDS_CHANNEL}:hist:{cell}")
+        await redis.zrem(f"{settings.LIVE_ODDS_CHANNEL}:board:ts", cell)

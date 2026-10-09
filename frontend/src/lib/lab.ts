@@ -1,4 +1,4 @@
-/** The Lab's quantitative backtester (backend `app/api/v1/lab_quant.py`, Group 66). */
+/** Quant Lab, the Control Panel's quantitative backtester (backend `app/api/v1/lab_quant.py`, Group 66). */
 import { useSyncExternalStore } from "react";
 import { apiClient } from "../api/client";
 import { useResource } from "./resource";

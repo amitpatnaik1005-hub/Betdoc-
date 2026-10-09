@@ -75,6 +75,7 @@ from app.services.omni_quorum_buffer import buffer_events
 from app.services.omni_router import Availability, GroupStatus, PlanEntry, SourceDescriptor, compute_plan, config_descriptor, load_registry
 from app.services.omni_spool import SPOOL
 from app.services.omni_throttle import TokenBucket
+from app.services.sentinel_health import beat
 
 logger = logging.getLogger("betdoc.omni.fleet")
 
@@ -792,6 +793,7 @@ async def run_inprocess_fallback(deps: FleetDeps) -> None:
                     continue
             except (RedisError, OSError):
                 pass  # no Redis, no way to reach a worker: keep ingesting here
+            await beat(deps.redis, deps.settings, runner="inprocess")  # Garuda's heartbeat (the Sentinel's dead man's switch)
             await fleet_tick(deps, run_here)
         except Exception:
             logger.exception("Fleet fallback tick failed")

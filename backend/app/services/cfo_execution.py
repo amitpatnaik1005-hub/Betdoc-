@@ -67,6 +67,7 @@ from app.services.fx_rates import FxRates, FxUnavailableError
 from app.services.portfolio_positions import mark_positions_dirty
 from app.services.nalanda_chain import ArchiveRecord
 from app.services.venue_costs import bookmaker_terms
+from app.services.sentinel_watch import watch_drawdown_block, watch_execution, watch_soon
 from app.workers.nalanda_firehose import emit_record_soon
 from app.services.risk_guard import GuardLimits, GuardReport, RiskGuard, RiskGuardViolation, load_limits
 
@@ -225,6 +226,8 @@ class TradeExecutor:
         except CfoError as exc:
             if not exc.audited:
                 await self._record(self._audit(AuditEvent.BLOCKED, exc.reason, ticket, detail={"message": exc.message, **exc.detail}))
+            if exc.reason == "BLOCKED_BY_DRAWDOWN":  # the Sentinel's margin call
+                watch_soon(watch_drawdown_block(self.redis, self.settings, user_id=ticket.user_id, bot_id=ticket.bot_id, message=exc.message, detail=exc.detail))
             raise
         try:
             return await self._conclude(ticket, outcome)
@@ -449,7 +452,18 @@ class TradeExecutor:
         event = AuditEvent.EXECUTED if result.outcome is BookmakerOutcome.ACCEPTED else AuditEvent.EXECUTION_UNKNOWN
         self._archive_response(event, ticket, result, outcome.ledger_id, detail)
         await self._record(self._audit(event, result.reason, ticket, ledger_id=outcome.ledger_id, detail=detail))
+        self._watch(ticket, outcome.receipt)
         return outcome.receipt
+
+    def _watch(self, ticket: OrderTicket, receipt: ExecutionReceipt) -> None:
+        """The Sentinel's checks on a fill (a whale order, a margin call), off the order path."""
+        watch_soon(
+            watch_execution(
+                self.redis, self.settings, user_id=ticket.user_id, bot_id=ticket.bot_id, idempotency_key=ticket.idempotency_key, fixture_id=ticket.fixture_id,
+                market=ticket.market, selection=ticket.selection, bookmaker_id=ticket.bookmaker_id, stake_inr=receipt.stake_inr, odds=receipt.odds,
+                available=receipt.available_balance, exposure=receipt.exposure_balance, mode=self.settings.CFO_EXECUTION_MODE,
+            )
+        )
 
     def _archive_response(self, event: AuditEvent, ticket: OrderTicket, result: BookmakerResult, ledger_id: uuid.UUID | None, detail: dict[str, Any]) -> None:
         """The bookmaker's answer, verbatim, straight to Nalanda's warehouse (fire-and-forget: the order

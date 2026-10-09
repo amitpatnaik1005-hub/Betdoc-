@@ -63,8 +63,10 @@ from app.services.aryabhata_pipeline import AryabhataKeys
 from app.services.bookmaker_gateway import BookmakerGateway
 from app.services.cfo_execution import TradeExecutor, slippage_floor
 from app.services.cfo_ledger import CfoError, OrderTicket
-from app.services.hive_pipeline import MarketReadings, Proposal, Rejection, RiskContext, evaluate, load_market, load_risk_context
+from app.services.hive_pipeline import FlashSwing, MarketReadings, Proposal, Rejection, RiskContext, evaluate, flash_swing, load_market, load_risk_context
 from app.services.risk_guard import load_limits, realized_pnl_24h
+from app.services.sentinel_bus import emit_alert
+from app.services.sentinel_watch import flash_crash_alert
 
 logger = logging.getLogger("betdoc.hive")
 
@@ -508,7 +510,8 @@ class HiveEngine:
     async def flash_crash_scan(self) -> dict[str, Any] | None:
         """A market shock halts every bot: a selection whose consensus probability (the fair price
         across all fresh books, not one book's quote) swung more than ``HIVE_FLASH_THRESHOLD_PCT``
-        within ``HIVE_FLASH_WINDOW_SECONDS``. The halt stays until a person lifts it."""
+        within ``HIVE_FLASH_WINDOW_SECONDS``, priced at ``HIVE_FLASH_MIN_PROBABILITY`` or more
+        (``flash_swing``). The halt stays until a person lifts it."""
         now = time.time()
         window = self.settings.HIVE_FLASH_WINDOW_SECONDS
         try:
@@ -521,22 +524,22 @@ class HiveEngine:
             histories = await pipe.execute()
         except (RedisError, OSError):
             return None
-        worst: tuple[str, float, float, float, int] | None = None
+        worst: tuple[str, FlashSwing] | None = None
         for cell, members in zip(cells, histories, strict=True):
             probs = []
             for member in members or []:
                 try:
-                    p = float(str(member).split("|")[2])
+                    probs.append(float(str(member).split("|")[2]))
                 except (IndexError, ValueError):
                     continue
-                if math.isfinite(p) and 0.0 < p < 1.0:
-                    probs.append(p)
-            if len(probs) < self.settings.HIVE_FLASH_MIN_POINTS:
-                continue
-            low, high = min(probs), max(probs)
-            swing = (high - low) / low * 100
-            if swing > self.settings.HIVE_FLASH_THRESHOLD_PCT and (worst is None or swing > worst[1]):
-                worst = (cell, swing, low, high, len(probs))
+            shock = flash_swing(
+                probs,
+                threshold_pct=self.settings.HIVE_FLASH_THRESHOLD_PCT,
+                min_points=self.settings.HIVE_FLASH_MIN_POINTS,
+                min_probability=self.settings.HIVE_FLASH_MIN_PROBABILITY,
+            )
+            if shock is not None and (worst is None or shock.swing_pct > worst[1].swing_pct):
+                worst = (cell, shock)
         if worst is None:
             return None
         try:
@@ -544,12 +547,14 @@ class HiveEngine:
                 return None  # already halted
         except HiveUnavailable:
             return None
-        cell, swing, low, high, points = worst
+        cell, shock = worst
+        swing, low, high, points = shock.swing_pct, shock.low, shock.high, shock.points
         flag = await set_halt(
             self.redis, self.settings, "FLASH_CRASH", by="hive",
             detail={"market": cell, "swing_pct": round(swing, 2), "low": low, "high": high, "points": points, "window_seconds": window},
         )
         logger.warning("Hive: flash crash on %s (%.1f%% in %ss): every bot halted", cell, swing, window)
+        await emit_alert(self.redis, self.settings, flash_crash_alert(flag))  # the Sentinel: Telegram, PagerDuty, the sirens
         async with self.session_factory() as session:
             owners = (await session.execute(select(TradingBot.user_id).where(TradingBot.status == BotStatus.ACTIVE).distinct())).scalars().all()
             for owner in owners:
