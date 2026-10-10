@@ -5,9 +5,10 @@ book (Parimatch, 1xBet), plus the evidence gathered for its fixtures. Every pill
 UNVERIFIED: missing or stale evidence is never a pass. A slip is vetted only when every enforced pillar
 passes (``TWIN_ADVISORY_PILLARS`` may name pillars that only report).
 
- 1. Model consensus. At least ``min_models`` models price every leg; no model gives a leg EV <= 0
-    (the veto); the weighted model EV of every leg, and the slip's simulated joint EV, clear ``min_ev``.
-    Weights come from the calibration store (``<prefix>:model_weights``), equal when it is empty.
+ 1. Model consensus. At least ``min_models`` voting models price every leg; no voting model gives a leg
+    EV <= 0 (the veto); the weighted model EV of every leg, and the slip's simulated joint EV, clear
+    ``min_ev``. Weights come from the recalibration engine (``<prefix>:model_weights``, Group 74), equal
+    when it is empty; a model it benched (weight 0) neither votes nor vetoes.
  2. Weather. Outdoors: wind and rain under their limits (the models price neither).
  3. Travel. The backed side: no charter delay past the limit, no turnaround under ``min_rest_hours``;
     a side that crossed ``circadian_timezones`` loses ``circadian_penalty`` points of win probability,
@@ -288,11 +289,14 @@ def pillar_1(inputs: FortressInputs, policy: FortressPolicy, min_ev_per_leg: Map
         weights = {name: max(float(inputs.model_weights.get(name, 1.0)), 0.0) for name in evs}
         total = sum(weights.values())
         consensus = sum(weights[n] * v for n, v in evs.items()) / total if total > 0 else None
-        dissent = sorted(name for name, v in evs.items() if v <= 0)
+        voting = [name for name in evs if weights[name] > 0]  # Group 74: a benched model (weight 0) neither votes nor vetoes
+        benched = sorted(name for name in evs if weights[name] <= 0)
+        dissent = sorted(name for name in voting if evs[name] <= 0)
         bar = min_ev_per_leg.get(ev.leg.leg_id, policy.min_ev)
-        per_leg.append({"leg": ev.leg.leg_id, "models": {k: round(v, 4) for k, v in evs.items()}, "consensus_ev": None if consensus is None else round(consensus, 4), "bar": bar})
-        if len(evs) < policy.min_models:
-            fails.append(f"{_label(ev)}: {len(evs)} model(s) price it, {policy.min_models} needed")
+        per_leg.append({"leg": ev.leg.leg_id, "models": {k: round(v, 4) for k, v in evs.items()}, "consensus_ev": None if consensus is None else round(consensus, 4), "bar": bar,
+                        **({"benched": benched} if benched else {})})
+        if len(voting) < policy.min_models:
+            fails.append(f"{_label(ev)}: {len(voting)} voting model(s) price it, {policy.min_models} needed" + (f" ({', '.join(benched)} benched)" if benched else ""))
         if dissent:
             fails.append(f"{_label(ev)}: EV <= 0 under {', '.join(dissent)} (veto)")
         if consensus is None or consensus < bar:

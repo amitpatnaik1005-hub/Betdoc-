@@ -12,9 +12,7 @@ carries no information about a prediction and is never scored).
 * Closing-line value: ``CLV = placed / closing - 1`` against the sharp book's raw closing price, and
   ``CLV_sharp = placed x pi_fair - 1`` against its Shin de-vigged closing probability (the bet's EV at
   the closing line). A multiple compounds: the products of its legs' prices and probabilities.
-* Weights: ``w_m = (B_m + eps)^-1 / sum_j (B_j + eps)^-1`` over the models with enough history, then
-  scaled by their count K so they average 1: pillar 1 gives a model without a weight 1, so a model still
-  short of history keeps the neutral weight instead of dominating the normalised others.
+* Weights are the recalibration engine's (``app.domain.oracle.calibration``, Group 74).
 * Calibration: predictions binned by probability; per bin the mean prediction against the mean outcome;
   the expected calibration error ``ECE = sum_b n_b / N |mean_p_b - mean_y_b|``.
 """
@@ -92,16 +90,6 @@ def clv_sharp_pct(placed: float | None, fair_probability: float | None) -> float
     if placed is None or fair_probability is None or placed <= 1.0 or not 0.0 < fair_probability < 1.0:
         return None
     return (placed * fair_probability - 1.0) * 100.0
-
-
-def inverse_brier_weights(briers: Mapping[str, float], eps: float) -> dict[str, float]:
-    """``w_m`` normalised to sum 1, then scaled by K to average 1 (see the module notes)."""
-    if not briers:
-        return {}
-    inverse = {name: 1.0 / (max(b, 0.0) + eps) for name, b in briers.items()}
-    total = sum(inverse.values())
-    k = len(inverse)
-    return {name: v / total * k for name, v in inverse.items()}
 
 
 @dataclass(frozen=True, slots=True)

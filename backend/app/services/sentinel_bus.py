@@ -60,6 +60,8 @@ class AlertKind(StrEnum):
     TWIN_PULLOUT = "TWIN_PULLOUT"  # the in-play watch recommends cashing out or hedging a placed bet
     TWIN_DRAWDOWN_HALT = "TWIN_DRAWDOWN_HALT"  # the rolling drawdown passed TWIN_DRAWDOWN_HALT_AT: the twin stakes nothing
     TWIN_SETTLED = "TWIN_SETTLED"  # a placed bet settled: the win with its CLV, or the loss with its root cause (Group 73)
+    MODEL_RECALIBRATED = "MODEL_RECALIBRATED"  # the recalibration engine published pillar 1's weights (Group 74)
+    MODEL_DRIFT = "MODEL_DRIFT"  # a model went on probation or was benched
 
 
 class SentinelAlert(BaseModel):

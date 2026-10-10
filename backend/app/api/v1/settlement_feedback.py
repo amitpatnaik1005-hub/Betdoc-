@@ -3,9 +3,9 @@
     POST /twin/settlement/sweep                 settle the user's pending bets and attribute what settled (CLV, model feedback, root cause)
     GET  /twin/settlement/summary               the user's closing-line value and root causes
     GET  /twin/settlement/feedback              the user's model feedback rows (one per settled leg and predictor)
-    GET  /twin/settlement/model-accuracy        every predictor over FEEDBACK_WINDOW_DAYS: Brier, log loss, RPS, the weight it earns, the weight published
+    GET  /twin/settlement/model-accuracy        every predictor over FEEDBACK_WINDOW_DAYS: Brier, log loss, RPS, its lifecycle state and the weight in force
     GET  /twin/settlement/calibration           one predictor's reliability curve and expected calibration error
-    POST /twin/settlement/recalibrate-weights   publish the inverse-Brier weights pillar 1 reads (admin)
+    POST /twin/settlement/recalibrate-weights   run the recalibration engine now (admin; the same run as POST /twin/calibration/recalibrate)
     POST /twin/settlement/override              settle a bet by hand (admin); its attribution re-runs
 
 Model accuracy is about the models, so it is computed over every settled prediction; bets, CLV and root
@@ -26,10 +26,12 @@ from app.api.deps import CurrentAdmin, CurrentUser
 from app.api.v1.cfo_execution import get_session_factory
 from app.core.config import Settings, get_settings
 from app.models.feedback import ModelPredictionFeedback, SettlementRootCauseAudit
+from app.models.model_calibration import RecalibrationTrigger
 from app.models.user_bets_ledger import PlacedStatus, UserPlacedBet
 from app.schemas.feedback import OverrideSettlementRequest
 from app.services import user_pnl_tracker as tracker
 from app.services.twin import feedback_tracker as feedback
+from app.services.twin import model_calibrator
 from app.services.twin.vetting import developer_credit
 
 router = APIRouter(prefix="/twin/settlement", tags=["Post-Execution Feedback Loop"])
@@ -113,16 +115,16 @@ async def model_accuracy(request: Request, user: CurrentUser, sessions: Sessions
     now = datetime.now(UTC)
     async with sessions() as session:
         stats = await feedback.model_stats(session, settings, now)
+        states = await model_calibrator.latest_audits(session)
         credit = await developer_credit(session)
-    recommended = feedback.recommended_weights(stats, settings)
     published, meta = await feedback.published_weights(_redis(request), settings)
     return {
-        "window_days": settings.FEEDBACK_WINDOW_DAYS, "min_samples": settings.FEEDBACK_MIN_SAMPLES, "developer_credit": credit,
-        "published_at": None if meta is None else meta.get("computed_at"),
+        "window_days": settings.FEEDBACK_WINDOW_DAYS, "min_samples": settings.TWIN_RECALIBRATION_MIN_SAMPLES, "developer_credit": credit,
+        "published_at": None if meta is None else meta.get("recalibrated_at"),
         "models": [
             {**{k: (round(v, 6) if isinstance(v, float) else v) for k, v in s.items()},
-             "eligible": not s["reference"] and s["predictions"] >= settings.FEEDBACK_MIN_SAMPLES,
-             "recommended_weight": None if s["model_name"] not in recommended else round(recommended[s["model_name"]], 6),
+             "eligible": not s["reference"] and s["predictions"] >= settings.TWIN_RECALIBRATION_MIN_SAMPLES,
+             "status": None if s["reference"] or s["model_name"] not in states else states[s["model_name"]].status,
              "published_weight": published.get(s["model_name"])}
             for s in stats
         ],
@@ -141,12 +143,15 @@ async def calibration(user: CurrentUser, sessions: Sessions, settings: AppSettin
 
 
 @router.post("/recalibrate-weights")
-async def recalibrate(request: Request, admin: CurrentAdmin, sessions: Sessions, settings: AppSettings) -> dict[str, Any]:  # noqa: ARG001
+async def recalibrate(request: Request, admin: CurrentAdmin, sessions: Sessions, settings: AppSettings) -> dict[str, Any]:
     redis = _redis(request)
     if redis is None:
         raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, {"reason": "NO_REDIS", "message": "The weights live in Redis, which is unavailable"})
-    result = await feedback.recalibrate(sessions, redis, settings, datetime.now(UTC))
-    return {**result, "developer_credit": await _credit(sessions)}
+    try:
+        run = await model_calibrator.recalibrate(sessions, redis, settings, datetime.now(UTC), RecalibrationTrigger.ON_DEMAND_ADMIN, triggered_by=admin.id)
+    except model_calibrator.RecalibrationBusy as exc:
+        raise HTTPException(status.HTTP_409_CONFLICT, {"reason": "RECALIBRATION_RUNNING", "message": str(exc)}) from exc
+    return {**model_calibrator.run_view(run), "min_samples": settings.TWIN_RECALIBRATION_MIN_SAMPLES}
 
 
 @router.post("/override")

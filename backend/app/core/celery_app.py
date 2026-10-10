@@ -40,29 +40,29 @@ class ZonedCrontab(crontab):
     beat keeps in the app's (UTC): "08:00" would fire at 13:30 in Kolkata. This one converts first,
     so 08:00 means 08:00 in ``zone``, daylight saving included, and it pickles by its arguments."""
 
-    def __init__(self, minute: str | int = "*", hour: str | int = "*", *, zone: str) -> None:
+    def __init__(self, minute: str | int = "*", hour: str | int = "*", *, zone: str, day_of_week: str | int = "*") -> None:
         self.zone = zone
-        super().__init__(minute=minute, hour=hour, nowfun=partial(_now_in, zone))
+        super().__init__(minute=minute, hour=hour, day_of_week=day_of_week, nowfun=partial(_now_in, zone))
 
     def remaining_delta(self, last_run_at: datetime, tz: object = None, ffwd: type = ffwd) -> tuple[datetime, timedelta, datetime]:  # type: ignore[override]
         aware = last_run_at if last_run_at.tzinfo else last_run_at.replace(tzinfo=UTC)
         return super().remaining_delta(aware.astimezone(ZoneInfo(self.zone)), tz, ffwd)
 
     def __reduce__(self) -> tuple[object, tuple[object, ...]]:
-        return (_zoned_crontab, (self._orig_minute, self._orig_hour, self.zone))
+        return (_zoned_crontab, (self._orig_minute, self._orig_hour, self.zone, self._orig_day_of_week))
 
     def __repr__(self) -> str:
-        return f"<zoned crontab: {self._orig_minute} {self._orig_hour} * * * {self.zone}>"
+        return f"<zoned crontab: {self._orig_minute} {self._orig_hour} {self._orig_day_of_week} * * {self.zone}>"
 
 
-def _zoned_crontab(minute: str | int, hour: str | int, zone: str) -> ZonedCrontab:
-    return ZonedCrontab(minute, hour, zone=zone)
+def _zoned_crontab(minute: str | int, hour: str | int, zone: str, day_of_week: str | int = "*") -> ZonedCrontab:
+    return ZonedCrontab(minute, hour, zone=zone, day_of_week=day_of_week)
 
 
 celery_app = Celery(
     "betdoc_omni",
     broker=_settings.celery_broker_url.get_secret_value(),
-    include=["app.workers.omni_poller", "app.workers.omni_quorum", "app.workers.cfo_settlement", "app.workers.sniper", "app.workers.hive_worker", "app.workers.lab_worker", "app.workers.nalanda_maintenance", "app.workers.sentinel_tasks", "app.workers.oracle_tasks", "app.workers.vault_prober", "app.workers.execution_dispatcher", "app.workers.twin_tasks", "app.workers.feedback_tasks"],
+    include=["app.workers.omni_poller", "app.workers.omni_quorum", "app.workers.cfo_settlement", "app.workers.sniper", "app.workers.hive_worker", "app.workers.lab_worker", "app.workers.nalanda_maintenance", "app.workers.sentinel_tasks", "app.workers.oracle_tasks", "app.workers.vault_prober", "app.workers.execution_dispatcher", "app.workers.twin_tasks", "app.workers.feedback_tasks", "app.workers.calibration_tasks"],
 )
 
 celery_app.conf.update(
@@ -150,11 +150,13 @@ celery_app.conf.update(
         "router-sweep": {"task": "router.sweep", "schedule": _settings.ROUTER_SWEEP_INTERVAL_SECONDS, "options": {"expires": _settings.ROUTER_SWEEP_INTERVAL_SECONDS}},
         # Group 72: the twin's in-play watch (a Redis lock keeps one tick at a time; a late tick expires unrun)
         "twin-inplay-tick": {"task": "twin.inplay_tick", "schedule": _settings.TWIN_INPLAY_POLL_SECONDS, "options": {"expires": _settings.TWIN_INPLAY_POLL_SECONDS}},
-        # Group 73: the feedback loop (settle + attribute; nightly inverse-Brier weights for pillar 1)
+        # Group 73: the feedback loop (settle + attribute)
         "feedback-sweep": {"task": "feedback.sweep", "schedule": _settings.FEEDBACK_SWEEP_INTERVAL_SECONDS, "options": {"expires": _settings.FEEDBACK_SWEEP_INTERVAL_SECONDS}},
-        "feedback-recalibrate": {
-            "task": "feedback.recalibrate",
-            "schedule": ZonedCrontab(minute=_settings.FEEDBACK_RECALIBRATE_MINUTE, hour=_settings.FEEDBACK_RECALIBRATE_HOUR, zone=_settings.ORACLE_TIMEZONE),
+        # Group 74: the recalibration engine, the only publisher of pillar 1's weights (it replaced Group 73's nightly job)
+        "model-recalibration": {
+            "task": "calibration.recalibrate",
+            "schedule": ZonedCrontab(minute=_settings.TWIN_RECALIBRATION_MINUTE, hour=_settings.TWIN_RECALIBRATION_HOUR, day_of_week=_settings.TWIN_RECALIBRATION_DAY_OF_WEEK,
+                                     zone=_settings.ORACLE_TIMEZONE),
         },
         "sentinel-market-forecast-hype": {
             "task": "sentinel.market_forecast_hype",

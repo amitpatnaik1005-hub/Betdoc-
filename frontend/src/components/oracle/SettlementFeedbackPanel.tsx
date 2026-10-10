@@ -3,10 +3,10 @@
  *
  * - Closing-line value: how often the prices taken beat the sharp close, raw and de-vigged.
  * - Model accuracy over the Brier window: every predictor's Brier score, log loss and ranked probability
- *   score, the inverse-Brier weight it earns and the weight pillar 1 is using now. The ensemble and the
- *   sharp close are benchmarks, measured but never weighted.
+ *   score, its lifecycle state and the weight pillar 1 is using now (both from the recalibration engine,
+ *   Group 74). The ensemble and the sharp close are benchmarks, measured but never weighted.
  * - Root causes: why the losses lost, with the evidence the classifier used.
- * - Sweep settles and attributes now; Recalibrate publishes the weights (administrators).
+ * - Sweep settles and attributes now; Recalibrate runs the engine (administrators).
  */
 import { useState } from "react";
 import { ApiError } from "../../api/client";
@@ -21,6 +21,7 @@ const refusal = (err: unknown): string => (err instanceof ApiError ? err.message
 const pct = (v: number | null | undefined, digits = 1): string => (v === null || v === undefined ? "—" : `${(v * 100).toFixed(digits)}%`);
 const signed = (v: number | null | undefined, digits = 2): string => (v === null || v === undefined ? "—" : `${v >= 0 ? "+" : "−"}${Math.abs(v).toFixed(digits)}%`);
 const fixed = (v: number | null | undefined, digits = 4): string => (v === null || v === undefined ? "—" : v.toFixed(digits));
+const STATE_LABEL = { ALPHA_BOOSTED: "alpha", ACTIVE: "active", PROBATION: "probation", BENCHED: "benched" } as const;
 
 const COLUMNS = [
   {
@@ -45,14 +46,14 @@ const COLUMNS = [
   },
   {
     key: "weight",
-    header: "Weight earned · in use",
+    header: "State · weight in use",
     align: "right" as const,
     render: (m: ModelAccuracy) =>
       m.reference ? (
         <span className="text-stone-400">not weighted</span>
       ) : (
         <span className="font-mono">
-          {m.recommended_weight === null ? <span className="text-stone-400">needs history</span> : m.recommended_weight.toFixed(3)} · {m.published_weight === null ? "1 (neutral)" : m.published_weight.toFixed(3)}
+          {m.status ? STATE_LABEL[m.status] : <span className="text-stone-400">not yet run</span>} · {m.published_weight === null ? "1 (neutral)" : m.published_weight.toFixed(3)}
         </span>
       ),
   },
@@ -79,10 +80,10 @@ export const SettlementFeedbackPanel = () => {
     try {
       const r = await recalibrateWeights();
       toast.success(
-        r.published ? "Pillar 1 weights published" : "Weights unchanged",
-        r.published ? Object.entries(r.weights).map(([k, v]) => `${k} ${v.toFixed(3)}`).join(" · ") : `No model has ${r.min_samples} settled predictions in the window yet`,
+        r.published ? `Pillar 1 weights published · ${r.models_promoted} up, ${r.models_demoted} down` : "Weights unchanged",
+        r.published ? Object.entries(r.weights).map(([k, v]) => `${k} ${v.toFixed(3)}`).join(" · ") : (r.note ?? "nothing to publish"),
       );
-      invalidate("feedback:accuracy");
+      invalidate("feedback", "calibration");
     } catch (err) {
       toast.error("Recalibration failed", refusal(err));
     } finally {
@@ -128,7 +129,7 @@ export const SettlementFeedbackPanel = () => {
             <div className="flex flex-col gap-2">
               <DataTable columns={COLUMNS} rows={a.models} rowKey={(m) => m.model_name} dense />
               <p className="text-[11px] text-stone-500 dark:text-stone-400">
-                Window {a.window_days} days · a model needs {a.min_samples} settled predictions to earn a weight · weights average 1 ·{" "}
+                Window {a.window_days} days · a model needs {a.min_samples} settled predictions for a lifecycle verdict ·{" "}
                 {a.published_at ? `published ${formatDateTime(a.published_at)}` : "none published yet: pillar 1 weighs every model equally"}
               </p>
             </div>

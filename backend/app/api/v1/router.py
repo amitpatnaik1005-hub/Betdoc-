@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends
 
 from app.api.deps import get_current_user
 from app.api.v1 import auth, bet, exchange, ingestion, ws, execution, admin, odds, engine, capital, bet_calculator, oracle, vault, arena, market_signals, dashboard, the_wire, the_lab, the_hive, the_core, popular_picks, competitive_intel, oracle_scout, archive, control_panel, cfo_execution, sniper, portfolio, hive_trading, lab_quant, nalanda, sentinel
-from app.api.v1 import bookmakers, cfo, human_touch, omni, omni_admin, omni_fleet, parimatch_feed, phantom, sports, vault_admin, execution_router, digital_twin, settlement_feedback
+from app.api.v1 import bookmakers, cfo, human_touch, omni, omni_admin, omni_fleet, parimatch_feed, phantom, sports, vault_admin, execution_router, digital_twin, settlement_feedback, model_calibration
 
 api_router = APIRouter(prefix="/api/v1")
 
@@ -64,3 +64,5 @@ api_router.include_router(execution_router.router)
 api_router.include_router(digital_twin.router)
 # Group 73: /twin/settlement (the feedback loop: CLV, model attribution, root causes, weight recalibration). Per-route auth.
 api_router.include_router(settlement_feedback.router)
+# Group 74: /twin/calibration (the model recalibration engine: lifecycle states, pillar 1's weights, overrides). Per-route auth.
+api_router.include_router(model_calibration.router)

@@ -19,7 +19,7 @@ SQLite (and PostgreSQL when ``TEST_POSTGRES_URL`` is set); real Redis on the iso
 from __future__ import annotations
 
 import asyncio
-import json
+import dataclasses
 import math
 import os
 import uuid
@@ -50,6 +50,7 @@ from app.models.control_panel import SystemSettingsModel
 from app.models.digital_twin import TwinInPlayMonitor, TwinVettingAudit
 from app.models.feedback import ModelPredictionFeedback, RootCauseTag, SettlementRootCauseAudit
 from app.models.hive_bots import TradingBot
+from app.models.model_calibration import ModelRecalibrationRun, ModelWeightAudit, RecalibrationTrigger
 from app.models.nalanda_lake import NalandaTick
 from app.models.omni_vault import OmniFleetSource
 from app.models.popular_picks import ParlayReviewGateModel, PopularParlayModel
@@ -59,6 +60,7 @@ from app.services import user_pnl_tracker as tracker
 from app.services.sentinel_bus import AlertKind, SentinelAlert, SentinelKeys, decode
 from app.services.sentinel_routing import HYPE, row_of
 from app.services.twin import feedback_tracker as feedback
+from app.services.twin import model_calibrator
 from app.services.twin.intel import model_weights, weights_key, write_intel
 
 D = Decimal
@@ -66,6 +68,7 @@ TABLES = [
     User.__table__, TradingBot.__table__, BankrollAccount.__table__, OmniFleetSource.__table__, MarketResult.__table__, SystemSettingsModel.__table__,
     UserPlacedBet.__table__, UserPlacedLeg.__table__, FixtureScore.__table__, PopularParlayModel.__table__, ParlayReviewGateModel.__table__,
     TwinVettingAudit.__table__, TwinInPlayMonitor.__table__, NalandaTick.__table__, ModelPredictionFeedback.__table__, SettlementRootCauseAudit.__table__,
+    ModelRecalibrationRun.__table__, ModelWeightAudit.__table__,
 ]
 TEST_REDIS_URL = os.environ["TEST_REDIS_URL"]  # forced onto the isolated test database by tests/conftest.py
 TEST_POSTGRES_URL = os.environ.get("TEST_POSTGRES_URL")
@@ -128,7 +131,7 @@ async def redis() -> AsyncIterator[Redis]:
 
 @pytest.fixture
 def settings() -> Settings:
-    return get_settings().model_copy(update={"TWIN_PREFIX": "test_twin_fb", "FEEDBACK_MIN_SAMPLES": 2, "TWIN_SHARP_BOOKS": "pinnacle,betfair"})
+    return get_settings().model_copy(update={"TWIN_PREFIX": "test_twin_fb", "TWIN_RECALIBRATION_MIN_SAMPLES": 2, "TWIN_SHARP_BOOKS": "pinnacle,betfair"})
 
 
 @pytest_asyncio.fixture
@@ -174,16 +177,6 @@ def test_closing_line_value_raw_and_de_vigged() -> None:
     fair, _ = shin_devig([1.95, 3.60, 4.00])
     assert fm.clv_sharp_pct(2.10, fair[0]) == pytest.approx((2.10 * fair[0] - 1) * 100)
     assert fm.clv_sharp_pct(2.10, 0.0) is None
-
-
-def test_inverse_brier_weights_average_one_and_reward_the_better_model() -> None:
-    w = fm.inverse_brier_weights({"poisson": 0.20, "dixon_coles": 0.25, "market": 0.18}, EPS)
-    assert sum(w.values()) == pytest.approx(3.0) and w["market"] > w["poisson"] > w["dixon_coles"]
-    # w_m = (B_m + eps)^-1 / sum_j (B_j + eps)^-1, times K
-    inv = {k: 1 / (b + EPS) for k, b in {"poisson": 0.20, "dixon_coles": 0.25, "market": 0.18}.items()}
-    assert w["poisson"] == pytest.approx(inv["poisson"] / sum(inv.values()) * 3)
-    assert fm.inverse_brier_weights({"perfect": 0.0, "coin": 0.25}, EPS)["perfect"] == pytest.approx(2.0, abs=1e-4)  # eps keeps it finite
-    assert fm.inverse_brier_weights({}, EPS) == {}
 
 
 def test_calibration_bins_and_expected_calibration_error() -> None:
@@ -237,7 +230,8 @@ def test_the_feedback_tasks_are_on_the_beat_schedule() -> None:
 
     beat = celery_app.conf.beat_schedule
     assert beat["feedback-sweep"]["task"] == "feedback.sweep" and beat["feedback-sweep"]["schedule"] == get_settings().FEEDBACK_SWEEP_INTERVAL_SECONDS
-    assert beat["feedback-recalibrate"]["task"] == "feedback.recalibrate" and "app.workers.feedback_tasks" in celery_app.conf.include
+    assert "app.workers.feedback_tasks" in celery_app.conf.include
+    assert "feedback-recalibrate" not in beat and beat["model-recalibration"]["task"] == "calibration.recalibrate"  # Group 74 publishes the weights
 
 
 # ================================================================ closing lines from the tick lake
@@ -404,13 +398,18 @@ async def test_two_sweeps_at_once_attribute_each_bet_once(request: pytest.Fixtur
 
 
 @pytest.mark.asyncio
-async def test_recalibration_teaches_pillar_one(sessions: async_sessionmaker[AsyncSession], redis: Redis, settings: Settings, user: User) -> None:
+async def test_what_the_loop_records_is_what_the_engine_learns(sessions: async_sessionmaker[AsyncSession], redis: Redis, settings: Settings, user: User) -> None:
+    """Group 73's feedback rows feed Group 74's engine, and its weights reach pillar 1 through the very hash it reads."""
     await seed(sessions, user)
     await feedback.sweep(sessions, redis, settings, NOW)
-    # one settled prediction per model so far: under FEEDBACK_MIN_SAMPLES (2), nothing is published and old weights stay
+    # one settled prediction per model: under TWIN_RECALIBRATION_MIN_SAMPLES (2), every model stays ACTIVE, shrunk toward 1
     await redis.hset(weights_key(settings), mapping={"poisson": "1.3"})
-    held = await feedback.recalibrate(sessions, redis, settings, NOW)
-    assert held["published"] is False and await model_weights(redis, settings) == {"poisson": 1.3}
+    first = await model_calibrator.recalibrate(sessions, redis, settings, NOW, RecalibrationTrigger.SCHEDULED)
+    assert first.published and set(first.published_weights) == {"poisson", "dixon_coles", "market"}  # ensemble and closing_sharp are references
+    assert all(0.9 < w < 1.1 for w in first.published_weights.values())
+    async with sessions() as session:
+        audit = (await session.execute(select(ModelWeightAudit).where(ModelWeightAudit.run_id == first.id, ModelWeightAudit.model_name == "poisson"))).scalar_one()
+        assert (audit.previous_weight, audit.status, audit.sample_count) == (1.3, "ACTIVE", 1)
     # a second settled Arsenal win, priced by the same audit snapshot
     async with sessions() as session:
         audit_id = (await session.execute(select(TwinVettingAudit.id))).scalar_one()
@@ -420,20 +419,19 @@ async def test_recalibration_teaches_pillar_one(sessions: async_sessionmaker[Asy
                                   odds=D("2.10"), fair_probability=0.5, result="PENDING", kickoff=KICKOFF))
         await session.commit()
     await feedback.sweep(sessions, redis, settings, NOW)
-    result = await feedback.recalibrate(sessions, redis, settings, NOW)
-    briers = {"poisson": 0.48 ** 2, "dixon_coles": 0.5 ** 2, "market": 0.53 ** 2}
-    expected = fm.inverse_brier_weights(briers, settings.FEEDBACK_WEIGHT_EPSILON)
-    assert result["published"] is True and set(result["weights"]) == set(briers)  # ensemble and closing_sharp are references, never weighted
+    second = await model_calibrator.recalibrate(sessions, redis, settings, NOW, RecalibrationTrigger.SCHEDULED)
+    # poisson (Brier 0.2304) beat the de-vigged close on both legs with +7.69% CLV: alpha boosted; dixon_coles (0.25) and
+    # market (0.2809) are no better than a coin flip: benched
     weights = await model_weights(redis, settings)  # Group 72's reader
-    assert weights == pytest.approx(expected) and weights["poisson"] > weights["dixon_coles"] > weights["market"]
-    meta = json.loads(await redis.get(feedback.weights_meta_key(settings)))
-    assert meta["models"]["poisson"]["predictions"] == 2 and meta["min_samples"] == 2
-    # pillar 1 weighs the models with them: the consensus moves toward the best-calibrated model
+    assert weights == second.published_weights == {"poisson": 1.2, "dixon_coles": 0.0, "market": 0.0}  # alone, the softmax gives 1: clamped up to the alpha floor
+    assert (second.models_promoted, second.models_demoted) == (1, 2)
+    # pillar 1: the benched models neither vote nor veto
     from tests.test_ultra_vetting import inputs  # noqa: PLC0415 - the fortress's own fixtures
 
-    equal, _ = pillar_1(inputs(), FortressPolicy.from_settings(settings), {})
-    tilted, _ = pillar_1(inputs(weights=weights), FortressPolicy.from_settings(settings), {})
-    assert tilted.metrics["weights"] == weights and tilted.metrics["legs"][0]["consensus_ev"] != equal.metrics["legs"][0]["consensus_ev"]
+    strict, _ = pillar_1(inputs(weights=weights), FortressPolicy.from_settings(settings), {})
+    assert strict.status.value == "FAIL" and "1 voting model(s) price it, 3 needed (dixon_coles, market benched)" in strict.reason
+    lenient, _ = pillar_1(inputs(weights=weights), dataclasses.replace(FortressPolicy.from_settings(settings), min_models=1), {})
+    assert lenient.status.value == "PASS" and lenient.metrics["legs"][0]["benched"] == ["dixon_coles", "market"]
 
 
 # ================================================================ the API
@@ -462,12 +460,15 @@ async def test_the_api_sweeps_reports_overrides_and_recalibrates(sessions: async
         assert len(rows) == 1 and rows[0]["brier_score"] == pytest.approx(0.2304)
         accuracy = (await client.get("/api/v1/twin/settlement/model-accuracy")).json()
         models = {m["model_name"]: m for m in accuracy["models"]}
-        assert models["closing_sharp"]["reference"] and models["closing_sharp"]["recommended_weight"] is None and not models["poisson"]["eligible"]
+        assert models["closing_sharp"]["reference"] and models["closing_sharp"]["status"] is None and not models["poisson"]["eligible"]
         assert models["ensemble"]["predictions"] == 4
         curve = (await client.get("/api/v1/twin/settlement/calibration", params={"model_name": "ensemble"})).json()
         assert curve["predictions"] == 4 and sum(b["count"] for b in curve["bins"]) == 4 and curve["expected_calibration_error"] is not None
-        published = (await client.post("/api/v1/twin/settlement/recalibrate-weights")).json()
-        assert published["published"] is False and published["developer_credit"] == "Amit Ashok Kumar Patnaik"  # one prediction per model, two needed
+        published = (await client.post("/api/v1/twin/settlement/recalibrate-weights")).json()  # Group 74's engine, on demand
+        assert published["published"] is True and published["trigger_type"] == "ON_DEMAND_ADMIN" and published["developer_credit"] == "Amit Ashok Kumar Patnaik"
+        assert all(0.9 < w < 1.1 for w in published["weights"].values())  # one prediction per model, two needed for a verdict: shrunk toward 1
+        after_run = {m["model_name"]: m for m in (await client.get("/api/v1/twin/settlement/model-accuracy")).json()["models"]}
+        assert after_run["poisson"]["status"] == "ACTIVE" and after_run["poisson"]["published_weight"] == published["weights"]["poisson"]
 
         # the bookmaker voided the Liverpool bet after all: the administrator overrides, and attribution re-runs
         fixed = (await client.post("/api/v1/twin/settlement/override", json={"bet_id": str(ids["liv"]), "status": "VOID", "return_inr": "1000"})).json()

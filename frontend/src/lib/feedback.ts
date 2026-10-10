@@ -11,7 +11,7 @@ export interface ModelAccuracy {
   avg_clv_pct: number | null;
   reference: boolean;
   eligible: boolean;
-  recommended_weight: number | null;
+  status: "ALPHA_BOOSTED" | "ACTIVE" | "PROBATION" | "BENCHED" | null;  // its lifecycle state from the latest recalibration (Group 74)
   published_weight: number | null;
 }
 
@@ -55,9 +55,12 @@ export interface SweepReport {
 }
 
 export interface Recalibration {
+  run_id: string;
   published: boolean;
   weights: Record<string, number>;
-  computed_at: string;
+  models_promoted: number;
+  models_demoted: number;
+  note: string | null;
   min_samples: number;
   developer_credit: string;
 }

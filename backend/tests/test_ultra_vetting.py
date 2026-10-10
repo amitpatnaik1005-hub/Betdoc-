@@ -320,8 +320,12 @@ def test_the_model_veto_the_derby_bar_and_correlated_legs(settings: Settings) ->
     dissent = [leg(p=0.46, market_p=0.40, retail=2.45)]
     vetoed = fortress.run(inputs(dissent), rule, ("pinnacle",)).pillars[0]
     assert vetoed.status is Status.FAIL and vetoed.reason.endswith("EV <= 0 under market (veto)") and vetoed.metrics["legs"][0]["consensus_ev"] > 0.045
-    # weights tilt the consensus but never lift a dissenting model's veto
-    assert fortress.run(inputs(dissent, weights={"market": 0.0}), rule, ("pinnacle",)).pillars[0].status is Status.FAIL
+    # weights tilt the consensus but never lift a voting model's veto ...
+    assert fortress.run(inputs(dissent, weights={"market": 0.05}), rule, ("pinnacle",)).pillars[0].reason.endswith("EV <= 0 under market (veto)")
+    # ... while a model the recalibration engine benched (weight 0, Group 74) neither votes nor vetoes
+    benched = fortress.run(inputs(dissent, weights={"market": 0.0}), rule, ("pinnacle",)).pillars[0]
+    assert benched.status is Status.FAIL and "(veto)" not in benched.reason and "2 voting model(s) price it, 3 needed (market benched)" in benched.reason
+    assert fortress.run(inputs(dissent, weights={"market": 0.0}), policy(settings, min_models=2), ("pinnacle",)).pillars[0].status is Status.PASS
     # every model below the price: the veto and the consensus both fail
     thin = _break(settings, legs=[leg(p=0.40, retail=2.45)]).pillars[0]
     assert "dixon_coles, market (veto)" in thin.reason and "weighted model EV" in thin.reason

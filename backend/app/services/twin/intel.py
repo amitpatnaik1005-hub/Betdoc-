@@ -94,3 +94,13 @@ async def model_weights(redis: Redis, settings: Settings) -> dict[str, float]:
         if weight >= 0:
             out[name] = weight
     return out
+
+
+def weights_meta_key(settings: Settings) -> str:
+    """The published weights' provenance (Group 74): the run, its trigger, each model's lifecycle state."""
+    return f"{weights_key(settings)}:meta"
+
+
+def weight_pins_key(settings: Settings) -> str:
+    """Administrators' pinned weights (Group 74): every recalibration keeps them until they are lifted."""
+    return f"{weights_key(settings)}:pins"

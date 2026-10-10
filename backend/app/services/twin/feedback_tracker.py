@@ -19,9 +19,9 @@
    a win with its profit and CLV, a loss with its root cause and the models' Brier score. Older bets
    (a backlog) are attributed silently; cashouts and voids are not paged.
 
-``recalibrate`` (nightly, and by an administrator) publishes the inverse-Brier weights of the models with
-``FEEDBACK_MIN_SAMPLES`` settled predictions in the last ``FEEDBACK_WINDOW_DAYS`` to the very hash pillar 1
-reads (``<TWIN_PREFIX>:model_weights``), atomically; with no model eligible the published weights stay.
+4. **Escalate** to the recalibration engine (Group 74) when the losses blamed on the models pile up
+   (``TWIN_RECALIBRATION_LOSS_TRIGGER_COUNT`` in ``..._HOURS``). The engine is the only publisher of
+   pillar 1's weights; this loop only feeds it.
 """
 
 from __future__ import annotations
@@ -54,7 +54,7 @@ from app.models.sentinel import Severity
 from app.models.user_bets_ledger import FixtureScore, PlacedStatus, PlacedStructure, SettlementSource, UserPlacedBet, UserPlacedLeg
 from app.services import user_pnl_tracker as tracker
 from app.services.sentinel_bus import AlertKind, SentinelAlert, emit_alert
-from app.services.twin.intel import read_intel, weights_key
+from app.services.twin.intel import read_intel, weights_key, weights_meta_key
 from app.services.twin.vetting import developer_credit, sharp_books
 
 logger = logging.getLogger("betdoc.feedback")
@@ -63,10 +63,6 @@ ODDS_Q = Decimal("0.0001")
 PAISA = Decimal("0.01")
 STRAIGHT = frozenset({PlacedStructure.SINGLE.value, PlacedStructure.DOUBLE.value, PlacedStructure.TREBLE.value, PlacedStructure.ACCUMULATOR.value})
 SILENT = frozenset({PlacedStatus.CASHED_OUT.value, PlacedStatus.VOID.value})
-
-
-def weights_meta_key(settings: Settings) -> str:
-    return f"{weights_key(settings)}:meta"
 
 
 def _aware(moment: datetime | None) -> datetime | None:
@@ -184,11 +180,13 @@ class FeedbackReport:
     total_pnl_inr: Decimal = Decimal("0.00")
     alerts: int = 0
     root_causes: Counter[str] = field(default_factory=Counter)
+    recalibration_run: str | None = None  # the run the losses triggered, if they did
 
     def as_dict(self) -> dict[str, Any]:
         return {"settled_bets": self.settled_bets, "settled_legs": self.settled_legs, "attributed_bets": self.attributed_bets,
                 "feedback_records": self.feedback_records, "total_pnl_inr": str(self.total_pnl_inr.quantize(PAISA)), "alerts": self.alerts,
-                "root_causes": dict(self.root_causes)}
+                "root_causes": dict(self.root_causes),
+                "recalibration_run": self.recalibration_run}
 
 
 def _weather_breach(intel: Any, settings: Settings) -> str | None:
@@ -336,6 +334,11 @@ async def sweep(sessions: async_sessionmaker[AsyncSession], redis: Redis | None,
     for alert in alerts:
         if await emit_alert(redis, settings, alert):
             report.alerts += 1
+    if report.root_causes.get(RootCauseTag.MODEL_UNDERESTIMATION.value):
+        from app.services.twin import model_calibrator  # noqa: PLC0415 - the engine imports this loop's tables
+
+        triggered = await model_calibrator.maybe_loss_trigger(sessions, redis, settings, now)
+        report.recalibration_run = None if triggered is None else str(triggered.id)
     logger.info("feedback sweep: %s", report.as_dict())
     return report
 
@@ -381,17 +384,12 @@ async def model_stats(session: AsyncSession, settings: Settings, now: datetime) 
              "avg_clv_pct": None if clv is None else float(clv), "reference": name in REFERENCE_PREDICTORS} for name, n, b, ll, rps, clv in rows]
 
 
-def recommended_weights(stats: Sequence[dict[str, Any]], settings: Settings) -> dict[str, float]:
-    eligible = {s["model_name"]: s["avg_brier"] for s in stats if not s["reference"] and s["predictions"] >= settings.FEEDBACK_MIN_SAMPLES}
-    return fm.inverse_brier_weights(eligible, settings.FEEDBACK_WEIGHT_EPSILON)
-
-
 async def published_weights(redis: Redis | None, settings: Settings) -> tuple[dict[str, float], dict[str, Any] | None]:
     if redis is None:
         return {}, None
     try:
         raw = await redis.hgetall(weights_key(settings))
-        meta = await redis.get(weights_meta_key(settings))
+        meta = await redis.get(weights_meta_key(settings))  # the recalibration engine's provenance
     except (RedisError, OSError):
         return {}, None
     weights: dict[str, float] = {}
@@ -404,25 +402,6 @@ async def published_weights(redis: Redis | None, settings: Settings) -> tuple[di
         return weights, (json.loads(meta) if meta else None)
     except ValueError:
         return weights, None
-
-
-async def recalibrate(sessions: async_sessionmaker[AsyncSession], redis: Redis, settings: Settings, now: datetime) -> dict[str, Any]:
-    async with sessions() as session:
-        stats = await model_stats(session, settings, now)
-    weights = recommended_weights(stats, settings)
-    meta = {
-        "computed_at": now.isoformat(), "window_days": settings.FEEDBACK_WINDOW_DAYS, "min_samples": settings.FEEDBACK_MIN_SAMPLES,
-        "models": {s["model_name"]: {"predictions": s["predictions"], "avg_brier": round(s["avg_brier"], 6)} for s in stats if not s["reference"]},
-        "weights": {k: round(v, 6) for k, v in weights.items()},
-    }
-    if weights:
-        pipe = redis.pipeline(transaction=True)  # MULTI: pillar 1 sees the old weights or the new ones, never a mix
-        pipe.delete(weights_key(settings))
-        pipe.hset(weights_key(settings), mapping={k: repr(v) for k, v in weights.items()})
-        pipe.set(weights_meta_key(settings), json.dumps(meta))
-        await pipe.execute()
-        logger.info("feedback: published model weights %s", meta["weights"])
-    return {"published": bool(weights), **meta}
 
 
 def calibration_report(pairs: Iterable[tuple[float, float]], settings: Settings) -> dict[str, Any]:
