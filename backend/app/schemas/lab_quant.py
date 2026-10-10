@@ -5,7 +5,7 @@ from __future__ import annotations
 import uuid
 from datetime import datetime
 from decimal import Decimal
-from typing import Annotated, Any
+from typing import Annotated, Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -45,6 +45,7 @@ class BacktestParams(BaseModel):
     end: datetime | None = None  # None: its last
     train_ratio: float = Field(default=0.75, ge=0.5, le=0.9)
     oos_enabled: bool = True
+    walk_forward_folds: int = Field(default=1, ge=1, le=10)  # Group 77: > 1 adds rolling folds (each tuned in-sample, judged on the window after it)
     sweep_enabled: bool = True
     kelly_min: Annotated[Dec, Field(gt=0, le=1)] = Decimal("0.1")
     kelly_max: Annotated[Dec, Field(gt=0, le=1)] = Decimal("0.5")
@@ -56,6 +57,7 @@ class BacktestParams(BaseModel):
     void_rate_pct: Annotated[Dec, Field(ge=0, le=20)] = Decimal("2")
     impact_threshold_pct: Annotated[Dec, Field(ge=0, lt=100)] = Decimal("5")
     impact_coefficient: Annotated[Dec, Field(ge=0, le=50)] = Decimal("2")
+    impact_model: Literal["quadratic", "sqrt"] = "quadratic"  # Group 77: sqrt is 1 - k sqrt(stake / liquidity) on the net price
     bets_per_second: float = Field(default=2.0, gt=0, le=50)
     burst: int = Field(default=2, ge=1, le=50)
     max_queue_seconds: float = Field(default=3.0, ge=0, le=10)
@@ -63,6 +65,7 @@ class BacktestParams(BaseModel):
     capital_inr: Annotated[Dec, Field(gt=0, le=Decimal("1e12"))] | None = None  # every bot's starting bankroll (None: its own allocation)
     monte_carlo_iterations: int = Field(default=1000, ge=100, le=10_000)
     ruin_floor_pct: float = Field(default=0.0, ge=0, le=90)
+    risk_free_rate: float | None = Field(default=None, ge=0, le=0.5)  # a year, in Sharpe and Sortino; None: LAB_RISK_FREE_RATE
     resume_after_hours: float = Field(default=6.0, ge=0, le=720)  # a breaker's or a halt's simulated human review; 0: never within the run
     seed: int = Field(default=66, ge=0, le=2**31 - 1)
 

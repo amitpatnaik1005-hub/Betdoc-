@@ -20,8 +20,12 @@ LEGS_FOR = {
     PlacedStructure.YANKEE: (4, 4),
     PlacedStructure.CANADIAN: (5, 5),
     PlacedStructure.HEINZ: (6, 6),
+    PlacedStructure.PATENT: (3, 3),
+    PlacedStructure.SUPER_HEINZ: (7, 7),
+    PlacedStructure.GOLIATH: (8, 8),
 }
-SYSTEM_STRUCTURES = frozenset({PlacedStructure.TRIXIE, PlacedStructure.YANKEE, PlacedStructure.CANADIAN, PlacedStructure.HEINZ})
+SYSTEM_STRUCTURES = frozenset({PlacedStructure.TRIXIE, PlacedStructure.YANKEE, PlacedStructure.CANADIAN, PlacedStructure.HEINZ, PlacedStructure.PATENT,
+                               PlacedStructure.SUPER_HEINZ, PlacedStructure.GOLIATH})
 
 
 class _Body(BaseModel):

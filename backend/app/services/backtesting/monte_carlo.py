@@ -8,7 +8,8 @@ their draw) changes. A backtest shows one sequence; luck decides the sequence.
   orderings in which equity touches the ruin floor (``ruin_floor_pct`` of the starting capital: 0%,
   bankrupt, by default). The drawdown distribution says how deep the same edge could have dug.
 * Bootstrap (the second): trades drawn with replacement, so the final equity varies too: how likely
-  the same edge, re-dealt, ends below where it started.
+  the same edge, re-dealt, ends below where it started; and its tail (Group 77): the 95% and 99%
+  Value-at-Risk and CVaR of the run's P&L, in rupees.
 
 Deterministic for a seed; numpy, vectorised over the iterations.
 """
@@ -19,6 +20,8 @@ from collections.abc import Sequence
 from typing import Any
 
 import numpy as np
+
+from app.domain.backtesting.engine_math import var_cvar
 
 FAN_POINTS = 80
 
@@ -48,7 +51,7 @@ def risk_of_ruin(pnls: Sequence[float], capital: float, *, iterations: int = 100
     base: dict[str, Any] = {"method": "permutation", "iterations": iterations, "trades": n, "starting_capital_inr": round(capital, 2), "ruin_floor_inr": round(floor, 2), "ruin_floor_pct": ruin_floor_pct}
     if n == 0:
         return {**base, "risk_of_ruin_pct": 0.0, "p_drawdown_50_pct": 0.0, "max_drawdown_pct": {"p50": 0.0, "p95": 0.0, "p99": 0.0}, "observed_max_drawdown_pct": 0.0,
-                "final_equity_inr": round(capital, 2), "bootstrap": {"risk_of_ruin_pct": 0.0, "p_loss_pct": 0.0, "final_equity_inr": {"p5": capital, "p50": capital, "p95": capital}}, "fan": []}
+                "final_equity_inr": round(capital, 2), "bootstrap": {"var_cvar_inr": var_cvar([]), "risk_of_ruin_pct": 0.0, "p_loss_pct": 0.0, "final_equity_inr": {"p5": capital, "p50": capital, "p95": capital}}, "fan": []}
     rng = np.random.default_rng(seed)
     trades = np.asarray(pnls, dtype=np.float64)
     shuffled = rng.permuted(np.tile(trades, (iterations, 1)), axis=1)
@@ -73,6 +76,7 @@ def risk_of_ruin(pnls: Sequence[float], capital: float, *, iterations: int = 100
         "observed_drawdown_percentile": round(float((dds <= observed + 1e-12).mean()) * 100, 2),
         "final_equity_inr": round(float(paths[0, -1]), 2),
         "bootstrap": {
+            "var_cvar_inr": var_cvar(finals - capital),
             "risk_of_ruin_pct": round(float((np.minimum(boot.min(axis=1), capital) <= floor).mean()) * 100, 4),
             "p_loss_pct": round(float((finals < capital).mean()) * 100, 4),
             "final_equity_inr": {q: round(float(np.percentile(finals, p)), 2) for q, p in (("p5", 5), ("p50", 50), ("p95", 95))},

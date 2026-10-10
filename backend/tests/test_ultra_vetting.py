@@ -489,11 +489,12 @@ async def test_vet_confirm_place_with_a_booking_code_and_watch_the_pullout(sessi
         await seed(redis, settings, fixture, "Arsenal", "Chelsea", sharp={"HOME": 15.0, "DRAW": 5.5, "AWAY": 1.22},
                    soft={b: {"HOME": 14.0, "DRAW": 5.2, "AWAY": 1.20} for b in SOFT})
         fired = (await client.post("/api/v1/twin/monitors/tick")).json()
-        assert [a["reason"] for a in fired["alerts"]] == ["PROBABILITY_COLLAPSE"] and fired["alerts"][0]["booking_code"] == "1X-49102"
+        assert [a["reason"] for a in fired["alerts"]] == ["STOP_LOSS"] and fired["alerts"][0]["booking_code"] == "1X-49102"  # Group 77: the stop-loss floor first
+        assert fired["alerts"][0]["ticket"]["label"] == "1xBet" and fired["alerts"][0]["ticket"]["mode"] == "MANUAL"
         pullouts = [a for a in await stream(redis, settings) if a.kind is AlertKind.TWIN_PULLOUT]
-        assert len(pullouts) == 1 and "1X-49102" in pullouts[0].title and "cash out or hedge now" in pullouts[0].body
+        assert len(pullouts) == 1 and "1X-49102" in pullouts[0].title and "cash out now" in pullouts[0].body and "booking code 1X-49102" in pullouts[0].body
         watches = (await client.get("/api/v1/twin/monitors")).json()
-        assert watches[0]["pullout_reason"] == "PROBABILITY_COLLAPSE" and watches[0]["is_active"] is False and watches[0]["bet"]["booking_code"] == "1X-49102"
+        assert watches[0]["pullout_reason"] == "STOP_LOSS" and watches[0]["is_active"] is False and watches[0]["bet"]["booking_code"] == "1X-49102"
         again = (await client.post("/api/v1/twin/monitors/tick")).json()
         assert again["watched"] == 0  # it fires once
 
@@ -541,8 +542,10 @@ def test_the_target_call_uses_the_offer_else_fair_value(settings: Settings) -> N
     assert hit is not None and hit[0].value == "TARGET_PROFIT_REACHED" and "fair value ₹1,450" in hit[1] and "45% over the stake" in hit[1]
     assert inplay.pullout(monitor, bet, valuation("1390"), settings) is None
     assert inplay.pullout(monitor, bet, valuation("1600", offer="1300"), settings) is None  # the offer is what can be banked
-    collapse = inplay.pullout(monitor, bet, valuation("300", p=0.12), settings)
-    assert collapse is not None and collapse[0].value == "PROBABILITY_COLLAPSE"
+    stopped = inplay.pullout(monitor, bet, valuation("300", p=0.12), settings)
+    assert stopped is not None and stopped[0].value == "STOP_LOSS" and "stop-loss floor ₹750.00" in stopped[1]  # Group 77: the floor is checked first
+    collapse = inplay.pullout(monitor, bet, valuation("900", p=0.12), settings)
+    assert collapse is not None and collapse[0].value == "PROBABILITY_COLLAPSE" and "under 35% of the entry" in collapse[1]
 
 
 @pytest.mark.asyncio

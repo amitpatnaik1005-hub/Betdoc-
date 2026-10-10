@@ -7,9 +7,10 @@
   slippage tolerance (``SLIPPAGE_REJECTED``). A suspended book refuses the order.
 * The Group 63 outbound rate limit: a token bucket per venue (2 bets/s, burst 2). An order queues
   for a token up to 3 s; past that it is refused un-sent (``OUTBOUND_THROTTLED``).
-* Liquidity and quadratic market impact. An order takes at most the money at the price. Past 5% of
-  it, the price walks: the net-of-one price is multiplied by ``1 - k * (x - 0.05)^2`` for a
-  participation ``x`` (continuous at the threshold, quadratic past it). The order's price floor still
+* Liquidity and market impact. An order takes at most the money at the price. Quadratic (the default):
+  past 5% of it, the price walks: the net-of-one price is multiplied by ``1 - k * (x - 0.05)^2`` for a
+  participation ``x`` (continuous at the threshold, quadratic past it). Square-root (Group 77,
+  ``impact_model="sqrt"``): ``1 - k * sqrt(x)`` from the first rupee, the concave law of market impact. The order's price floor still
   binds, so a large order fills only the part that keeps its average price above the floor.
 * Simulated slippage: a flat haircut on every fill's net-of-one price, the execution cost the tape
   cannot show (spread, queue position). A cost, not a refusal.
@@ -30,6 +31,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from decimal import ROUND_DOWN, Decimal
 
+from app.domain.backtesting.engine_math import sqrt_impact_multiplier, sqrt_max_participation
 from app.services.aryabhata_engine import break_even_odds, net_odds
 
 ZERO, ONE, CENT = Decimal(0), Decimal(1), Decimal("0.01")
@@ -51,6 +53,7 @@ class RealityConfig:
     max_slippage_pct: Decimal = Decimal("0.50")  # the order's tolerance below its asked price (G62 default)
     impact_threshold: Decimal = Decimal("0.05")  # participation past which the price walks
     impact_coefficient: Decimal = Decimal("2")
+    impact_model: str = "quadratic"  # quadratic | sqrt (Group 77)
     void_rate: float = 0.02  # injected postponements, on top of the ones in the data
     unreported_liquidity_inr: Decimal = Decimal("25000")  # the money assumed at a price no source reports
     fx_haircut: Decimal = Decimal("0.005")  # off every foreign payout coming home
@@ -68,6 +71,8 @@ class RealityConfig:
             raise ValueError("impact needs a threshold in [0, 1) and a non-negative coefficient")
         if not 0 <= self.void_rate <= 1:
             raise ValueError("the void rate is a probability")
+        if self.impact_model not in ("quadratic", "sqrt"):
+            raise ValueError("the impact model is quadratic or sqrt")
 
 
 # ---------------------------------------------------------------- latency and the rate limit
@@ -115,6 +120,8 @@ class OutboundRateLimiter:
 # ---------------------------------------------------------------- price impact
 def impact_multiplier(participation: Decimal, config: RealityConfig) -> Decimal:
     """What is left of the net-of-one price after taking ``participation`` of the money at it."""
+    if config.impact_model == "sqrt":
+        return sqrt_impact_multiplier(participation, config.impact_coefficient)
     excess = participation - config.impact_threshold
     if excess <= 0:
         return ONE
@@ -124,6 +131,8 @@ def impact_multiplier(participation: Decimal, config: RealityConfig) -> Decimal:
 def max_participation(price: Decimal, floor: Decimal, config: RealityConfig) -> Decimal:
     """The largest share of the money at ``price`` an order can take while its average price, after
     impact, stays at or above ``floor``."""
+    if config.impact_model == "sqrt":
+        return sqrt_max_participation(price, floor, config.impact_coefficient)
     if price <= floor:
         return config.impact_threshold if price == floor else ZERO
     if config.impact_coefficient == 0:

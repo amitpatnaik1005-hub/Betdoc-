@@ -33,7 +33,8 @@ import {
 } from "../../lib/lab";
 import { invalidate, runMutation, useResourceStore } from "../../lib/resource";
 import { useAuthStore } from "../../store/useAuthStore";
-import { Async, Button, DataTable, EmptyState, Field, KeyValues, Meter, NumberInput, Panel, Pill, Stat, StatGrid, TextInput, Toggle } from "../../ui/kit";
+import { Async, Button, DataTable, EmptyState, Field, KeyValues, Meter, NumberInput, Panel, Pill, Select, Stat, StatGrid, TextInput, Toggle } from "../../ui/kit";
+import { RollingWalkForwardPanel, TailRiskPanel } from "../backtesting/BacktestDashboard";
 
 const cx = (...parts: (string | false | null | undefined)[]): string => parts.filter(Boolean).join(" ");
 
@@ -462,13 +463,19 @@ const Results = ({ run }: { run: Backtest }) => {
         </div>
       </Panel>
       <Panel title="Monte Carlo resampling" icon="casino" className="lg:col-span-12" subtitle="permutation of the settled trades; bootstrap for the spread of outcomes">
-        <MonteCarloPanel result={result} />
+        <div className="flex flex-col gap-6">
+          <MonteCarloPanel result={result} />
+          <TailRiskPanel result={result} />
+        </div>
       </Panel>
       <Panel title="Kelly sweep" icon="tune" className="lg:col-span-7" subtitle={result.sweep.enabled ? `objective: Sharpe · best ×${result.sweep.best_kelly}` : "off"}>
         {result.sweep.enabled ? <SweepChart result={result} /> : <EmptyState icon="tune" title="Sweep off" detail="The bots ran at their own Kelly multipliers." />}
       </Panel>
       <Panel title="Walk-forward test" icon="call_split" className="lg:col-span-5" subtitle="in-sample vs out-of-sample">
         <WalkForward result={result} />
+      </Panel>
+      <Panel title="Rolling walk-forward" icon="view_timeline" className="lg:col-span-12" subtitle="each fold tuned on its own past, judged on its future">
+        <RollingWalkForwardPanel result={result} />
       </Panel>
       <Panel title="Reality penalties" icon="gavel" className="lg:col-span-12" subtitle="latency, rate limit, impact, voids, FX">
         <Penalties result={result} />
@@ -542,6 +549,9 @@ interface Draft {
   voidPct: string;
   iterations: string;
   ruinFloor: string;
+  folds: string;
+  impact: "quadratic" | "sqrt";
+  riskFree: string;
   review: string;
   seed: string;
 }
@@ -549,6 +559,7 @@ interface Draft {
 const DRAFT: Draft = {
   name: "Backtest", bots: [], reference: true, start: "", end: "", trainPct: 75, oos: true, sweep: true, kellyMin: "0.1", kellyMax: "0.5", steps: "10",
   slippage: "0.25", latencyMin: "1500", latencyMax: "3000", voidPct: "2", iterations: "1000", ruinFloor: "0", review: "6", seed: "66",
+  folds: "1", impact: "quadratic", riskFree: "4",
 };
 
 const RunForm = ({ dataset, bots }: { dataset: Dataset; bots: LabBot[] }) => {
@@ -584,6 +595,9 @@ const RunForm = ({ dataset, bots }: { dataset: Dataset; bots: LabBot[] }) => {
       ruin_floor_pct: Number(d.ruinFloor),
       resume_after_hours: Number(d.review),
       seed: Number(d.seed),
+      walk_forward_folds: Number(d.folds),
+      impact_model: d.impact,
+      risk_free_rate: Number(d.riskFree) / 100,
     };
     try {
       await apiClient.post<Backtest>("/lab/quant/backtests", body);
@@ -648,7 +662,7 @@ const RunForm = ({ dataset, bots }: { dataset: Dataset; bots: LabBot[] }) => {
       </Field>
       <button type="button" onClick={() => setAdvanced((v) => !v)} className="flex items-center gap-1 self-start text-xs font-medium text-stone-500 hover:text-stone-800 dark:text-stone-400 dark:hover:text-stone-200" aria-expanded={advanced}>
         <span className="material-symbols-outlined text-[16px]">{advanced ? "expand_less" : "expand_more"}</span>
-        Latency, voids, Monte Carlo
+        Latency, voids, Monte Carlo, folds, impact
       </button>
       {advanced && (
         <div className="grid grid-cols-2 gap-3">
@@ -659,6 +673,14 @@ const RunForm = ({ dataset, bots }: { dataset: Dataset; bots: LabBot[] }) => {
           <Field label="Ruin floor %" hint="0 = bankrupt"><NumberInput min="0" max="90" value={d.ruinFloor} onChange={(e) => set("ruinFloor", e.target.value)} /></Field>
           <Field label="Breaker review (h)" hint="0 = never resumes"><NumberInput min="0" max="720" value={d.review} onChange={(e) => set("review", e.target.value)} /></Field>
           <Field label="Seed"><NumberInput min="0" value={d.seed} onChange={(e) => set("seed", e.target.value)} /></Field>
+          <Field label="Rolling folds" hint="1 = one split; more: tuned and tested fold by fold"><NumberInput min="1" max="10" step="1" value={d.folds} onChange={(e) => set("folds", e.target.value)} /></Field>
+          <Field label="Impact model" hint="sqrt: 1 − k·√(stake ÷ liquidity)">
+            <Select value={d.impact} onChange={(e) => set("impact", e.target.value as Draft["impact"])}>
+              <option value="quadratic">Quadratic past 5%</option>
+              <option value="sqrt">Square-root</option>
+            </Select>
+          </Field>
+          <Field label="Risk-free rate % a year" hint="Sharpe and Sortino in excess of it"><NumberInput min="0" max="50" step="0.5" value={d.riskFree} onChange={(e) => set("riskFree", e.target.value)} /></Field>
         </div>
       )}
       {problem && <p className="rounded-xl bg-rose-50 px-3 py-2 text-xs text-rose-700 dark:bg-rose-500/10 dark:text-rose-300" role="alert">{problem}</p>}

@@ -65,6 +65,9 @@ export interface BacktestParams {
   ruin_floor_pct: number;
   resume_after_hours: number;
   seed: number;
+  walk_forward_folds?: number; // Group 77: > 1 adds rolling folds
+  impact_model?: "quadratic" | "sqrt";
+  risk_free_rate?: number | null; // a year; null: the server's LAB_RISK_FREE_RATE
 }
 
 export interface Metrics {
@@ -95,6 +98,37 @@ export interface Metrics {
   avg_odds: number | null;
   avg_stake_inr: number | null;
   commission_paid_inr: number | null;
+  risk_free_rate?: number; // Group 77
+  brier_score?: number | null;
+  brier_skill_score?: number | null; // against the closing line, on the same fills
+  brier_fills?: number;
+}
+
+export interface FoldMetrics {
+  sharpe: number | null;
+  sortino: number | null;
+  roi_pct: number | null;
+  return_pct: number | null;
+  max_drawdown_pct: number;
+  trades: number;
+  pnl_inr: number | null;
+  brier_skill_score: number | null;
+}
+
+export interface RollingFold {
+  fold: number;
+  in_sample_window: [string, string];
+  out_of_sample_window: [string, string];
+  in_sample: FoldMetrics;
+  out_of_sample: FoldMetrics;
+  kelly: string | null;
+  verdict: { verdict: Verdict; sharpe_retention: number | null; reason: string };
+}
+
+export interface RollingWalkForward {
+  folds: RollingFold[];
+  summary: { folds: number; robust_folds: number; oos_sharpe_mean: number | null; oos_sharpe_min: number | null; oos_return_pct_mean: number | null; walk_forward_efficiency: number | null };
+  train_ratio: number;
 }
 
 export interface SweepRow {
@@ -122,7 +156,12 @@ export interface MonteCarlo {
   observed_max_drawdown_pct: number;
   observed_drawdown_percentile?: number;
   final_equity_inr: number;
-  bootstrap: { risk_of_ruin_pct: number; p_loss_pct: number; final_equity_inr: { p5: number; p50: number; p95: number } };
+  bootstrap: {
+    risk_of_ruin_pct: number;
+    p_loss_pct: number;
+    final_equity_inr: { p5: number; p50: number; p95: number };
+    var_cvar_inr?: Record<"95" | "99", { var: number; cvar: number }>; // Group 77: of the run's P&L
+  };
   fan: { trade: number; p5: number; p50: number; p95: number }[];
 }
 
@@ -187,6 +226,7 @@ export interface BacktestResult {
     out_of_sample?: Metrics;
     verdict?: { verdict: Verdict; sharpe_retention: number | null; reason: string };
     locked_parameters?: { kelly_multiplier: string | null; fingerprint: string };
+    rolling?: RollingWalkForward; // Group 77
   };
   events: { at: string; event: string; reason?: string; bot?: string; market?: string; swing_pct?: number }[];
   trades: Trade[];

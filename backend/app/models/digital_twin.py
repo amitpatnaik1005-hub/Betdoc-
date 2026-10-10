@@ -44,6 +44,7 @@ class PulloutReason(StrEnum):
     HEDGE_LOCK = "HEDGE_LOCK"  # one leg left and a hedge locks more than the offer
     CASHOUT_ADVISED = "CASHOUT_ADVISED"  # the book's offer is at or above what holding is worth
     MANUAL_USER_REQUEST = "MANUAL_USER_REQUEST"
+    STOP_LOSS = "STOP_LOSS"  # the cashout value reached the bet's stop-loss floor (Group 77)
 
 
 def _values(enum: type[StrEnum]) -> str:
@@ -100,6 +101,7 @@ class TwinInPlayMonitor(Base):
     vetting_audit_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("twin_vetting_audits.id", ondelete="SET NULL"), nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     target_profit_pct: Mapped[float] = mapped_column(Float)  # of stake: fair value (or the offer) this far up recommends banking it
+    stop_loss_pct: Mapped[float | None] = mapped_column(Float, nullable=True)  # Group 77: cash out at or under (1 - this) x stake; None: TWIN_STOP_LOSS_PCT
     initial_win_prob: Mapped[float] = mapped_column(Float)
     current_win_prob: Mapped[float] = mapped_column(Float)
     fair_value_inr: Mapped[Decimal | None] = mapped_column(TWIN_MONEY, nullable=True)

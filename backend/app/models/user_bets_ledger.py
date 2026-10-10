@@ -45,6 +45,9 @@ class PlacedStructure(StrEnum):
     YANKEE = "YANKEE"
     CANADIAN = "CANADIAN"
     HEINZ = "HEINZ"
+    PATENT = "PATENT"  # Group 77
+    SUPER_HEINZ = "SUPER_HEINZ"
+    GOLIATH = "GOLIATH"
 
 
 class PlacedStatus(StrEnum):

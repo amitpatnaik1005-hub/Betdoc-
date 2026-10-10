@@ -51,6 +51,9 @@ class SlipKind(StrEnum):
     YANKEE = "YANKEE"  # 4 legs: 6 doubles, 4 trebles, 1 fourfold
     CANADIAN = "CANADIAN"  # 5 legs: 26 lines
     HEINZ = "HEINZ"  # 6 legs: 57 lines
+    PATENT = "PATENT"  # 3 legs: 3 singles, 3 doubles, 1 treble (Group 77)
+    SUPER_HEINZ = "SUPER_HEINZ"  # 7 legs: 120 lines
+    GOLIATH = "GOLIATH"  # 8 legs: 247 lines
 
 
 SYSTEMS: dict[SlipKind, tuple[int, tuple[int, ...]]] = {
@@ -58,7 +61,11 @@ SYSTEMS: dict[SlipKind, tuple[int, tuple[int, ...]]] = {
     SlipKind.YANKEE: (4, (2, 3, 4)),
     SlipKind.CANADIAN: (5, (2, 3, 4, 5)),
     SlipKind.HEINZ: (6, (2, 3, 4, 5, 6)),
+    SlipKind.PATENT: (3, (1, 2, 3)),
+    SlipKind.SUPER_HEINZ: (7, (2, 3, 4, 5, 6, 7)),
+    SlipKind.GOLIATH: (8, (2, 3, 4, 5, 6, 7, 8)),
 }
+AUTO_SYSTEMS = (SlipKind.TRIXIE, SlipKind.YANKEE, SlipKind.CANADIAN, SlipKind.HEINZ)  # what Ashoka's own scan builds; the rest are the user's to choose
 
 
 class Tier(StrEnum):
@@ -523,7 +530,8 @@ class ParlayEngine:
             combos += [(kind_for(size), combo) for combo in itertools.combinations(pool, size) if len({leg.fixture_id for leg in combo}) == size]
         distinct = list({leg.fixture_id: leg for leg in reversed(pool)}.values())[::-1]  # the best leg of each fixture, best first
         for source in (likely_pool, distinct):
-            for kind, (required, _) in SYSTEMS.items():
+            for kind in AUTO_SYSTEMS:
+                required = SYSTEMS[kind][0]
                 if len(source) >= required:
                     combos.append((kind, tuple(source[:required])))
         seen: set[str] = set()

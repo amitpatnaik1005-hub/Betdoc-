@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends
 
 from app.api.deps import get_current_user
 from app.api.v1 import auth, bet, exchange, ingestion, ws, execution, admin, odds, engine, capital, bet_calculator, oracle, vault, arena, market_signals, dashboard, the_wire, the_lab, the_hive, the_core, popular_picks, competitive_intel, oracle_scout, archive, control_panel, cfo_execution, sniper, portfolio, hive_trading, lab_quant, nalanda, sentinel
-from app.api.v1 import bookmakers, cfo, human_touch, omni, omni_admin, omni_fleet, parimatch_feed, phantom, sports, vault_admin, execution_router, digital_twin, settlement_feedback, model_calibration, never_forget, user_xp, cfo_growth
+from app.api.v1 import bookmakers, cfo, human_touch, omni, omni_admin, omni_fleet, parimatch_feed, phantom, sports, vault_admin, execution_router, digital_twin, settlement_feedback, model_calibration, never_forget, user_xp, cfo_growth, manual_parlay, inplay_ws
 
 api_router = APIRouter(prefix="/api/v1")
 
@@ -71,3 +71,6 @@ api_router.include_router(never_forget.router)
 api_router.include_router(user_xp.router)
 # Group 76: /the-vault/cfo/growth (KUMBHA: one sizing policy, forecasts over the ledger, regime advisories, venue rebalancing).
 api_router.include_router(cfo_growth.router, dependencies=_authenticated)
+# Group 77: /manual-parlay (the workbench: board, 15-pillar rating, submission, stop-loss shields) and /ws/inplay-shield (live frames).
+api_router.include_router(manual_parlay.router, dependencies=_authenticated)
+api_router.include_router(inplay_ws.router, prefix="/ws")  # token-checked in the handshake

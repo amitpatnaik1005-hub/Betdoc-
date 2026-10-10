@@ -10,6 +10,7 @@ import { TwinFortressPanel } from '../components/oracle/DigitalTwinCard';
 import { SettlementFeedbackPanel } from '../components/oracle/SettlementFeedbackPanel';
 import { ModelRecalibrationPanel } from '../components/oracle/ModelRecalibrationPanel';
 import { NeverForgetLearningJournal } from '../components/oracle/NeverForgetLearningJournal';
+import { ManualParlayWorkbench } from '../components/parlay/ManualParlayWorkbench';
 import { ashokaHeadline, useSlips } from '../lib/oracle';
 import { Async, Button, EmptyState, Field, Meter, NumberInput, Page, Panel, Pill, Select, Stat, StatGrid, StatusBadge, num } from '../ui/kit';
 
@@ -340,6 +341,7 @@ export const TheOracle = () => {
       <SettlementFeedbackPanel />
       <ModelRecalibrationPanel />
       <NeverForgetLearningJournal />
+      <ManualParlayWorkbench />
       <CashoutPanel />
       <TrendingFeed />
       <MyBets />

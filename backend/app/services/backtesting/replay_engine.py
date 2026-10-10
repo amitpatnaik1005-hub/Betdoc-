@@ -136,10 +136,12 @@ class HistoricalStore:
             else:
                 self.frames.append(Frame(tick.at, tick.fixture_id, tick.market, (tick,)))
         self._quotes: dict[tuple[str, str, str, str], tuple[list[datetime], list[TickRow]]] = {}
+        self._selections: dict[tuple[str, str, str], set[str]] = defaultdict(set)
         for tick in self.ticks:
             times, rows = self._quotes.setdefault((tick.fixture_id, tick.market, tick.bookmaker_id, tick.selection), ([], []))
             times.append(tick.at)
             rows.append(tick)
+            self._selections[(tick.fixture_id, tick.market, tick.bookmaker_id)].add(tick.selection)
 
     @classmethod
     async def load(cls, session: AsyncSession, *, horizon: datetime) -> HistoricalStore:
@@ -198,6 +200,10 @@ class HistoricalStore:
     def series(self, fixture_id: str, market: str, bookmaker_id: str, selection: str) -> tuple[list[datetime], list[TickRow]]:
         """One quote's full history in the store (for after-the-fact metrics only: CLV, MAE)."""
         return self._quotes.get((fixture_id, market, bookmaker_id, selection), ([], []))
+
+    def selections(self, fixture_id: str, market: str, bookmaker_id: str) -> list[str]:
+        """The selections a book quoted on one market (for after-the-fact metrics only: the closing line's de-vig)."""
+        return sorted(self._selections.get((fixture_id, market, bookmaker_id), ()))
 
 
 class MarketView:

@@ -93,11 +93,11 @@ def sharp_books(settings: Settings) -> tuple[str, ...]:
     return books(settings.TWIN_SHARP_BOOKS)
 
 
-def _engine(settings: Settings) -> ParlayEngine:
+def _engine(settings: Settings, retail: Sequence[str] | None = None) -> ParlayEngine:
     """Ashoka's engine, priced over the retail books only (Kelly unscaled: the fortress sizes)."""
     return ParlayEngine(
         ashoka_market.thresholds(settings), paths=settings.ASHOKA_MC_PATHS, kelly_fraction=1.0, max_stake_pct=1.0, value_max_stake_pct=1.0,
-        max_legs=settings.ASHOKA_MAX_CANDIDATE_LEGS, max_slips=settings.ASHOKA_MAX_SLIPS, priority=retail_books(settings),
+        max_legs=settings.ASHOKA_MAX_CANDIDATE_LEGS, max_slips=settings.ASHOKA_MAX_SLIPS, priority=tuple(retail) if retail else retail_books(settings),
     )
 
 
@@ -214,14 +214,15 @@ def _slip_payload(slip: SlipCandidate, verdict: fortress.FortressVerdict, now: d
 
 async def vet(
     sessions: async_sessionmaker[AsyncSession], redis: Redis, settings: Settings, *, user_id: uuid.UUID | None, leg_ids: Sequence[str],
-    kind: str | None, bankroll: Decimal | None, now: datetime,
+    kind: str | None, bankroll: Decimal | None, now: datetime, books: Sequence[str] | None = None,
 ) -> TwinVettingAudit:
+    """``books``: price the slip at these books only (the manual workbench's account, Group 77); default the retail books."""
     leg_ids = list(dict.fromkeys(leg_ids))
     live, by_id = await _live_legs(redis, settings, leg_ids, now)
-    retail, sharp = retail_books(settings), sharp_books(settings)
+    retail, sharp = (tuple(books) if books else retail_books(settings)), sharp_books(settings)
     legs = [_retail_only(leg, retail) for leg in live]
     slip_kind = SlipKind(kind) if kind in SlipKind.__members__ else None
-    slip = _engine(settings).evaluate(legs, slip_kind, now)
+    slip = _engine(settings, retail).evaluate(legs, slip_kind, now)
     if slip is None:
         raise NoRetailBook(f"No retail book ({', '.join(retail)}) quotes every leg of this slip", books=list(retail))
     try:

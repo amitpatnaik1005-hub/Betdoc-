@@ -183,6 +183,7 @@ class Settings(BaseSettings):
     LAB_BACKTEST_EXECUTOR: Literal["inline", "celery"] = "inline"  # inline: a worker thread in the API process
     LAB_MAX_CONCURRENT_RUNS: int = Field(default=2, ge=1, le=10)  # per user
     LAB_RUN_STALE_SECONDS: int = Field(default=900, ge=60)  # a RUNNING run silent this long is marked FAILED
+    LAB_RISK_FREE_RATE: float = Field(default=0.04, ge=0, le=0.5)  # a year: the excess return Sharpe and Sortino measure (Group 77)
     LAB_FX_MAX_AGE_HOURS: float = Field(default=96.0, gt=0)  # an older historical fixing hands over to the static map
     # Simulation-only reference rates (INR per unit) for instants no historical fixing covers. Never
     # used for a live order: live pricing fails closed without a current rate (app.services.fx_rates).
@@ -295,6 +296,11 @@ class Settings(BaseSettings):
     TWIN_INPLAY_POLL_SECONDS: float = Field(default=5.0, ge=1)  # Pathway B: every watched bet re-priced this often
     TWIN_PULLOUT_PROB_DROP: float = Field(default=0.35, gt=0, lt=1)  # win probability down this much (points) from the start
     TWIN_PULLOUT_TARGET_PROFIT_PCT: float = Field(default=0.50, gt=0)  # fair value (or the offer) this far over the stake
+    # Group 77: the in-play stop-loss shield (checked first on every tick of the watch)
+    TWIN_STOP_LOSS_PCT: float = Field(default=0.25, gt=0, lt=1)  # cash out once the value is at or under (1 - this) x stake
+    TWIN_STOP_LOSS_MIN_PCT: float = Field(default=0.15, gt=0, lt=1)  # the range a bet's own stop-loss may take
+    TWIN_STOP_LOSS_MAX_PCT: float = Field(default=0.40, gt=0, lt=1)
+    TWIN_PULLOUT_PROB_RATIO: float = Field(default=0.35, gt=0, lt=1)  # live win probability under this x the entry one: collapse
 
     # ---- Post-execution feedback loop: CLV, model attribution, root causes, weight recalibration (Group 73) ----
     FEEDBACK_ENABLED: bool = True
@@ -388,6 +394,19 @@ class Settings(BaseSettings):
     CFO_REBALANCE_LOOKBACK_DAYS: float = Field(default=28.0, gt=0)  # E_j: the EV each venue's bets captured over this window
     CFO_ADVISORY_CONFIRM_HOURS: float = Field(default=24.0, gt=0)  # a steady regime is re-confirmed at most this often
     CFO_ADVISORY_SCAN_MINUTES: int = Field(default=15, ge=1, le=59)  # the beat scans every user's regime this often
+
+    # ---- The manual parlay workbench: the cognitive rater over the 15 pillars (Group 77) ----
+    MANUAL_PARLAY_PILLAR_CREDIT: dict[str, float] = Field(default_factory=lambda: {"PASS": 1.0, "ADVISORY": 0.5, "UNVERIFIED": 0.25, "FAIL": 0.0})
+    MANUAL_PARLAY_FAIL_CAP: float = Field(default=59.0, ge=0, le=100)  # one failed pillar: the score goes no higher (AVERAGE at most)
+    MANUAL_PARLAY_TIERS: dict[str, float] = Field(default_factory=lambda: {
+        "PERFECT": 95.0, "EXTRAORDINARY": 85.0, "BRILLIANT": 75.0, "GOOD": 60.0, "AVERAGE": 45.0, "POOR": 0.0,
+    })
+    # the sports filter: label -> the feed's sport_key prefixes
+    MANUAL_PARLAY_SPORTS: dict[str, tuple[str, ...]] = Field(default_factory=lambda: {
+        "Football": ("soccer",), "Basketball": ("basketball",), "Tennis": ("tennis",), "Cricket": ("cricket",), "Ice Hockey": ("icehockey",),
+        "Baseball": ("baseball",), "American Football": ("americanfootball",), "MMA/UFC": ("mma", "boxing_ufc"), "Esports": ("esports",),
+    })
+    MANUAL_PARLAY_MAX_LEGS: int = Field(default=8, ge=2, le=20)
 
     # ---- Experience (FA-2): XP for discipline, wins, lessons and shielded losses (Group 75) ----
     XP_AWARD_SLIP_VETTED: int = Field(default=25, ge=1)  # once per slip that clears every enforced pillar

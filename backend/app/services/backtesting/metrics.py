@@ -5,8 +5,12 @@
 * Maximum drawdown: the deepest peak-to-trough fall of the equity curve (marked at every settlement),
   in rupees and as a share of the peak; with how long the fall lasted.
 * Sharpe and Sortino: on daily returns of end-of-day equity across the whole window (flat days
-  included: an idle bankroll earns nothing), annualised by sqrt(365) (football is played every day
-  of the week); Sortino's downside deviation is against a 0% target.
+  included: an idle bankroll earns nothing), in excess of the risk-free rate (``risk_free_rate`` a year,
+  ``/ 365`` a day; Group 77), annualised by sqrt(365) (football is played every day of the week);
+  Sortino's downside deviation is of the excess returns below 0.
+* Brier skill (Group 77): the decision's model probability on every graded fill against the closing
+  line's, de-vigged across the market's selections at the fill's own book (raw ``1 / close`` when that
+  book did not close every selection): ``BSS = 1 - BS_model / BS_close``.
 * Calmar: the annualised (compound) return over the maximum drawdown.
 * MAE (maximum adverse excursion): for each fill, the worst mark-to-market before kick-off, at its own
   book: a back bet struck at ``O`` with the price now at ``P`` is worth ``O / P - 1`` of its stake
@@ -28,6 +32,7 @@ from decimal import Decimal
 from statistics import fmean
 from typing import Any
 
+from app.domain.backtesting.engine_math import brier, brier_skill, implied_probability
 from app.services.backtesting.replay_engine import HistoricalStore
 from app.services.backtesting.simulator import Position, RunResult
 
@@ -73,9 +78,9 @@ def drawdown(curve: Sequence[tuple[datetime, Decimal]]) -> dict[str, Any]:
             "drawdown_to": worst_to.isoformat() if worst_to else None, "drawdown_days": round(duration, 2)}
 
 
-def ratios(daily: Sequence[tuple[datetime, float]], capital: float) -> dict[str, float | None]:
+def ratios(daily: Sequence[tuple[datetime, float]], capital: float, risk_free_rate: float = 0.0) -> dict[str, float | None]:
     values = [capital, *(v for _, v in daily)]
-    returns = [b / a - 1 for a, b in zip(values, values[1:]) if a > 0]
+    returns = [b / a - 1 - risk_free_rate / 365.0 for a, b in zip(values, values[1:]) if a > 0]
     if len(returns) < 2:
         return {"sharpe": None, "sortino": None, "volatility_pct": None}
     mean = fmean(returns)
@@ -131,7 +136,41 @@ def curves(run: RunResult) -> dict[str, list[dict[str, Any]]]:
     return {"equity": _downsample(equity), "underwater": _downsample(underwater)}
 
 
-def compute_metrics(run: RunResult, store: HistoricalStore) -> dict[str, Any]:
+def closing_probability(store: HistoricalStore, pos: Position) -> float | None:
+    """The closing line's probability of the fill's selection at its book: de-vigged across the market's
+    selections the book closed (proportionally), else raw 1 / close."""
+    close = closing_odds(store, pos)
+    if close is None or close <= 1:
+        return None
+    fixture = store.fixtures.get(pos.fixture_id)
+    selections = [s for s in store.selections(pos.fixture_id, pos.market, pos.bookmaker_id) if s != pos.selection] if fixture is not None else []
+    implied = [1.0 / float(close)]
+    for selection in selections:
+        times, rows = store.series(pos.fixture_id, pos.market, pos.bookmaker_id, selection)
+        i = bisect.bisect_left(times, fixture.commence_time) - 1  # type: ignore[union-attr]
+        while i >= 0 and rows[i].suspended:
+            i -= 1
+        if i < 0 or rows[i].odds <= 1:
+            return 1.0 / float(close)
+        implied.append(1.0 / float(rows[i].odds))
+    return implied[0] / sum(implied) if len(implied) > 1 else implied[0]
+
+
+def skill(graded: Sequence[Position], store: HistoricalStore) -> dict[str, float | None]:
+    model, reference = [], []
+    for pos in graded:
+        y = 1.0 if pos.status == "WON" else 0.0
+        close = closing_probability(store, pos)
+        if close is None:
+            continue
+        model.append((implied_probability(pos.requested_odds, pos.commission, pos.ev_decision), y))
+        reference.append((close, y))
+    bs = brier(model)
+    bss = brier_skill(model, reference)
+    return {"brier_score": None if bs is None else round(bs, 6), "brier_skill_score": None if bss is None else round(bss, 6), "brier_fills": len(model)}
+
+
+def compute_metrics(run: RunResult, store: HistoricalStore, risk_free_rate: float = 0.0) -> dict[str, Any]:
     settled = run.settled
     graded = [p for p in settled if p.status in ("WON", "LOST")]
     voids = [p for p in settled if p.status == "VOID"]
@@ -144,7 +183,7 @@ def compute_metrics(run: RunResult, store: HistoricalStore) -> dict[str, Any]:
     cagr = (final / capital) ** (1 / years) - 1 if capital > 0 and final > 0 else -1.0
     dd = drawdown(run.curve)
     daily = daily_equity(run.curve, run.start, run.end)
-    ratio = ratios(daily, capital)
+    ratio = ratios(daily, capital, risk_free_rate)
     mdd = dd["max_drawdown_pct"] / 100
     clv_beats, clvs, maes = 0, [], []
     for pos in graded + voids:
@@ -178,6 +217,8 @@ def compute_metrics(run: RunResult, store: HistoricalStore) -> dict[str, Any]:
         "avg_odds": _f(fmean(float(p.fill_odds) for p in graded) if graded else None, 4),
         "avg_stake_inr": _f(staked / len(graded) if graded else None, 2),
         "commission_paid_inr": _f(sum((p.commission_inr for p in graded), Decimal(0)), 2),
+        "risk_free_rate": risk_free_rate,
+        **skill(graded, store),
     }
 
 

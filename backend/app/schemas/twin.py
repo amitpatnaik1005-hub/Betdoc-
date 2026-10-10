@@ -147,6 +147,7 @@ class LedgerFromAudit(_Body):
     placed_at: datetime | None = None
     watch: bool = True  # start the in-play monitor at once
     target_profit_pct: float | None = Field(default=None, gt=0)
+    stop_loss_pct: float | None = Field(default=None, gt=0, lt=1)  # Group 77: clamped to TWIN_STOP_LOSS_MIN/MAX_PCT; None: TWIN_STOP_LOSS_PCT
 
     @field_validator("stake_inr")
     @classmethod
@@ -156,6 +157,7 @@ class LedgerFromAudit(_Body):
 
 class MonitorStart(_Body):
     target_profit_pct: float | None = Field(default=None, gt=0)
+    stop_loss_pct: float | None = Field(default=None, gt=0, lt=1)  # Group 77
 
 
 class MonitorOffer(_Body):

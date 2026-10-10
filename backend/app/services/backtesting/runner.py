@@ -8,7 +8,9 @@
    results), and, for a walk-forward test, an in-sample store whose horizon is the split itself.
 3. The runs. A Kelly sweep (on the in-sample window when walk-forward is on), the best multiplier
    locked; the out-of-sample run with exactly the locked parameters; the full-window run with them,
-   which the equity curve, the metrics and the Monte Carlo describe.
+   which the equity curve, the metrics and the Monte Carlo describe. With ``walk_forward_folds > 1``
+   (Group 77) the same is repeated on rolling folds (``engine_math.rolling_folds``), each tuned on its own
+   in-sample store and judged on the window after it, with walk-forward efficiency across them.
 4. The verdicts: the sweep table, in-sample against out-of-sample, the risk of ruin.
 
 ``run_backtest`` drives one ``LabBacktestRun`` row through RUNNING to COMPLETED (or FAILED, with
@@ -32,6 +34,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.core.config import Settings
+from app.domain.backtesting.engine_math import Fold, rolling_folds, walk_forward_summary
 from app.models.hive_bots import BotStatus, TradingBot
 from app.models.lab_quant import BacktestStatus, LabBacktestRun, LabFixtureResult, LabOddsTick
 from app.models.the_core import SmallcaseRegistryModel
@@ -146,7 +149,8 @@ def reality_for(params: BacktestParams, settings: Settings) -> RealityConfig:
     return RealityConfig(
         latency_ms=(params.latency_min_ms, params.latency_max_ms), bets_per_second=params.bets_per_second, burst=params.burst,
         max_queue_seconds=params.max_queue_seconds, slippage_pct=params.slippage_pct, max_slippage_pct=params.max_slippage_pct,
-        impact_threshold=params.impact_threshold_pct / Decimal(100), impact_coefficient=params.impact_coefficient, void_rate=float(params.void_rate_pct) / 100,
+        impact_threshold=params.impact_threshold_pct / Decimal(100), impact_coefficient=params.impact_coefficient, impact_model=params.impact_model,
+        void_rate=float(params.void_rate_pct) / 100,
         unreported_liquidity_inr=params.unreported_liquidity_inr, fx_haircut=Decimal(str(settings.FX_HAIRCUT_PCT)) / Decimal(100), seed=params.seed,
     )
 
@@ -201,10 +205,49 @@ def _per_bot(run: RunResult) -> list[dict[str, Any]]:
     return out
 
 
+def risk_free(params: BacktestParams, settings: Settings) -> float:
+    return settings.LAB_RISK_FREE_RATE if params.risk_free_rate is None else params.risk_free_rate
+
+
+def folds_for(params: BacktestParams, window: Window) -> list[Fold]:
+    return rolling_folds(window.start, window.end, params.walk_forward_folds, params.train_ratio) if params.oos_enabled and params.walk_forward_folds > 1 else []
+
+
+def _rolling(bots: Sequence[SimBot], params: BacktestParams, folds: Sequence[Fold], fold_stores: Sequence[HistoricalStore], store: HistoricalStore, stream: SignalStream,
+             reality: RealityConfig, settings: Settings, resume: timedelta | None, report: Progress, rf: float) -> dict[str, Any]:
+    """Each fold tuned on its own in-sample window only (its store ends at its split), then judged on the window after it."""
+    rows: list[dict[str, Any]] = []
+    for fold, fold_store in zip(folds, fold_stores, strict=True):
+        base = 0.78 + 0.08 * (fold.index - 1) / len(folds)
+        report.set(f"rolling fold {fold.index}/{len(folds)}: in-sample replay", base)
+        is_stream = ReplayEngine(fold_store, settings, fx_factory(fold_store, settings), commissions_for(fold_store, settings)).build(fold.start, fold.split)
+        if params.sweep_enabled:
+            scored = []
+            for kelly in kelly_grid(params.kelly_min, params.kelly_max, params.sweep_steps):
+                run = _simulate(fold_store, is_stream, [b.tuned(kelly) for b in bots], reality, settings, fold.start, fold.split, resume, f"fold{fold.index}:sweep:{kelly}")
+                scored.append(({"kelly": str(kelly), **{k: v for k, v in compute_metrics(run, fold_store, rf).items() if k in ("sharpe", "roi_pct", "return_pct", "trades")}}, run))
+            best = best_row([row for row, _ in scored])
+            kelly_used: Decimal | None = Decimal(best["kelly"])
+            is_run = next(run for row, run in scored if row["kelly"] == best["kelly"])
+        else:
+            kelly_used = None
+            is_run = _simulate(fold_store, is_stream, bots, reality, settings, fold.start, fold.split, resume, f"fold{fold.index}:in_sample")
+        tuned = [b.tuned(kelly_used) for b in bots] if kelly_used is not None else list(bots)
+        report.set(f"rolling fold {fold.index}/{len(folds)}: out-of-sample", base + 0.04 / len(folds))
+        oos_run = _simulate(store, stream, tuned, reality, settings, fold.split, fold.end, resume, f"fold{fold.index}:out_of_sample")
+        is_m, oos_m = compute_metrics(is_run, fold_store, rf), compute_metrics(oos_run, store, rf)
+        keep = ("sharpe", "sortino", "roi_pct", "return_pct", "max_drawdown_pct", "trades", "pnl_inr", "brier_skill_score")
+        rows.append({**fold.as_dict(), "kelly": None if kelly_used is None else str(kelly_used), "in_sample": {k: is_m[k] for k in keep},
+                     "out_of_sample": {k: oos_m[k] for k in keep}, "verdict": overfit_verdict(is_m, oos_m)})
+    return {"folds": rows, "summary": walk_forward_summary(rows), "train_ratio": params.train_ratio}
+
+
 def execute(
     bots: Sequence[SimBot], params: BacktestParams, window: Window, store: HistoricalStore, in_sample_store: HistoricalStore | None, settings: Settings, progress: Progress | None = None,
+    fold_stores: Sequence[HistoricalStore] = (),
 ) -> dict[str, Any]:
     started = time.perf_counter()
+    rf = risk_free(params, settings)
     report = progress or Progress()
     reality = reality_for(params, settings)
     resume = None if params.resume_after_hours == 0 else timedelta(hours=params.resume_after_hours)
@@ -234,7 +277,7 @@ def execute(
         for i, kelly in enumerate(grid):
             report.set(f"sweep {i + 1}/{len(grid)}: Kelly {kelly}", 0.50 + 0.25 * i / len(grid))
             run = _simulate(is_store, tune_stream, [b.tuned(kelly) for b in bots], reality, settings, window.start, tune_end, resume, f"sweep:{kelly}")
-            metrics = compute_metrics(run, is_store)
+            metrics = compute_metrics(run, is_store, rf)
             sweep_rows.append({"kelly": str(kelly), **{k: metrics[k] for k in ("sharpe", "sortino", "calmar", "roi_pct", "return_pct", "max_drawdown_pct", "trades", "pnl_inr")}})
             sweep_runs[str(kelly)] = run
         best = best_row(sweep_rows)
@@ -255,18 +298,23 @@ def execute(
             is_run = _simulate(is_store, tune_stream, final_bots, reality, settings, window.start, window.split, resume, "in_sample")
         report.set("out-of-sample run with the locked parameters", 0.78)
         oos_run = _simulate(store, stream, final_bots, reality, settings, window.split, window.end, resume, "out_of_sample")
-        is_metrics, oos_metrics = compute_metrics(is_run, is_store), compute_metrics(oos_run, store)
+        is_metrics, oos_metrics = compute_metrics(is_run, is_store, rf), compute_metrics(oos_run, store, rf)
         walk_forward.update({
             "in_sample": is_metrics, "out_of_sample": oos_metrics, "verdict": overfit_verdict(is_metrics, oos_metrics),
             "locked_parameters": locked_view, "in_sample_curve": curves(is_run)["equity"], "out_of_sample_curve": curves(oos_run)["equity"],
         })
+        folds = folds_for(params, window)
+        if folds:
+            if len(fold_stores) != len(folds):
+                raise BacktestError("rolling walk-forward needs one in-sample store per fold")
+            walk_forward["rolling"] = _rolling(bots, params, folds, fold_stores, store, stream, reality, settings, resume, report, rf)
 
     if not params.oos_enabled and params.sweep_enabled:
         display = sweep_runs[str(locked.kelly_multiplier)]
     else:
         report.set("full-window run", 0.86)
         display = _simulate(store, stream, final_bots, reality, settings, window.start, window.end, resume, "full")
-    metrics = compute_metrics(display, store)
+    metrics = compute_metrics(display, store, rf)
     report.set("Monte Carlo resampling", 0.93)
     settled = sorted(display.settled, key=lambda p: (p.settled_at or p.filled_at, p.id))
     pnls = [float(p.pnl_inr or 0) for p in settled if p.status in ("WON", "LOST")]
@@ -330,7 +378,8 @@ async def run_backtest(session_factory: async_sessionmaker[AsyncSession], settin
                 horizon = min(horizon, max(_aware(last_result), window.end))
             store = await HistoricalStore.load(session, horizon=horizon)
             in_sample = await HistoricalStore.load(session, horizon=window.split) if params.oos_enabled else None
-        task = asyncio.create_task(asyncio.to_thread(execute, prepared.bots, params, window, store, in_sample, settings, progress))
+            fold_stores = [await HistoricalStore.load(session, horizon=fold.split) for fold in folds_for(params, window)]
+        task = asyncio.create_task(asyncio.to_thread(execute, prepared.bots, params, window, store, in_sample, settings, progress, fold_stores))
         while not task.done():
             await asyncio.sleep(1.0)
             stage, fraction = progress.read()

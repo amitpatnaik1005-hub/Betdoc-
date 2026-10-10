@@ -135,7 +135,7 @@ async def placed(audit_id: uuid.UUID, body: LedgerFromAudit, request: Request, u
         watch: dict[str, Any] = {"started": False}
         if body.watch:
             try:
-                monitor = await inplay.start(session, redis, settings, bet, now, audit_id=row.id, target_profit_pct=body.target_profit_pct)
+                monitor = await inplay.start(session, redis, settings, bet, now, audit_id=row.id, target_profit_pct=body.target_profit_pct, stop_loss_pct=body.stop_loss_pct)
                 watch = {"started": True, "monitor": inplay.monitor_view(monitor)}
             except inplay.NoLivePrice as exc:
                 watch = {"started": False, "reason": "NO_LIVE_PRICE", "message": str(exc)}
@@ -262,7 +262,7 @@ async def watch(bet_id: uuid.UUID, body: MonitorStart, request: Request, user: C
         if bet is None or bet.user_id != user.id:
             raise HTTPException(status.HTTP_404_NOT_FOUND, "no such bet")
         try:
-            monitor = await inplay.start(session, _redis(request), settings, bet, datetime.now(UTC), target_profit_pct=body.target_profit_pct)
+            monitor = await inplay.start(session, _redis(request), settings, bet, datetime.now(UTC), target_profit_pct=body.target_profit_pct, stop_loss_pct=body.stop_loss_pct)
         except inplay.NoLivePrice as exc:
             raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, {"reason": "NO_LIVE_PRICE", "message": str(exc), "positions": exc.positions}) from exc
         except ValueError as exc:

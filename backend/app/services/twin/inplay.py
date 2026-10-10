@@ -9,10 +9,15 @@ One tick (``tick``), from Celery beat or by hand:
 3. Every open leg is priced from the live market (the board keeps started fixtures; the scoreline
    models are refitted to the in-play 1X2 consensus), settled legs pay their factor, and Ashoka's cashout
    advisor values the slip: fair value, HOLD / CASH OUT / HEDGE LEG against the offer the user last read.
-4. The pullout call, first match wins: PROBABILITY_COLLAPSE (win probability down ``TWIN_PULLOUT_PROB_DROP``
-   points from the start), CASHOUT_ADVISED (the offer is worth taking), HEDGE_LOCK (a hedge locks more
+4. The pullout call, first match wins: STOP_LOSS (Group 77: the cashout value, the offer the user read else
+   fair value, at or under ``(1 - stop_loss_pct) x stake``), PROBABILITY_COLLAPSE (the live win probability
+   under ``TWIN_PULLOUT_PROB_RATIO`` of the entry one, or down ``TWIN_PULLOUT_PROB_DROP`` points), CASHOUT_ADVISED (the offer is worth taking), HEDGE_LOCK (a hedge locks more
    than the offer), TARGET_PROFIT_REACHED (the offer, else fair value, ``TWIN_PULLOUT_TARGET_PROFIT_PCT``
    over the stake). The monitor fires once, closes, and pages the user's phone through the Sentinel.
+
+A stop-loss or a collapse also issues the bookmaker's cashout ticket (``app.adapters.bookmakers``): the steps
+to take the cashout at the book, sent to the phone. Every priced tick is published to the user's live channel
+(``<TWIN_PREFIX>:inplay:live:<user>``, the ``/ws/inplay-shield`` socket).
 
 The twin recommends; the cashout is the user's to take at the bookmaker and record on the bet.
 """
@@ -33,7 +38,9 @@ from redis.exceptions import RedisError
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from app.adapters.bookmakers.base_cashout_adapter import adapter_for
 from app.core.config import Settings
+from app.domain.backtesting import inplay_stoploss_math as slm
 from app.domain.oracle.cashout_advisor import Advice, CashoutAdvice, OpenLeg, SettledLeg, advise
 from app.domain.oracle.markets import LegResult, parse_market
 from app.domain.oracle.parlay_engine import LegCandidate
@@ -58,6 +65,15 @@ class NoLivePrice(LookupError):
 
 def lock_key(settings: Settings) -> str:
     return f"{settings.TWIN_PREFIX}:inplay:lock"
+
+
+def live_channel(settings: Settings, user_id: uuid.UUID | str) -> str:
+    return f"{settings.TWIN_PREFIX}:inplay:live:{user_id}"
+
+
+def last_frames_key(settings: Settings, user_id: uuid.UUID | str) -> str:
+    """monitor id -> its latest frame, for a socket that connects between ticks."""
+    return f"{settings.TWIN_PREFIX}:inplay:last:{user_id}"
 
 
 @dataclass(slots=True)
@@ -111,6 +127,11 @@ def value_bet(bet: UserPlacedBet, legs: Sequence[UserPlacedLeg], live: dict[str,
 def pullout(monitor: TwinInPlayMonitor, bet: UserPlacedBet, valuation: Valuation, settings: Settings) -> tuple[PulloutReason, str] | None:
     """The pullout call for this tick, if any (first match wins)."""
     advice = valuation.advice
+    policy = slm.StopLossPolicy.from_settings(settings)
+    stop = slm.evaluate(bet.stake_inr, policy.clamp(monitor.stop_loss_pct), offer=advice.offer, fair_value=advice.fair_value,
+                        entry_probability=monitor.initial_win_prob, live_probability=valuation.probability, policy=policy)
+    if stop is not None:
+        return (PulloutReason.STOP_LOSS if stop.rule == "STOP_LOSS_FLOOR" else PulloutReason.PROBABILITY_COLLAPSE), stop.reason
     drop = monitor.initial_win_prob - valuation.probability
     if drop >= settings.TWIN_PULLOUT_PROB_DROP:
         return PulloutReason.PROBABILITY_COLLAPSE, f"win probability {monitor.initial_win_prob:.1%} -> {valuation.probability:.1%}: cash out or hedge now"
@@ -127,7 +148,7 @@ def pullout(monitor: TwinInPlayMonitor, bet: UserPlacedBet, valuation: Valuation
 
 
 async def start(session: AsyncSession, redis: Redis | None, settings: Settings, bet: UserPlacedBet, now: datetime, *,
-                audit_id: uuid.UUID | None = None, target_profit_pct: float | None = None) -> TwinInPlayMonitor:
+                audit_id: uuid.UUID | None = None, target_profit_pct: float | None = None, stop_loss_pct: float | None = None) -> TwinInPlayMonitor:
     """Watch a pending straight bet (re-arms an existing monitor). Its starting probability is the live one,
     else the fair probabilities Ashoka recorded on the legs."""
     if bet.status != PlacedStatus.PENDING.value:
@@ -151,6 +172,8 @@ async def start(session: AsyncSession, redis: Redis | None, settings: Settings, 
         session.add(monitor)
     monitor.vetting_audit_id = audit_id or monitor.vetting_audit_id or bet.vetting_audit_id
     monitor.is_active, monitor.target_profit_pct = True, target
+    if stop_loss_pct is not None or monitor.stop_loss_pct is None:
+        monitor.stop_loss_pct = slm.StopLossPolicy.from_settings(settings).clamp(stop_loss_pct)
     monitor.initial_win_prob = monitor.current_win_prob = min(max(probability, 0.0), 1.0)
     monitor.fair_value_inr = monitor.peak_fair_value_inr = fair
     monitor.pullout_triggered, monitor.pullout_reason, monitor.pullout_at = False, None, None
@@ -188,9 +211,49 @@ async def tick(sessions: async_sessionmaker[AsyncSession], redis: Redis | None, 
             pass
 
 
+def cashout_ticket(monitor: TwinInPlayMonitor, bet: UserPlacedBet, valuation: Valuation, reason: str, settings: Settings, now: datetime) -> dict[str, Any]:
+    """The bookmaker's cashout ticket for a stop-loss or a collapse: what the shield saw and the steps to take."""
+    policy = slm.StopLossPolicy.from_settings(settings)
+    pct = policy.clamp(monitor.stop_loss_pct)
+    offer = valuation.advice.offer
+    value, source = (offer, "offer") if offer is not None else (valuation.advice.fair_value, "fair_value")
+    return adapter_for(bet.bookmaker).ticket(bet, floor=slm.floor(bet.stake_inr, pct), value=value, value_source=source, reason=reason, now=now).as_dict()
+
+
+def frame(monitor: TwinInPlayMonitor, bet: UserPlacedBet) -> dict[str, Any]:
+    """What the live socket sends per monitor per tick."""
+    pct = monitor.stop_loss_pct
+    return {"type": "shield", "monitor_id": str(monitor.id), "bet_id": str(bet.id), "bookmaker": bet.bookmaker, "booking_code": bet.booking_code,
+            "stake_inr": str(bet.stake_inr), "stop_loss_pct": pct, "floor_inr": None if pct is None else str(slm.floor(bet.stake_inr, pct)),
+            "initial_win_prob": round(monitor.initial_win_prob, 4), "current_win_prob": round(monitor.current_win_prob, 4),
+            "fair_value_inr": None if monitor.fair_value_inr is None else str(monitor.fair_value_inr),
+            "cashout_offer_inr": None if monitor.cashout_offer_inr is None else str(monitor.cashout_offer_inr), "last_advice": monitor.last_advice,
+            "is_active": monitor.is_active, "pullout_reason": monitor.pullout_reason, "at": None if monitor.last_tick_at is None else monitor.last_tick_at.isoformat(),
+            "ticket": (monitor.detail or {}).get("cashout_ticket")}
+
+
+async def publish(redis: Redis, settings: Settings, frames: Sequence[tuple[uuid.UUID, dict[str, Any]]]) -> None:
+    """Each frame to its user's live channel, and kept as the user's latest for a socket that connects later."""
+    import json  # noqa: PLC0415
+
+    if not frames:
+        return
+    try:
+        pipe = redis.pipeline(transaction=False)
+        for user, body in frames:
+            raw = json.dumps(body, separators=(",", ":"))
+            pipe.publish(live_channel(settings, user), raw)
+            pipe.hset(last_frames_key(settings, user), body["monitor_id"], raw)
+            pipe.expire(last_frames_key(settings, user), max(int(settings.TWIN_INPLAY_POLL_SECONDS * 60), 60))
+        await pipe.execute()
+    except (RedisError, OSError):
+        logger.warning("in-play frames not published (Redis)")
+
+
 async def _tick(sessions: async_sessionmaker[AsyncSession], redis: Redis, settings: Settings, now: datetime, user_id: uuid.UUID | None) -> TickReport:
     report = TickReport()
     alerts: list[SentinelAlert] = []
+    frames: list[tuple[uuid.UUID, dict[str, Any]]] = []
     async with sessions() as session:
         query = select(TwinInPlayMonitor).where(TwinInPlayMonitor.is_active.is_(True)).order_by(TwinInPlayMonitor.id).with_for_update(skip_locked=True)
         if user_id is not None:
@@ -236,19 +299,25 @@ async def _tick(sessions: async_sessionmaker[AsyncSession], redis: Redis, settin
             }
             call = pullout(monitor, bet, valuation, settings)
             if call is None:
+                frames.append((monitor.user_id, frame(monitor, bet)))
                 continue
             reason, action = call
             monitor.pullout_triggered, monitor.pullout_reason, monitor.pullout_at, monitor.is_active = True, reason.value, now, False
-            monitor.detail = {**monitor.detail, "action": action}
+            ticket = cashout_ticket(monitor, bet, valuation, action, settings, now) if reason in (PulloutReason.STOP_LOSS, PulloutReason.PROBABILITY_COLLAPSE) else None
+            monitor.detail = {**monitor.detail, "action": action, **({"cashout_ticket": ticket} if ticket else {})}
             item = {"monitor_id": str(monitor.id), "bet_id": str(bet.id), "reason": reason.value, "action": action, "fair_value_inr": str(advice.fair_value),
-                    "win_probability": round(valuation.probability, 4), "booking_code": bet.booking_code}
+                    "win_probability": round(valuation.probability, 4), "booking_code": bet.booking_code, **({"ticket": ticket} if ticket else {})}
             report.alerts.append(item)
+            frames.append((monitor.user_id, frame(monitor, bet)))
+            body = action if ticket is None else "\n".join([action, *[f"{i}. {s}" for i, s in enumerate(ticket["instructions"], 1)], *ticket["caveats"]])
             alerts.append(SentinelAlert(
-                kind=AlertKind.TWIN_PULLOUT, severity=Severity.INFO, source="digital_twin",
-                title=f"ASHOKA pullout: {reason.value.replace('_', ' ').lower()} · stake ₹{bet.stake_inr:,}" + (f" · {bet.booking_code}" if bet.booking_code else ""),
-                body=action, dedupe_key=f"twin:pullout:{bet.id}", detail=item,
+                kind=AlertKind.TWIN_PULLOUT, severity=Severity.WARNING if reason is PulloutReason.STOP_LOSS else Severity.INFO, source="digital_twin",
+                title=f"ASHOKA {'STOP-LOSS' if reason is PulloutReason.STOP_LOSS else 'pullout: ' + reason.value.replace('_', ' ').lower()} · stake ₹{bet.stake_inr:,}"
+                      + (f" · {bet.booking_code}" if bet.booking_code else ""),
+                body=body[:4000], dedupe_key=f"twin:pullout:{bet.id}", detail=item,
             ))
         await session.commit()
+    await publish(redis, settings, frames)
     for alert in alerts:
         await emit_alert(redis, settings, alert)
     return report
@@ -257,7 +326,7 @@ async def _tick(sessions: async_sessionmaker[AsyncSession], redis: Redis, settin
 def monitor_view(monitor: TwinInPlayMonitor, bet: UserPlacedBet | None = None) -> dict[str, Any]:
     return {
         "id": str(monitor.id), "bet_id": str(monitor.bet_id), "vetting_audit_id": None if monitor.vetting_audit_id is None else str(monitor.vetting_audit_id),
-        "is_active": monitor.is_active, "target_profit_pct": monitor.target_profit_pct, "initial_win_prob": round(monitor.initial_win_prob, 4),
+        "is_active": monitor.is_active, "target_profit_pct": monitor.target_profit_pct, "stop_loss_pct": monitor.stop_loss_pct, "initial_win_prob": round(monitor.initial_win_prob, 4),
         "current_win_prob": round(monitor.current_win_prob, 4), "fair_value_inr": None if monitor.fair_value_inr is None else str(monitor.fair_value_inr),
         "peak_fair_value_inr": None if monitor.peak_fair_value_inr is None else str(monitor.peak_fair_value_inr),
         "cashout_offer_inr": None if monitor.cashout_offer_inr is None else str(monitor.cashout_offer_inr), "last_advice": monitor.last_advice,

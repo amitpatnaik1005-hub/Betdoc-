@@ -40,6 +40,7 @@ from app.domain.oracle.parlay_engine import (
     ParlayEngine,
     Quote,
     SlipCandidate,
+    SYSTEMS,
     SlipKind,
     Tier,
     league_label,
@@ -56,6 +57,7 @@ VALUE_BADGE = "Value · strictly bounded stake"
 TITLES = {
     SlipKind.SINGLE: "Single Value Bet", SlipKind.DOUBLE: "Double", SlipKind.TREBLE: "Treble", SlipKind.ACCUMULATOR: "Accumulator",
     SlipKind.TRIXIE: "Trixie (4 bets)", SlipKind.YANKEE: "Yankee (11 bets)", SlipKind.CANADIAN: "Canadian (26 bets)", SlipKind.HEINZ: "Heinz (57 bets)",
+    SlipKind.PATENT: "Patent (7 bets)", SlipKind.SUPER_HEINZ: "Super Heinz (120 bets)", SlipKind.GOLIATH: "Goliath (247 bets)",
 }
 
 
@@ -246,7 +248,7 @@ def personalise(core: dict[str, Any], bankroll: Decimal | None) -> dict[str, Any
         for leg in core["legs"]
     ]
     multiple = len(legs) > 1
-    if core["kind"] in (SlipKind.TRIXIE, SlipKind.YANKEE, SlipKind.CANADIAN, SlipKind.HEINZ):
+    if core["kind"] in SYSTEMS:
         views = []  # a system's lines are priced line by line at the book; the legs' prices are what to compare
     else:
         views = [book_view(book, legs, reference) for book in ASHOKA_BOOKMAKERS]
