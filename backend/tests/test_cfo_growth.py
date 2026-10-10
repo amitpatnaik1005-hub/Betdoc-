@@ -434,9 +434,10 @@ async def test_the_api(sessions: async_sessionmaker[AsyncSession], settings: Set
 @pytest.mark.asyncio
 async def test_a_change_of_regime_pages_and_a_reconfirmation_does_not(sessions: async_sessionmaker[AsyncSession], redis: Redis, settings: Settings) -> None:
     user = await make_user(sessions)
-    for minutes, drawdown in ((0, 0.02), (5, 0.12), (10, 0.21)):
+    for minutes, drawdown in ((0, 0.02), (5, 0.12), (8, 0.16), (10, 0.21)):
         await growth.observe_regime(sessions, redis, settings, user.id, drawdown, D("100000"), NOW + timedelta(minutes=minutes))
     await growth.scan(sessions, redis, settings, NOW + timedelta(hours=settings.CFO_ADVISORY_CONFIRM_HOURS + 1))
     alerts = [decode(fields["a"]) for _, fields in await redis.xrange(SentinelKeys(settings).stream)]
-    regime = [(a.kind, a.severity.value) for a in alerts if a.kind is AlertKind.CFO_REGIME_CHANGE]
-    assert regime == [(AlertKind.CFO_REGIME_CHANGE, "WARNING"), (AlertKind.CFO_REGIME_CHANGE, "CRITICAL")]  # the first steady reading and the latch's scan stay quiet
+    regime = [a.severity.value for a in alerts if a.kind is AlertKind.CFO_REGIME_CHANGE]
+    # cautious is a recommendation (INFO), defensive a WARNING, the halt CRITICAL; the first steady reading and the latch's scan stay quiet
+    assert regime == ["INFO", "WARNING", "CRITICAL"]

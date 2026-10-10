@@ -51,6 +51,7 @@ from app.models.cfo_vault import BankrollAccount, MarketResult
 from app.models.control_panel import SystemSettingsModel
 from app.models.digital_twin import TwinInPlayMonitor, TwinVettingAudit
 from app.models.cfo_growth import CFOAdvisoryLog
+from app.services.cfo import growth_optimizer as growth
 from app.models.hive_bots import TradingBot
 from app.models.model_calibration import ModelRecalibrationRun, ModelWeightAudit
 from app.models.never_forget import AshokaMistakeMemory, NeverForgetPreventionAudit, NeverForgetRule, UserXPProfile, XPAuditLog
@@ -587,6 +588,13 @@ async def test_refusals_kill_switch_drawdown_halt_and_pathway_b_guards(sessions:
         async with sessions() as session:
             for bet in (await session.execute(select(UserPlacedBet).where(UserPlacedBet.user_id == user.id))).scalars():
                 await session.delete(bet)
+            await session.commit()
+        # the drawdown is gone but the halt stays latched until an administrator signs it off (Group 76)
+        latched = (await client.post("/api/v1/twin/vet", json={"leg_ids": [leg_id], "bankroll_inr": "100000"})).json()
+        assert latched["is_vetted"] is False and latched["pillars"][12]["status"] == "FAIL" and "sign-off" in latched["pillars"][12]["reason"]
+        async with sessions() as session:
+            halt = (await session.execute(select(CFOAdvisoryLog).where(CFOAdvisoryLog.user_id == user.id, CFOAdvisoryLog.insight_code == "CAPITAL_PRESERVATION_HALT"))).scalar_one()
+            await growth.acknowledge(session, halt, user.id, "drawdown reviewed: test bets removed", datetime.now(UTC))
             await session.commit()
         clean = (await client.post("/api/v1/twin/vet", json={"leg_ids": [leg_id], "bankroll_inr": "100000"})).json()
         assert clean["is_vetted"], clean["rejection_reasons"]

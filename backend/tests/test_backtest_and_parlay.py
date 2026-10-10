@@ -323,6 +323,7 @@ async def watched_bet(sessions: async_sessionmaker[AsyncSession], user: User, *,
     async with sessions() as session:
         bet = UserPlacedBet(id=uuid.uuid4(), user_id=user.id, bookmaker=book, structure="SINGLE", stake_inr=D("1000"), placed_odds=D("2.45"), placed_at=NOW, booking_code="1X-777")
         session.add(bet)
+        await session.flush()  # no relationship() orders the two inserts: PostgreSQL checks the foreign key
         monitor = TwinInPlayMonitor(id=uuid.uuid4(), bet_id=bet.id, user_id=user.id, is_active=True, target_profit_pct=0.5, stop_loss_pct=0.25, initial_win_prob=0.46,
                                     current_win_prob=0.40, fair_value_inr=D("880"), ticks=3, detail={}, created_at=NOW)
         session.add(monitor)
