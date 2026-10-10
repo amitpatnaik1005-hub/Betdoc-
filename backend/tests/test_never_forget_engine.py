@@ -54,6 +54,7 @@ from app.models.cfo_vault import BankrollAccount, MarketResult
 from app.models.control_panel import SystemSettingsModel
 from app.models.digital_twin import TwinInPlayMonitor, TwinVettingAudit
 from app.models.feedback import ModelPredictionFeedback, SettlementRootCauseAudit
+from app.models.cfo_growth import CFOAdvisoryLog
 from app.models.hive_bots import TradingBot
 from app.models.model_calibration import ModelRecalibrationRun, ModelWeightAudit
 from app.models.nalanda_lake import NalandaTick
@@ -72,6 +73,7 @@ TABLES = [
     TwinVettingAudit.__table__, TwinInPlayMonitor.__table__, NalandaTick.__table__, ModelPredictionFeedback.__table__, SettlementRootCauseAudit.__table__,
     ModelRecalibrationRun.__table__, ModelWeightAudit.__table__,
     AshokaMistakeMemory.__table__, NeverForgetRule.__table__, NeverForgetPreventionAudit.__table__, UserXPProfile.__table__, XPAuditLog.__table__,
+    CFOAdvisoryLog.__table__,
 ]
 TEST_REDIS_URL = os.environ["TEST_REDIS_URL"]  # forced onto the isolated test database by tests/conftest.py
 TEST_POSTGRES_URL = os.environ.get("TEST_POSTGRES_URL")

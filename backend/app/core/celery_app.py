@@ -62,7 +62,7 @@ def _zoned_crontab(minute: str | int, hour: str | int, zone: str, day_of_week: s
 celery_app = Celery(
     "betdoc_omni",
     broker=_settings.celery_broker_url.get_secret_value(),
-    include=["app.workers.omni_poller", "app.workers.omni_quorum", "app.workers.cfo_settlement", "app.workers.sniper", "app.workers.hive_worker", "app.workers.lab_worker", "app.workers.nalanda_maintenance", "app.workers.sentinel_tasks", "app.workers.oracle_tasks", "app.workers.vault_prober", "app.workers.execution_dispatcher", "app.workers.twin_tasks", "app.workers.feedback_tasks", "app.workers.calibration_tasks"],
+    include=["app.workers.omni_poller", "app.workers.omni_quorum", "app.workers.cfo_settlement", "app.workers.sniper", "app.workers.hive_worker", "app.workers.lab_worker", "app.workers.nalanda_maintenance", "app.workers.sentinel_tasks", "app.workers.oracle_tasks", "app.workers.vault_prober", "app.workers.execution_dispatcher", "app.workers.twin_tasks", "app.workers.feedback_tasks", "app.workers.calibration_tasks", "app.workers.cfo_growth_tasks"],
 )
 
 celery_app.conf.update(
@@ -158,6 +158,8 @@ celery_app.conf.update(
             "schedule": ZonedCrontab(minute=_settings.TWIN_RECALIBRATION_MINUTE, hour=_settings.TWIN_RECALIBRATION_HOUR, day_of_week=_settings.TWIN_RECALIBRATION_DAY_OF_WEEK,
                                      zone=_settings.ORACLE_TIMEZONE),
         },
+        # Group 76: KUMBHA's drawdown regime per user (throttle, halt and its latch, re-confirmation)
+        "cfo-growth-scan": {"task": "cfo.growth_scan", "schedule": _settings.CFO_ADVISORY_SCAN_MINUTES * 60.0, "options": {"expires": _settings.CFO_ADVISORY_SCAN_MINUTES * 60.0}},
         "sentinel-market-forecast-hype": {
             "task": "sentinel.market_forecast_hype",
             "schedule": ZonedCrontab(minute=_settings.SENTINEL_HYPE_MINUTE, hour=_settings.SENTINEL_HYPE_HOUR, zone=_settings.SENTINEL_TIMEZONE),

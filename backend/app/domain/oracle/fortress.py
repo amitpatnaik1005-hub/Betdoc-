@@ -30,8 +30,10 @@ passes (``TWIN_ADVISORY_PILLARS`` may name pillars that only report).
 11. Liquidity. The stake fits under the book's maximum for the fixture (the evidence, else the
     configured venue limit). An unknown maximum is unverified.
 12. Independence. The anti-correlation gate: no two legs of one fixture, no team twice in 36 hours.
-13. Sizing. Quarter Kelly of the slip's growth-optimal fraction, capped; a rolling drawdown past
-    ``drawdown_scale_at`` halves it, past ``drawdown_halt_at`` stakes nothing (and pages the Sentinel).
+13. Sizing, by the CFO's one policy (``app.domain.cfo.growth_math``, Group 76): fractional Kelly of the slip's
+    growth-optimal fraction, scaled by the models' Brier skill and a long-shot discount, under the ceiling;
+    then the drawdown damper: cautious, defensive, and a halt that stakes nothing and stays latched until a
+    supervisor signs it off.
     The stake rounds down to ``stake_step``; one that rounds to nothing fails.
 14. Execution gate. The kill switch is off (and Redis can say so) and every retail price is fresh.
     ``confirm`` re-runs this pillar against a re-fetched price before the slip is placed or routed.
@@ -51,10 +53,11 @@ import math
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
-from decimal import ROUND_DOWN, Decimal
+from decimal import Decimal
 from enum import StrEnum
 from typing import Any
 
+from app.domain.cfo import growth_math as gm
 from app.domain.oracle import never_forget as nf
 from app.domain.oracle.markets import MarketKind, MarketRef
 from app.domain.oracle.parlay_engine import LegCandidate, Quote, SlipCandidate
@@ -114,11 +117,7 @@ class FortressPolicy:
     referee_strict_cards: float
     motivation_gap: float
     derby_ev_multiplier: float
-    kelly_fraction: float
-    max_stake_pct: float
-    drawdown_scale_at: float
-    drawdown_scale: float
-    drawdown_halt_at: float
+    sizing: gm.SizingPolicy
     stake_step: Decimal
     max_quote_age_seconds: float
     max_odds_drift_pct: float
@@ -139,8 +138,7 @@ class FortressPolicy:
             referee_sports=tuple(s.strip().casefold() for s in settings.TWIN_REFEREE_SPORTS.split(",") if s.strip()),
             referee_max_penalties_per_90=settings.TWIN_REFEREE_MAX_PENALTIES_PER_90, referee_strict_cards=settings.TWIN_REFEREE_STRICT_CARDS,
             motivation_gap=settings.TWIN_MOTIVATION_MAX_GAP, derby_ev_multiplier=settings.TWIN_DERBY_EV_MULTIPLIER,
-            kelly_fraction=settings.TWIN_KELLY_FRACTION, max_stake_pct=settings.TWIN_MAX_STAKE_PCT,
-            drawdown_scale_at=settings.TWIN_DRAWDOWN_SCALE_AT, drawdown_scale=settings.TWIN_DRAWDOWN_SCALE, drawdown_halt_at=settings.TWIN_DRAWDOWN_HALT_AT,
+            sizing=gm.SizingPolicy.from_settings(settings),
             stake_step=Decimal(settings.TWIN_STAKE_STEP_INR), max_quote_age_seconds=settings.TWIN_MAX_QUOTE_AGE_SECONDS,
             max_odds_drift_pct=settings.TWIN_MAX_ODDS_DRIFT_PCT,
             intel_max_age={k: timedelta(minutes=float(v)) for k, v in settings.TWIN_INTEL_MAX_AGE_MINUTES.items()},
@@ -199,25 +197,13 @@ def rolling_drawdown(bankroll_now: Decimal, pnls_oldest_first: Sequence[Decimal]
     return worst
 
 
-@dataclass(frozen=True, slots=True)
-class Sizing:
-    fraction: float  # of bankroll, after the Kelly fraction, the cap and the drawdown scaling
-    stake: Decimal
-    halted: bool
-    scaled: bool
-    full_kelly: float
+Sizing = gm.Sizing
 
 
-def size_stake(full_kelly: float, bankroll: Decimal, drawdown: float, policy: FortressPolicy) -> Sizing:
-    if drawdown > policy.drawdown_halt_at:
-        return Sizing(0.0, Decimal(0).quantize(PAISA), True, False, full_kelly)
-    fraction = min(max(full_kelly, 0.0) * policy.kelly_fraction, policy.max_stake_pct)
-    scaled = drawdown > policy.drawdown_scale_at
-    if scaled:
-        fraction *= policy.drawdown_scale
-    raw = bankroll * Decimal(str(fraction))
-    stake = ((raw / policy.stake_step).to_integral_value(rounding=ROUND_DOWN) * policy.stake_step).quantize(PAISA)
-    return Sizing(fraction, stake, False, scaled, full_kelly)
+def size_stake(full_kelly: float, bankroll: Decimal, drawdown: float, policy: FortressPolicy, *, odds: float = 1.0, bss: float | None = None,
+               latched: bool = False) -> Sizing:
+    """The CFO's sizing at the fortress's stake step."""
+    return gm.size(full_kelly, odds, bankroll, drawdown, policy.sizing, policy.stake_step, bss=bss, latched=latched)
 
 
 def backed_side(market: MarketRef, selection: str) -> str | None:
@@ -252,6 +238,8 @@ class FortressInputs:
     book_max_stake: Decimal | None  # the configured venue maximum, if any
     now: datetime
     lessons: Sequence[nf.Lesson] | None = ()  # the Never-Forget vault (pillar 15); None: it could not be read
+    skill: float | None = None  # the models' Brier skill against the sharp close (Group 74); None: unmeasured
+    halt_latched: bool = False  # a drawdown halt awaits a supervisor's sign-off (Group 76)
 
 
 @dataclass(frozen=True, slots=True)
@@ -550,15 +538,19 @@ def pillar_12(inputs: FortressInputs) -> PillarResult:
 def pillar_13(inputs: FortressInputs, policy: FortressPolicy) -> tuple[PillarResult, Sizing | None]:
     if inputs.bankroll is None or inputs.bankroll <= 0:
         return PillarResult(13, Status.UNVERIFIED, "no bankroll to size against (give one, or fund the CFO main account)"), None
-    sizing = size_stake(inputs.slip.sim.kelly_fraction, inputs.bankroll, inputs.drawdown, policy)
-    metrics = {"full_kelly": round(sizing.full_kelly, 5), "fraction": round(sizing.fraction, 5), "stake_inr": str(sizing.stake),
-               "drawdown": round(inputs.drawdown, 4), "scaled": sizing.scaled, "halted": sizing.halted}
+    sizing = size_stake(inputs.slip.sim.kelly_fraction, inputs.bankroll, inputs.drawdown, policy, odds=inputs.slip.odds, bss=inputs.skill, latched=inputs.halt_latched)
+    metrics = {**sizing.as_dict(), "drawdown": round(inputs.drawdown, 4), "skill_bss": None if inputs.skill is None else round(inputs.skill, 4)}
+    if sizing.regime == gm.LATCHED:
+        return PillarResult(13, Status.FAIL, f"a drawdown halt awaits a supervisor's sign-off (rolling drawdown now {inputs.drawdown:.1%}): betting halts", metrics), sizing
     if sizing.halted:
-        return PillarResult(13, Status.FAIL, f"rolling drawdown {inputs.drawdown:.1%} is past {policy.drawdown_halt_at:.0%}: betting halts", metrics), sizing
+        return PillarResult(13, Status.FAIL, f"rolling drawdown {inputs.drawdown:.1%} is past {policy.sizing.halt_at:.0%}: betting halts", metrics), sizing
     if sizing.stake <= 0:
         return PillarResult(13, Status.FAIL, f"the Kelly stake rounds below ₹{policy.stake_step}", metrics), sizing
-    note = f" (halved: drawdown {inputs.drawdown:.1%} past {policy.drawdown_scale_at:.0%})" if sizing.scaled else ""
-    return PillarResult(13, Status.PASS, f"₹{sizing.stake:,} = {sizing.fraction:.2%} of bankroll{note}", metrics), sizing
+    notes = [f"{sizing.regime.replace('_', ' ').lower()}: x{sizing.damper:g} at drawdown {inputs.drawdown:.1%}"] if sizing.scaled else []
+    notes += [f"capped at {policy.sizing.max_fraction:.2%}"] if sizing.capped else []
+    notes += [f"skill x{sizing.skill:.2f}"] if sizing.skill != 1.0 else []
+    notes += [f"long-shot x{sizing.longshot:.2f}"] if sizing.longshot != 1.0 else []
+    return PillarResult(13, Status.PASS, f"₹{sizing.stake:,} = {sizing.fraction:.2%} of bankroll" + (f" ({'; '.join(notes)})" if notes else ""), metrics), sizing
 
 
 def pillar_14(kill_switch: bool | None, quotes: Sequence[Quote], now: datetime, policy: FortressPolicy, *, floors: Sequence[float] | None = None) -> PillarResult:

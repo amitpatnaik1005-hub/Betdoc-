@@ -58,11 +58,13 @@ class AlertKind(StrEnum):
     LEGGED_POSITION = "LEGGED_POSITION"  # a routed order filled on some venues only: the position is legged
     TWIN_SLIP_VETTED = "TWIN_SLIP_VETTED"  # a slip cleared all 14 pillars of the twin's fortress (Group 72)
     TWIN_PULLOUT = "TWIN_PULLOUT"  # the in-play watch recommends cashing out or hedging a placed bet
-    TWIN_DRAWDOWN_HALT = "TWIN_DRAWDOWN_HALT"  # the rolling drawdown passed TWIN_DRAWDOWN_HALT_AT: the twin stakes nothing
+    TWIN_DRAWDOWN_HALT = "TWIN_DRAWDOWN_HALT"  # until Group 76: the drawdown halt now pages as CFO_REGIME_CHANGE (kept to read old alerts)
     TWIN_SETTLED = "TWIN_SETTLED"  # a placed bet settled: the win with its CLV, or the loss with its root cause (Group 73)
     MODEL_RECALIBRATED = "MODEL_RECALIBRATED"  # the recalibration engine published pillar 1's weights (Group 74)
     MODEL_DRIFT = "MODEL_DRIFT"  # a model went on probation or was benched
     NEVER_FORGET_LESSON = "NEVER_FORGET_LESSON"  # a lost leg became a Never-Forget lesson (Group 75)
+    CFO_REGIME_CHANGE = "CFO_REGIME_CHANGE"  # KUMBHA's drawdown regime changed: throttle, halt (CRITICAL, latched) or back to full sizing (Group 76)
+    CFO_REBALANCE = "CFO_REBALANCE"  # a venue rebalance plan with transfers was recorded
 
 
 class SentinelAlert(BaseModel):

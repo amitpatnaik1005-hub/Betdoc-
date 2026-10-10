@@ -50,7 +50,9 @@ from app.models import User
 from app.models.cfo_vault import BankrollAccount, MarketResult
 from app.models.control_panel import SystemSettingsModel
 from app.models.digital_twin import TwinInPlayMonitor, TwinVettingAudit
+from app.models.cfo_growth import CFOAdvisoryLog
 from app.models.hive_bots import TradingBot
+from app.models.model_calibration import ModelRecalibrationRun, ModelWeightAudit
 from app.models.never_forget import AshokaMistakeMemory, NeverForgetPreventionAudit, NeverForgetRule, UserXPProfile, XPAuditLog
 from app.models.omni_vault import OmniFleetSource
 from app.models.popular_picks import ParlayReviewGateModel, PopularParlayModel
@@ -68,6 +70,7 @@ TABLES = [
     UserPlacedBet.__table__, UserPlacedLeg.__table__, FixtureScore.__table__, PopularParlayModel.__table__, ParlayReviewGateModel.__table__,
     TwinVettingAudit.__table__, TwinInPlayMonitor.__table__,
     AshokaMistakeMemory.__table__, NeverForgetRule.__table__, NeverForgetPreventionAudit.__table__, UserXPProfile.__table__, XPAuditLog.__table__,
+    ModelRecalibrationRun.__table__, ModelWeightAudit.__table__, CFOAdvisoryLog.__table__,
 ]
 TEST_REDIS_URL = os.environ["TEST_REDIS_URL"]  # forced onto the isolated test database by tests/conftest.py
 TEST_POSTGRES_URL = os.environ.get("TEST_POSTGRES_URL")
@@ -241,17 +244,22 @@ def test_reverse_line_movement_and_steam_veto_a_leg(settings: Settings) -> None:
     assert status_of(fortress.run(inputs(steam=None), rule, ("pinnacle",)), 6) is Status.UNVERIFIED  # edges unreadable
 
 
-def test_quarter_kelly_caps_halves_and_halts(settings: Settings) -> None:
+def test_quarter_kelly_caps_dampens_and_halts(settings: Settings) -> None:
     rule = policy(settings)
     bank = D("100000")
     plain = size_stake(0.08, bank, 0.0, rule)
     assert plain.fraction == pytest.approx(0.02) and plain.stake == D("2000") and not plain.scaled
     capped = size_stake(0.60, bank, 0.0, rule)
-    assert capped.fraction == pytest.approx(0.05) and capped.stake == D("5000")  # never above 5% of bankroll
+    assert capped.fraction == pytest.approx(0.025) and capped.stake == D("2500") and capped.capped  # Group 76: never above 2.5% of bankroll
     halved = size_stake(0.08, bank, 0.12, rule)
-    assert halved.scaled and halved.fraction == pytest.approx(0.01) and halved.stake == D("1000")  # 0.08 x 0.25 x 0.5
+    assert halved.scaled and halved.fraction == pytest.approx(0.01) and halved.stake == D("1000") and halved.regime == "CAUTIOUS_THROTTLED"  # 0.08 x 0.25 x 0.5
+    quartered = size_stake(0.08, bank, 0.17, rule)
+    assert quartered.fraction == pytest.approx(0.005) and quartered.regime == "DEFENSIVE_CAPITAL_PRESERVATION"  # 0.08 x 0.25 x 0.25
+    capped_then_halved = size_stake(0.60, bank, 0.12, rule)
+    assert capped_then_halved.fraction == pytest.approx(0.0125)  # the damper bites under the ceiling, whatever the edge
     halted = size_stake(0.08, bank, 0.21, rule)
     assert halted.halted and halted.stake == 0
+    assert size_stake(0.08, bank, 0.0, rule, latched=True).regime == "LATCHED_HALT"  # a halt holds until signed off
     odd = size_stake(0.0791, D("100000"), 0.0, rule)
     assert odd.stake == D("1950")  # ₹1,977.50 rounds down to the ₹50 step
     assert size_stake(0.0, bank, 0.0, rule).stake == 0
@@ -559,7 +567,7 @@ async def test_refusals_kill_switch_drawdown_halt_and_pathway_b_guards(sessions:
         assert halted["is_vetted"] is False and halted["pillars"][13]["status"] == "FAIL" and halted["pillars"][0]["metrics"]["weights"] == {"market": 2.0, "poisson": 1.0, "dixon_coles": 1.0}
         await redis.delete(settings.CFO_KILL_SWITCH_KEY)
 
-        # a 25% rolling drawdown halts the twin and pages CRITICAL
+        # a 25% rolling drawdown halts the twin, latches, and KUMBHA pages CRITICAL (Group 76)
         async with sessions() as session:
             for i, pnl in enumerate((D("10000"), D("-35000"))):
                 session.add(UserPlacedBet(id=uuid.uuid4(), user_id=user.id, bookmaker="1XBET", structure="SINGLE", stake_inr=D("35000"), placed_odds=D("2"),
@@ -568,7 +576,7 @@ async def test_refusals_kill_switch_drawdown_halt_and_pathway_b_guards(sessions:
             await session.commit()
         drained = (await client.post("/api/v1/twin/vet", json={"leg_ids": [leg_id], "bankroll_inr": "75000"})).json()
         assert drained["pillars"][12]["status"] == "FAIL" and drained["pillars"][12]["metrics"]["halted"] is True and drained["stake_inr"] == "0.00"
-        assert [a.severity for a in await stream(redis, settings) if a.kind is AlertKind.TWIN_DRAWDOWN_HALT] == [Severity.CRITICAL]
+        assert [a.severity for a in await stream(redis, settings) if a.kind is AlertKind.CFO_REGIME_CHANGE] == [Severity.CRITICAL]
 
         # Pathway B: only a vetted single, and only after the re-check; then the router's own stack takes over
         refused = await client.post(f"/api/v1/twin/audits/{drained['id']}/route")

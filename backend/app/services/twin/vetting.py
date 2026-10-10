@@ -7,13 +7,14 @@ simulate it at the best retail book quoting every leg, then gathers what the con
 * the sharp books' whole market per leg (pillar 7), Aryabhata's steam flags (6), the fixture evidence
   store (2-6, 9-11), BetDoc's own measured public share per selection (6), live public-trap parlays (8),
   the calibration store's model weights (1);
-* the user's bankroll (the caller's figure, else the CFO main account) and rolling drawdown from their
-  settled bets (13); the kill switch, from Redis and the Control Panel's emergency stop (14);
+* the user's bankroll (the caller's figure, else the CFO main account), rolling drawdown from their settled
+  bets, the models' Brier skill and KUMBHA's halt latch (13, sized by the CFO's policy, Group 76); the kill
+  switch, from Redis and the Control Panel's emergency stop (14);
 * the Never-Forget vault, read from the database on every run (15). Its vetoes are kept as prevention
   rows, and a vetted slip (and a run of disciplined days) earns the user XP (Group 75).
 
-Every run is an audit row. A vetted slip pages the user's phone through the Sentinel; a drawdown past the
-halt line pages CRITICAL. ``confirm`` re-runs pillar 14 against freshly read prices just before the slip
+Every run is an audit row. A vetted slip pages the user's phone through the Sentinel; a change of drawdown
+regime pages through KUMBHA's advisory (CRITICAL at the halt line). ``confirm`` re-runs pillar 14 against freshly read prices just before the slip
 is placed or routed; ``record_placed`` puts a placed slip in Ashoka's ledger (one P&L) and ``route``
 hands a vetted single to the Smart Order Router (Pathway B).
 """
@@ -235,9 +236,10 @@ async def vet(
         shares = await crowd_shares(session, legs, now)
         traps = await public_traps(session, legs, now)
         wallet = await bankroll_for(session, user_id, bankroll) if user_id is not None else bankroll
-        drawdown = await drawdown_for(session, user_id, wallet, now, settings.TWIN_DRAWDOWN_WINDOW_DAYS) if user_id is not None else 0.0
+        drawdown = await drawdown_for(session, user_id, wallet, now, settings.CFO_DRAWDOWN_WINDOW_DAYS) if user_id is not None else 0.0
         halted = await kill_switch_state(session, redis, settings)
     vault = await _vault(sessions, settings)
+    skill, latched = await _capital_state(sessions, redis, settings, user_id, wallet, drawdown, weights, now)
     evidence = [
         fortress.LegEvidence(
             leg=leg, quote=quote, sharp_market=_sharp_market(leg, by_id, sharp), intel=intel.get(leg.fixture_id),
@@ -248,7 +250,7 @@ async def vet(
     ]
     inputs = fortress.FortressInputs(
         slip=slip, legs=evidence, bankroll=wallet, drawdown=drawdown, kill_switch=halted, model_weights=weights,
-        book_max_stake=VenueStakeRules.for_venue(slip.book, settings).max_stake, now=now, lessons=vault,
+        book_max_stake=VenueStakeRules.for_venue(slip.book, settings).max_stake, now=now, lessons=vault, skill=skill, halt_latched=latched,
     )
     policy = fortress.FortressPolicy.from_settings(settings)
     verdict = fortress.run(inputs, policy, sharp, situations=nf.NeverForgetPolicy.from_settings(settings))
@@ -267,15 +269,22 @@ async def vet(
     await _shield_and_xp(sessions, settings, audit, now)
     if verdict.is_vetted:
         await emit_alert(redis, settings, vetted_alert(audit))
-    if sizing is not None and sizing.halted:
-        await emit_alert(redis, settings, SentinelAlert(
-            kind=AlertKind.TWIN_DRAWDOWN_HALT, severity=Severity.CRITICAL, source="digital_twin",
-            title=f"Twin halted: rolling {settings.TWIN_DRAWDOWN_WINDOW_DAYS:g}-day drawdown {drawdown:.1%}",
-            body=f"The drawdown is past {settings.TWIN_DRAWDOWN_HALT_AT:.0%}: the twin stakes nothing until it recovers.",
-            dedupe_key=f"twin:drawdown:{user_id}:{now.date().isoformat()}", detail={"drawdown": round(drawdown, 4), "user_id": str(user_id)},
-        ))
     logger.info("twin audit %s slip=%s book=%s passed=%d vetted=%s", audit.id, audit.slip_id, audit.bookmaker, audit.pillars_passed, audit.is_vetted)
     return audit
+
+
+async def _capital_state(sessions: async_sessionmaker[AsyncSession], redis: Redis, settings: Settings, user_id: uuid.UUID | None, wallet: Decimal | None,
+                         drawdown: float, weights: dict[str, float], now: datetime) -> tuple[float | None, bool]:
+    """KUMBHA's inputs to pillar 13 (Group 76): the models' Brier skill, and whether a drawdown halt is latched. Observing
+    the regime records (and pages) a change of it; a halt reached here latches at once."""
+    from app.services.cfo import growth_optimizer as growth  # noqa: PLC0415 - it imports this module
+
+    async with sessions() as session:
+        skill = await growth.fleet_skill(session, weights)
+    if user_id is None:
+        return skill, False
+    state = await growth.observe_regime(sessions, redis, settings, user_id, drawdown, wallet, now)
+    return skill, state.latched
 
 
 async def _vault(sessions: async_sessionmaker[AsyncSession], settings: Settings) -> list[nf.Lesson] | None:

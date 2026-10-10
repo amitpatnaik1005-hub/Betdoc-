@@ -282,12 +282,7 @@ class Settings(BaseSettings):
     TWIN_REFEREE_STRICT_CARDS: float = Field(default=4.8, gt=0)  # flagged in the audit, never a veto
     TWIN_MOTIVATION_MAX_GAP: float = Field(default=0.30, gt=0, le=1)  # pillar 10: the opponent wanting it this much more vetoes
     TWIN_DERBY_EV_MULTIPLIER: float = Field(default=1.5, ge=1)  # a derby needs this times the consensus EV bar
-    TWIN_KELLY_FRACTION: float = Field(default=0.25, gt=0, le=1)  # pillar 13: quarter Kelly ...
-    TWIN_MAX_STAKE_PCT: float = Field(default=0.05, gt=0, le=0.25)  # ... never above 5% of bankroll
-    TWIN_DRAWDOWN_WINDOW_DAYS: float = Field(default=7.0, gt=0)
-    TWIN_DRAWDOWN_SCALE_AT: float = Field(default=0.10, gt=0, lt=1)  # rolling drawdown past this halves the fraction ...
-    TWIN_DRAWDOWN_SCALE: float = Field(default=0.5, gt=0, le=1)
-    TWIN_DRAWDOWN_HALT_AT: float = Field(default=0.20, gt=0, lt=1)  # ... past this nothing is staked and the Sentinel is paged
+    # pillar 13 sizes with the CFO's policy (CFO_* below, Group 76): one Kelly fraction, ceiling and drawdown damper
     TWIN_STAKE_STEP_INR: Decimal = Field(default=Decimal("50"), gt=0)  # stakes round down to this
     TWIN_MAX_QUOTE_AGE_SECONDS: float = Field(default=60.0, ge=1)  # pillar 14: an older retail price is not executable
     TWIN_MAX_ODDS_DRIFT_PCT: float = Field(default=0.01, ge=0, lt=1)  # pillar 14 re-check: the price may fall this much, no more
@@ -362,6 +357,37 @@ class Settings(BaseSettings):
     NEVER_FORGET_SPECIFICITY_MIN_LEGS: int = Field(default=20, ge=1)  # ... judged once this many comparable legs were seen ...
     NEVER_FORGET_SPECIFICITY_WINDOW_DAYS: float = Field(default=30.0, gt=0)  # ... over this window (EXPERIMENTAL until promoted)
     NEVER_FORGET_SPECIFICITY_MAX_AUDITS: int = Field(default=2000, ge=10)  # the most recent fortress runs read for it
+
+    # ---- KUMBHA's capital growth: the one sizing policy (pillar 13 and the CFO), forecasts, rebalancing (Group 76) ----
+    # f = min(f* x kappa x psi(BSS) x lambda(odds), f_max) x phi(D)
+    CFO_KELLY_FRACTION_DEFAULT: float = Field(default=0.25, gt=0.0, le=1.0)  # kappa: quarter Kelly
+    CFO_MAX_SINGLE_STAKE_PCT: float = Field(default=0.025, gt=0.0, le=0.10)  # f_max, a fraction of bankroll: 2.5%
+    CFO_DRAWDOWN_WINDOW_DAYS: float = Field(default=7.0, gt=0)  # the rolling drawdown D, from the user's settled bets
+    CFO_DRAWDOWN_CAUTIOUS_THRESHOLD_PCT: float = Field(default=10.0, gt=0.0, lt=100.0)  # phi(D): from here x the cautious multiplier ...
+    CFO_DRAWDOWN_CAUTIOUS_MULTIPLIER: float = Field(default=0.50, gt=0.0, le=1.0)
+    CFO_DRAWDOWN_DEFENSIVE_THRESHOLD_PCT: float = Field(default=15.0, gt=0.0, lt=100.0)  # ... from here x the defensive one ...
+    CFO_DRAWDOWN_DEFENSIVE_MULTIPLIER: float = Field(default=0.25, gt=0.0, le=1.0)
+    CFO_DRAWDOWN_HALT_THRESHOLD_PCT: float = Field(default=20.0, gt=0.0, lt=100.0)  # ... from here 0, latched until a supervisor signs off
+    CFO_SKILL_SLOPE: float = Field(default=2.0, ge=0.0)  # psi(BSS) = min(cap, max(floor, 1 + slope x BSS)); no measured skill: 1
+    CFO_SKILL_FLOOR: float = Field(default=0.6, gt=0.0, le=1.0)
+    CFO_SKILL_CAP: float = Field(default=1.5, ge=1.0)
+    CFO_LONGSHOT_PIVOT_ODDS: float = Field(default=5.0, gt=1.0)  # lambda(o) = max(floor, (pivot / o)^exponent) above the pivot
+    CFO_LONGSHOT_EXPONENT: float = Field(default=0.75, ge=0.0)
+    CFO_LONGSHOT_FLOOR: float = Field(default=0.20, gt=0.0, le=1.0)
+    CFO_HISTORY_DAYS: float = Field(default=180.0, gt=0)  # forecasts bootstrap the user's settled bets of this window ...
+    CFO_MIN_HISTORY_BETS: int = Field(default=30, ge=5)  # ... and refuse with fewer
+    CFO_MONTE_CARLO_PATHS: int = Field(default=10000, ge=1000, le=25000)
+    CFO_SIMULATION_HORIZONS: tuple[int, ...] = (30, 90, 180, 365)  # days
+    CFO_COMPARISON_PATHS: int = Field(default=2000, ge=200)  # the strategy comparison runs every strategy at this many paths ...
+    CFO_COMPARISON_HORIZON_DAYS: int = Field(default=90, ge=7)  # ... over this horizon
+    CFO_CURVE_POINTS: int = Field(default=15, ge=2)  # checkpoints on a forecast's percentile curve
+    CFO_RISK_FREE_RATE_ANNUAL: float = Field(default=0.0, ge=0.0)  # R_f in the Sharpe and Sortino ratios
+    CFO_RUIN_LEVEL: float = Field(default=0.50, gt=0.0, lt=1.0)  # ruin: the bankroll under this share of its start
+    CFO_REBALANCE_MIN_TRANSFER_INR: Decimal = Field(default=Decimal("5000.00"), gt=0)
+    CFO_REBALANCE_GAMMA: float = Field(default=0.8, gt=0.0)  # V_j* = W E_j^gamma / sum E_k^gamma
+    CFO_REBALANCE_LOOKBACK_DAYS: float = Field(default=28.0, gt=0)  # E_j: the EV each venue's bets captured over this window
+    CFO_ADVISORY_CONFIRM_HOURS: float = Field(default=24.0, gt=0)  # a steady regime is re-confirmed at most this often
+    CFO_ADVISORY_SCAN_MINUTES: int = Field(default=15, ge=1, le=59)  # the beat scans every user's regime this often
 
     # ---- Experience (FA-2): XP for discipline, wins, lessons and shielded losses (Group 75) ----
     XP_AWARD_SLIP_VETTED: int = Field(default=25, ge=1)  # once per slip that clears every enforced pillar

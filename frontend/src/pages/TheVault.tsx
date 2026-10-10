@@ -3,6 +3,7 @@ import { apiClient } from '../api/client';
 import { useDashboardSummary } from '../lib/api';
 import { downloadCsv, formatDate, formatDateTime, formatINR, formatINRCompact, formatOdds, formatPct, formatRatioPct, formatSignedINR } from '../lib/format';
 import { runMutation, useResource } from '../lib/resource';
+import { BankrollGrowthOptimizer } from '../components/cfo/BankrollGrowthOptimizer';
 import { CommanderHero, MOTIFS } from '../ui/hero';
 import { DivergingBars, LineChart } from '../ui/charts';
 import { AnimatedNumber, Async, Button, ConfirmButton, type Column, DataTable, EmptyState, Field, KeyValues, NumberInput, Page, Panel, Segmented, Stat, StatusBadge, TextInput, Toggle, num } from '../ui/kit';
@@ -314,6 +315,7 @@ export const TheVault = () => {
           {(rows) => <DivergingBars caption="Bankroll waterfall" formatValue={formatINR} items={rows.map((r) => ({ label: r.category, value: r.value }))} />}
         </Async>
       </Panel>
+      <BankrollGrowthOptimizer />
       <PnLBreakdown />
       <RiskPanel bankroll={bankroll} />
       <StopLossPanel />
