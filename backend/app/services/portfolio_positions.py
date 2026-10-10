@@ -42,6 +42,44 @@ async def mark_positions_dirty(redis: Redis | None, settings: Settings, user_id:
         await redis.delete(positions_key(settings, user_id))
 
 
+# ---- legged positions (Group 71): a routed order that filled on some venues only ---------------------
+LEGGED_TTL_SECONDS = 7 * 24 * 3600
+
+
+def legged_key(settings: Settings, user_id: uuid.UUID | str) -> str:
+    return f"{settings.PORTFOLIO_CHANNEL_PREFIX}:legged:{user_id}"
+
+
+async def flag_legged_position(redis: Redis | None, settings: Settings, user_id: uuid.UUID, position: dict[str, Any]) -> bool:
+    """Hand a legged position to the Active Portfolio: kept per user (``order_id`` -> the position, hedge
+    eligible), pushed on the user's live channel as a ``legged_position`` frame, and the open-positions
+    cache dropped so the filled legs (already in the ledger) are re-read. True once Redis has it."""
+    if redis is None:
+        return False
+    frame = json.dumps({"type": "legged_position", **position}, separators=(",", ":"), default=str)
+    try:
+        pipe = redis.pipeline(transaction=True)
+        pipe.hset(legged_key(settings, user_id), str(position["order_id"]), frame)
+        pipe.expire(legged_key(settings, user_id), LEGGED_TTL_SECONDS)
+        pipe.publish(f"{settings.PORTFOLIO_CHANNEL_PREFIX}:{user_id}", frame)
+        pipe.delete(positions_key(settings, user_id))
+        await pipe.execute()
+    except (RedisError, OSError):
+        logger.warning("Portfolio: legged position %s not handed over (Redis unavailable)", position.get("order_id"))
+        return False
+    return True
+
+
+async def legged_positions(redis: Redis | None, settings: Settings, user_id: uuid.UUID) -> list[dict[str, Any]]:
+    if redis is None:
+        return []
+    try:
+        raw = await redis.hgetall(legged_key(settings, user_id))
+    except (RedisError, OSError):
+        return []
+    return [json.loads(v) for _, v in sorted(raw.items())]
+
+
 @dataclass(frozen=True, slots=True)
 class OpenBet:
     id: str

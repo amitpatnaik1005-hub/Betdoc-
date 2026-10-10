@@ -1,12 +1,18 @@
-"""An execution venue as the sniper uses it: a frozen copy of its ``ExecutionVenue`` row."""
+"""An execution venue as the sniper uses it: a frozen copy of its ``ExecutionVenue`` row; and, for the
+Smart Order Router (Group 71), each venue's stake rules and the circuit-breaker policy it trades under."""
 
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from datetime import timedelta
 from decimal import Decimal
+from typing import TYPE_CHECKING
 from urllib.parse import urlsplit
 
 from app.models.execution import ExecutionVenue
+
+if TYPE_CHECKING:
+    from app.core.config import Settings
 
 SANDBOX_HOST = "sandbox.invalid"  # RFC 2606: can never resolve, so a sandbox venue can only run in-process
 
@@ -72,3 +78,42 @@ class VenueConfig:
     @property
     def host(self) -> str:
         return (urlsplit(self.base_url).hostname or "").lower()
+
+
+@dataclass(frozen=True, slots=True)
+class VenueStakeRules:
+    """The smallest and largest single stake a venue takes (in the order's currency). The floor is never
+    under ``ROUTER_MIN_SLICE_STAKE``; the ceiling is the book's own rule as the user configured it
+    (``ROUTER_VENUE_STAKE_LIMITS``), None when unknown: nothing is assumed about a book's limits."""
+
+    venue_id: str
+    min_stake: Decimal
+    max_stake: Decimal | None
+
+    @classmethod
+    def for_venue(cls, venue_id: str, settings: Settings) -> VenueStakeRules:
+        raw = settings.ROUTER_VENUE_STAKE_LIMITS.get(venue_id) or {}
+        floor = max(Decimal(str(raw.get("min", 0))), Decimal(settings.ROUTER_MIN_SLICE_STAKE))
+        ceiling = raw.get("max")
+        return cls(venue_id, floor, None if ceiling in (None, "") else Decimal(str(ceiling)))
+
+    def ceiling(self, capacity: Decimal) -> Decimal:
+        """What one slice may carry here: the account's capacity, under the venue's own maximum."""
+        return capacity if self.max_stake is None else min(capacity, self.max_stake)
+
+
+@dataclass(frozen=True, slots=True)
+class CircuitPolicy:
+    """``failures`` consecutive rejects or timeouts at one venue within ``window`` pause it for ``pause``."""
+
+    failures: int
+    window: timedelta
+    pause: timedelta
+
+    @classmethod
+    def from_settings(cls, settings: Settings) -> CircuitPolicy:
+        return cls(
+            int(settings.ROUTER_BREAKER_FAILURES),
+            timedelta(seconds=float(settings.ROUTER_BREAKER_WINDOW_SECONDS)),
+            timedelta(seconds=float(settings.ROUTER_BREAKER_PAUSE_SECONDS)),
+        )

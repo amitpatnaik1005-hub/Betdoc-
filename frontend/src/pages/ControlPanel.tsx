@@ -24,11 +24,15 @@ interface OmniHealth { generated_at: string; total: number; active: number; degr
 const QuantLab = lazy(() => import('../components/lab/QuantLab').then((m) => ({ default: m.QuantLab })));
 const NalandaArchive = lazy(() => import('../components/nalanda/NalandaArchive').then((m) => ({ default: m.NalandaArchive })));
 const SentinelPanel = lazy(() => import('../components/sentinel/SentinelPanel').then((m) => ({ default: m.SentinelPanel })));
+const VaultFleet = lazy(() => import('../components/vault/VaultFleet').then((m) => ({ default: m.VaultFleet })));
+const OrderRouting = lazy(() => import('../components/router/OrderRouting').then((m) => ({ default: m.OrderRouting })));
 
 const SPORTS = ['cricket', 'basketball', 'tennis'] as const;
-type ControlTab = 'system' | 'risk' | 'portfolio' | 'hive' | 'lab' | 'nalanda' | 'sentinel' | 'terminal';
+type ControlTab = 'system' | 'vault' | 'routing' | 'risk' | 'portfolio' | 'hive' | 'lab' | 'nalanda' | 'sentinel' | 'terminal';
 const TABS = [
   { value: 'system', label: 'System', icon: 'tune' },
+  { value: 'vault', label: 'Vault & Fleet', icon: 'encrypted' },
+  { value: 'routing', label: 'Order routing', icon: 'call_split' },
   { value: 'risk', label: 'Risk management', icon: 'shield_lock' },
   { value: 'portfolio', label: 'Active portfolio', icon: 'monitoring' },
   { value: 'hive', label: 'Hive bots', icon: 'hub' },
@@ -368,6 +372,14 @@ export const ControlPanel = () => {
           <SportsEngine />
           <OmniAdmin />
         </>
+      ) : tab === 'vault' ? (
+        <Suspense fallback={<div className="lg:col-span-12"><Skeleton rows={6} /></div>}>
+          <VaultFleet />
+        </Suspense>
+      ) : tab === 'routing' ? (
+        <Suspense fallback={<div className="lg:col-span-12"><Skeleton rows={6} /></div>}>
+          <OrderRouting />
+        </Suspense>
       ) : tab === 'terminal' ? (
         <SniperTerminal />
       ) : tab === 'portfolio' ? (

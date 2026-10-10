@@ -88,7 +88,9 @@ def account_view(row: VaultBookmakerAccount, open_holds: int = 0) -> dict[str, A
 
 def provider_view(row: VaultProviderCredential) -> dict[str, Any]:
     return {
-        "id": str(row.id), "provider_id": row.provider_id, "provider_name": catalog.provider_display(row.provider_id), "label": row.label,
+        "id": str(row.id), "provider_id": row.provider_id,
+        "provider_name": catalog.provider_display(row.provider_id) if catalog.is_known_provider(row.provider_id) else row.label,
+        "generic": not catalog.is_known_provider(row.provider_id), "label": row.label,
         "key_hint": row.api_key_hint, "has_secret": bool(row.encrypted_secret), "base_url": row.base_url,
         "linked_source_id": row.linked_source_id, "fleet_source": catalog.PROVIDER_FLEET_SOURCE.get(row.provider_id),
         "is_active": bool(row.is_active), "verification_status": row.verification_status, "verification_detail": row.verification_detail,

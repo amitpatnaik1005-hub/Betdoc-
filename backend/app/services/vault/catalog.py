@@ -21,9 +21,14 @@ FUZZY_CUTOFF = 0.84
 EntityKind = Literal["bookmaker", "provider", "sports"]
 
 
+# A list number in front of a label: "**1.) Odds API Key", "12) Exa API Key", "\*3. Sportradar" (never "1xBet" or "2FA")
+_ENUMERATION = re.compile(r"^[\s*_`>\\]*\d{1,3}\s*[.)]+\s*")
+
+
 def normalise(text: str) -> str:
-    """``"**1xBet — Account #2:**"`` -> ``"1xbet account 2"``."""
-    text = re.sub(r"[`*_~>#\[\]()\"'“”‘’]", " ", text.casefold())
+    """``"**1xBet — Account #2:**"`` -> ``"1xbet account 2"``; ``"**1.) Odds API Key"`` -> ``"odds api key"``."""
+    text = _ENUMERATION.sub("", text.replace("&#x20;", " ").replace("&nbsp;", " ").casefold())
+    text = re.sub(r"[`*_~>#\[\]()\"'“”‘’]", " ", text)
     text = re.sub(r"[-–—/\\|.,:;=+!?@]", " ", text)
     return re.sub(r"\s+", " ", text).strip()
 
@@ -155,7 +160,7 @@ def _fuzzy(name: str, lookup: dict[str, str]) -> str | None:
     return lookup[match[0]] if match else None
 
 
-def match_field(label: str) -> FieldName | None:
+def match_field(label: str, *, fuzzy: bool = True) -> FieldName | None:
     """A credential field from its label: ``"API Key #2"`` -> ``api_key``."""
     name = re.sub(r"\s*\d+$", "", normalise(label)).strip()
     name = re.sub(r"^(?:your|my|the|primary|secondary|main|backup|alt|alternate)\s+", "", name)
@@ -163,6 +168,8 @@ def match_field(label: str) -> FieldName | None:
         return None
     if name in _FIELD_LOOKUP:
         return _FIELD_LOOKUP[name]
+    if not fuzzy:
+        return None
     match = difflib.get_close_matches(name, [a for a in _FIELD_LOOKUP if len(a) >= 5], n=1, cutoff=0.88)
     return _FIELD_LOOKUP[match[0]] if match else None
 
@@ -213,6 +220,57 @@ def split_entity_label(label: str) -> tuple[Entity, FieldName | None] | None:
         if entity.kind == "bookmaker" and tail in ("api", "api key"):  # "Betfair API": the app key
             return entity, "api_key"
     return None
+
+
+_TARGET_LABEL = re.compile(r"^(?:target|bookmaker|book|site)\s+(?:url|link|site|address)\s+(?P<name>.+)$|^(?P<pre>.+?)\s+target\s+(?:url|link)$")
+# " API Key" after a space, else a bare " Key": "SerpAPI Key" -> "SerpAPI", "Sports-API Key" -> "Sports-API"
+_GENERIC_KEY_SUFFIX = re.compile(r"\s+(?:api[\s_-]*key|api[\s_-]*token|access[\s_-]*key|key)\s*$", re.I)
+
+
+def target_url_name(label: str) -> str | None:
+    """``"**5.) Target URL (Parimatch)"`` -> ``"parimatch"``: what a target-URL label points at (normalised)."""
+    match = _TARGET_LABEL.match(normalise(label))
+    if match is None:
+        return None
+    return (match.group("name") or match.group("pre") or "").strip() or None
+
+
+def display_label(label: str) -> str:
+    """A label as the user wrote it, minus markdown, escapes and list numbering: ``"**8.) Oddspapi.io API Key"``."""
+    text = _ENUMERATION.sub("", label.replace("&#x20;", " ").replace("&nbsp;", " "))
+    text = re.sub(r"[`*_~>#\[\]\"“”‘’\\]", " ", text)
+    return re.sub(r"\s+", " ", text).strip(" :-")
+
+
+@dataclass(frozen=True, slots=True)
+class GenericProvider:
+    provider_id: str  # a known provider's id, or a slug of the name ("newsapi_org")
+    name: str  # as written: "NewsAPI.org"
+    known: bool
+
+
+def generic_provider(label: str) -> GenericProvider | None:
+    """``"<Name> API Key"`` for any name: a known provider when the name is one (fuzzily), else a generic
+    provider under a slug of the name, so no key in the file is ever dropped for want of an alias.
+    ``None`` when the label has no name before "API key", or the name is a credential field itself."""
+    written = display_label(label)
+    if not _GENERIC_KEY_SUFFIX.search(written):
+        return None
+    name = _GENERIC_KEY_SUFFIX.sub("", written).strip(" ()-_.")
+    plain = normalise(name)
+    if not plain or plain in ("api", "apis", "the api", "my api") or not re.search(r"[a-z]", plain) or len(name) > 64 or plain in _FIELD_LOOKUP or match_field(name) is not None:
+        return None
+    entity = match_entity(name)
+    if entity is not None and entity.kind == "provider":
+        return GenericProvider(entity.key, provider_display(entity.key), True)
+    if entity is not None:  # "Stake API Key": a bookmaker's own key, not a data provider
+        return None
+    provider_id = re.sub(r"[^a-z0-9]+", "_", plain).strip("_")[:64]
+    return GenericProvider(provider_id, name[:128], False) if provider_id else None
+
+
+def is_known_provider(provider_id: str) -> bool:
+    return provider_id in PROVIDER_ALIASES
 
 
 def sport_keys_in(text: str, *, friendly: bool) -> tuple[list[str], list[str]]:

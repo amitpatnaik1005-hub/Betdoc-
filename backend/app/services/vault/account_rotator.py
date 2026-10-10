@@ -161,6 +161,29 @@ async def release(session: AsyncSession, order_ref: str, reason: str, *, now: da
     return True
 
 
+async def shrink(session: AsyncSession, order_ref: str, keep: Decimal, reason: str, *, now: datetime | None = None) -> bool:
+    """Hold only ``keep`` of an order's stake (a partial fill: the unmatched rest lapsed). The caller commits.
+    ``keep`` <= 0 releases the hold. False: nothing open under that reference."""
+    if keep <= 0:
+        return await release(session, order_ref, reason, now=now)
+    held = (await session.execute(
+        select(VaultAccountReservation).where(VaultAccountReservation.order_ref == order_ref, VaultAccountReservation.released_at.is_(None)).with_for_update()
+    )).scalars().first()
+    if held is None:
+        return False
+    freed = Decimal(held.amount) - Decimal(keep)
+    if freed <= 0:
+        return True  # already no more than that
+    held.amount = Decimal(keep)
+    await session.execute(
+        update(VaultBookmakerAccount)
+        .where(VaultBookmakerAccount.id == held.account_id)
+        .values(reserved=case((VaultBookmakerAccount.reserved >= freed, VaultBookmakerAccount.reserved - freed), else_=ZERO))
+        .execution_options(synchronize_session=False)
+    )
+    return True
+
+
 async def release_finished(session_factory: async_sessionmaker[AsyncSession], ttl: timedelta, *, now: datetime | None = None, limit: int = 500) -> dict[str, int]:
     """Release holds whose order the ledger has settled, and holds whose order never reached the ledger."""
     from app.models.cfo_vault import PhantomLedger  # noqa: PLC0415 - the ledger is the CFO's
@@ -183,7 +206,9 @@ async def release_finished(session_factory: async_sessionmaker[AsyncSession], tt
         if refs:
             for key, state in (await session.execute(select(PhantomLedger.idempotency_key, PhantomLedger.status).where(PhantomLedger.idempotency_key.in_(list(refs))))).all():
                 status[refs[key]] = str(getattr(state, "value", state))
-        for h in held:
+        # Release in account-id order: a sweep holding account A while it waits for B can never meet an
+        # order (Group 71's router, ``ORDER BY id FOR UPDATE``) holding B while it waits for A.
+        for h in sorted(held, key=lambda r: (str(r.account_id), r.order_ref)):
             created = h.created_at if h.created_at.tzinfo else h.created_at.replace(tzinfo=UTC)
             state = status.get(h.order_ref)
             if state is not None and state not in _OPEN_LEDGER_STATES:

@@ -53,6 +53,9 @@ class AlertKind(StrEnum):
     MARKET_HYPE = "MARKET_HYPE"  # the 08:00 forecast, when the day is worth it
     DIGEST = "DIGEST"  # the debouncer's summary of held CRITICAL alerts
     TEST = "TEST"  # the Sentinel tab's "send a test alert"
+    VENUE_CIRCUIT_OPEN = "VENUE_CIRCUIT_OPEN"  # the Smart Order Router paused a venue after consecutive rejects (Group 71)
+    VENUE_CIRCUIT_CLOSED = "VENUE_CIRCUIT_CLOSED"
+    LEGGED_POSITION = "LEGGED_POSITION"  # a routed order filled on some venues only: the position is legged
 
 
 class SentinelAlert(BaseModel):

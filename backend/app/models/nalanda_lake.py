@@ -108,7 +108,7 @@ class SettlementArchive(Base):
 
     seq: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=False)  # chain position, gapless from 1
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), primary_key=True)  # the partition key is in every unique key
-    record_kind: Mapped[str] = mapped_column(String(32))  # LEDGER_POSTING | SETTLEMENT_RECEIPT | AUDIT_EVENT | MARKET_RESULT | BOOKMAKER_RESPONSE
+    record_kind: Mapped[str] = mapped_column(String(32))  # LEDGER_POSTING | SETTLEMENT_RECEIPT | AUDIT_EVENT | MARKET_RESULT | BOOKMAKER_RESPONSE | ROUTED_ORDER
     source: Mapped[str] = mapped_column(String(64))
     source_id: Mapped[str] = mapped_column(String(160))
     user_id: Mapped[uuid.UUID | None] = mapped_column(Uuid(as_uuid=True), nullable=True)

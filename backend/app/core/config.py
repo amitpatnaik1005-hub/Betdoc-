@@ -1,5 +1,6 @@
 from decimal import Decimal
 from functools import lru_cache
+from pathlib import Path
 from typing import Literal, List
 
 from cryptography.fernet import Fernet
@@ -13,6 +14,10 @@ _ASYNC_DB_PREFIXES = ("postgresql+asyncpg://", "sqlite+aiosqlite://")
 def _env(name: str) -> AliasChoices:
     """Accept both UPPER_CASE (deployment convention) and the lowercase field name."""
     return AliasChoices(name.upper(), name)
+
+
+PROJECT_ROOT = Path(__file__).resolve().parents[3]  # backend/app/core/config.py -> the repository root
+DEFAULT_VAULT_IMPORT_DIRS: tuple[str, ...] = (r"D:\confidential", str(PROJECT_ROOT))
 
 
 class Settings(BaseSettings):
@@ -256,8 +261,9 @@ class Settings(BaseSettings):
 
     # ---- The Vault: fleet credentials and accounts (Group 70) ---------------
     # Directories a server-side path import may read from (the Control Panel's "load from path" and the CLI's
-    # --file go through the same check). Empty: path imports are refused; uploads and pasted text still work.
-    VAULT_IMPORT_ALLOWED_DIRS: List[str] = []
+    # --file go through the same check). Default: the owner's D:\confidential folder and the project root, so the
+    # credentials file imports out of the box; set it to [] to refuse path imports (uploads and pasted text still work).
+    VAULT_IMPORT_ALLOWED_DIRS: List[str] = Field(default_factory=lambda: list(DEFAULT_VAULT_IMPORT_DIRS))
     VAULT_IMPORT_MAX_BYTES: int = Field(default=1_000_000, ge=1_000, le=10_000_000)
     VAULT_PROBE_ENABLED: bool = True  # the credential health prober (sanctioned APIs only)
     VAULT_PROBE_INTERVAL_MINUTES: float = Field(default=360.0, ge=30)
@@ -265,6 +271,19 @@ class Settings(BaseSettings):
     VAULT_PROBE_MIN_INTERVAL_SECONDS: int = Field(default=60, ge=60)  # at most one probe per bookmaker per minute
     VAULT_RESERVATION_TTL_MINUTES: float = Field(default=30.0, ge=5)  # an order's stake hold with no ledger row by then is released
     VAULT_BACKUP_MIN_PASSPHRASE: int = Field(default=12, ge=12)
+    # ---- Smart Order Router & multi-venue slicer (Group 71) ------------------
+    ROUTER_MAX_QUOTE_AGE_SECONDS: float = Field(default=30.0, ge=1)  # an older Garuda price cannot clear the pre-dispatch guard
+    ROUTER_MIN_SLICE_STAKE: Decimal = Field(default=Decimal("100"), gt=0)  # the smallest slice worth its own bet (order currency)
+    ROUTER_STAKE_QUANTUM: Decimal = Field(default=Decimal("1"), gt=0)  # slices are whole rupees; the remainder goes to the best price
+    # Per venue {"parimatch": {"min": "10", "max": "50000"}}: the book's own stake rules as the user knows them (none assumed)
+    ROUTER_VENUE_STAKE_LIMITS: dict[str, dict[str, Decimal]] = Field(default_factory=dict)
+    ROUTER_MIN_SLICE_EV: Decimal = Field(default=Decimal("0"), ge=-1, le=1)  # with a true probability: each slice's net EV floor
+    ROUTER_SLICE_TIMEOUT_SECONDS: float = Field(default=20.0, gt=0)  # no answer by then: the slice is UNKNOWN (held, never released)
+    ROUTER_ORPHAN_SECONDS: float = Field(default=120.0, ge=10)  # reserved, never dispatched: an orphan the operator may release
+    ROUTER_BREAKER_FAILURES: int = Field(default=2, ge=1)  # consecutive rejects / timeouts at one venue ...
+    ROUTER_BREAKER_WINDOW_SECONDS: float = Field(default=60.0, gt=0)  # ... inside this window trip its breaker ...
+    ROUTER_BREAKER_PAUSE_SECONDS: float = Field(default=300.0, gt=0)  # ... and pause it this long
+    ROUTER_SWEEP_INTERVAL_SECONDS: float = Field(default=60.0, ge=10)
     PINNACLE_API_BASE_URL: str = "https://api.pinnacle.com"
     BETFAIR_IDENTITY_URL: str = "https://identitysso.betfair.com/api"
     # Parimatch direct injection: odds posted by the user or an authorised feed (POST /parimatch/odds)

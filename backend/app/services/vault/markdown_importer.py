@@ -15,6 +15,12 @@ The parser is deliberately forgiving: people write credentials files by hand. It
   label | value tables;
 * fenced code blocks of ``KEY=VALUE`` (``ODDS_API_KEY=...``, ``PINNACLE_USERNAME=...``) or JSON;
 * a label that names its entity itself ("Odds API key 2: ...", "Betfair app key: ...") anywhere;
+* ``Target URL (<Bookmaker>) :- <url>``: an active account for that bookmaker at that address (on its
+  registered adapter), merged into the bookmaker's credentialed account when the file has one; a target
+  URL naming no bookmaker (an open API) is reported, never stored;
+* ``<Name> API Key :- <key>`` for ANY name: a known provider when the name is one, else a generic
+  provider under a slug of the name ("NewsAPI.org API Key" -> ``newsapi_org``): no key is dropped;
+* numbered lists (``**1.) Odds API Key :- ...**``), the ``:-`` separator, and ``&#x20;`` padding;
 * sport keys (``soccer_epl``, ``cricket_ipl``) anywhere, and names ("EPL", "IPL", "NBA") in a sports section.
 
 A second login (or a provider's second key) in the same section starts a new account. Placeholders
@@ -96,14 +102,26 @@ class ParsedAccount:
 
     @property
     def identity(self) -> str | None:
-        """What makes the account itself: the login, else its key or token."""
+        """What makes the account itself: the login, else its key or token, else (a target URL alone) its host."""
         if self.username:
             return "u:" + re.sub(r"[\s-]+", "", self.username.strip().casefold()) if _looks_like_phone(self.username) else "u:" + self.username.strip().casefold()
         if self.api_key:
             return "k:" + self.api_key.strip()
         if self.token:
             return "t:" + self.token.strip()
-        return None
+        host = self.target_host
+        return f"url:{host}" if host else None
+
+    @property
+    def target_host(self) -> str | None:
+        if not self.url:
+            return None
+        return (urlsplit(self.url).hostname or "").lower() or None
+
+    @property
+    def url_only(self) -> bool:
+        """A ``Target URL (<Book>)`` entry: where the book lives, no credential yet."""
+        return not (self.username or self.password or self.api_key or self.token or self.totp_seed)
 
     def secret_items(self) -> dict[str, str]:
         return {k: v for k, v in (("username", self.username), ("password", self.password), ("api_key", self.api_key), ("token", self.token),
@@ -119,6 +137,16 @@ class ParsedProvider:
     api_key: str | None = None
     secret: str | None = None
     url: str | None = None
+    generic: bool = False  # no alias in the catalog: kept under a slug of the name the file gave it
+
+
+@dataclass(frozen=True, slots=True)
+class OpenEndpoint:
+    """A ``Target URL (<name>)`` that names no bookmaker: an open API, needing no key. Reported, not stored."""
+
+    name: str
+    host: str
+    line: int
 
 
 @dataclass(slots=True)
@@ -127,6 +155,7 @@ class ParseResult:
     providers: list[ParsedProvider] = field(default_factory=list)
     sports: list[str] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
+    endpoints: list[OpenEndpoint] = field(default_factory=list)
     lines: int = 0
 
     def warn(self, message: str) -> None:
@@ -157,8 +186,11 @@ def _looks_like_phone(value: str) -> bool:
     return bool(re.fullmatch(r"\+?[\d\s()-]{8,20}", value.strip()))
 
 
+_MD_ESCAPE = re.compile(r"\\([\\`*_{}\[\]()#+\-.!&|<>~])")
+
+
 def clean_value(raw: str) -> str:
-    value = raw.strip()
+    value = _MD_ESCAPE.sub(r"\1", raw.strip())  # exported markdown escapes "_" and "*": "abc\_def" is the key "abc_def"
     for mark in ("**", "__"):  # "**Label:** value" leaves the label's closing marks on the value
         if value.startswith(mark) and not value.endswith(mark):
             value = value[len(mark):].strip()
@@ -191,6 +223,26 @@ def is_placeholder(value: str) -> bool:
 def _single_token(value: str) -> str:
     """Keys and tokens have no spaces: ``abc123 (main key)`` -> ``abc123``."""
     return value.split()[0] if value.split() else value
+
+
+def _keyish(token: str) -> bool:
+    """Could this word be a key? Keys carry a digit or are long; prose ("same as above") is neither."""
+    return bool(re.fullmatch(r"[\w\-.:/+=~]+", token)) and (bool(re.search(r"\d", token)) or len(token) >= 16)
+
+
+def key_and_secret(value: str) -> tuple[str | None, str | None]:
+    """A provider value as (key, secret): one word is the key; several words keep the key-like ones
+    (the first the key, a second long one its secret, as in ``<key> <secret> (Kraken)``); words that
+    are all prose give (None, None)."""
+    words = [w.strip("()[]{},;\"'`") for w in value.split()]
+    words = [w for w in words if w]
+    if len(words) == 1:
+        return words[0], None
+    keys = [w for w in words if _keyish(w)]
+    if not keys:
+        return None, None
+    secret = next((w for w in keys[1:] if len(w) >= 16), None)
+    return keys[0], secret
 
 
 def _money(value: str) -> Decimal | None:
@@ -231,6 +283,7 @@ class MarkdownCredentialParser:
         self._record: _Record | None = None
         self._pending: tuple[Entity | None, FieldName, int] | None = None  # a label whose value is on the next line
         self._counter: dict[str, int] = {}
+        self._names: dict[str, str] = {}  # generic provider id -> the name the file gave it
 
     # ---------------------------------------------------------------- context
     @property
@@ -311,9 +364,12 @@ class MarkdownCredentialParser:
             account.url = urls[0] if urls else (f"https://{account.url}" if re.fullmatch(r"[\w.-]+\.[a-z]{2,}(/\S*)?", account.url, re.I) else None)
             if account.url is None:
                 self.result.warn(f"line {record.lines.get('url', record.line)}: the {catalog.bookmaker_display(book)} URL is not a web address; ignored")
-        if account.identity is None:
+        if account.identity is None or (account.url_only and (account.password or account.totp_seed)):
             what = "a password or 2FA seed but no login or key" if (account.password or account.totp_seed) else "no login, key or token"
             self.result.warn(f"line {record.line}: {catalog.bookmaker_display(book)} entry in '{record.section}' has {what}: skipped")
+            return
+        if account.url_only:
+            self.result.accounts.append(account)  # a Target URL line: the book's address, credentials to come
             return
         if account.password is None and account.api_key is None and account.token is None:
             self.result.warn(f"line {record.line}: {catalog.bookmaker_display(book)} account has a login but no password, key or token")
@@ -322,12 +378,18 @@ class MarkdownCredentialParser:
     def _emit_provider(self, record: _Record) -> None:
         f = record.fields
         provider = record.entity.key
+        generic = not catalog.is_known_provider(provider)
+        display = self._names.get(provider) or catalog.provider_display(provider)
         key = f.get("api_key") or f.get("token")
         if not key:
             if any(name in f for name in ("username", "password")):
-                self.result.warn(f"line {record.line}: {catalog.provider_display(provider)} entry has a login but no API key: data providers need a key; skipped")
+                self.result.warn(f"line {record.line}: {display} entry has a login but no API key: data providers need a key; skipped")
             elif f:
-                self.result.warn(f"line {record.line}: {catalog.provider_display(provider)} entry has no API key: skipped")
+                self.result.warn(f"line {record.line}: {display} entry has no API key: skipped")
+            return
+        api_key, inline_secret = key_and_secret(key)
+        if api_key is None:
+            self.result.warn(f"line {record.lines.get('api_key', record.line)}: the {display} value reads as text, not a key: skipped")
             return
         self._counter[provider] = self._counter.get(provider, 0) + 1
         n = self._counter[provider]
@@ -337,8 +399,8 @@ class MarkdownCredentialParser:
             url = urls[0] if urls else None
         self.result.providers.append(ParsedProvider(
             provider, record.line, record.section,
-            label=f.get("label") or record.label or catalog.provider_display(provider) + (f" #{n}" if n > 1 else ""),
-            api_key=_single_token(key), secret=_single_token(f["secret"]) if f.get("secret") else None, url=url,
+            label=f.get("label") or record.label or display + (f" #{n}" if n > 1 else ""),
+            api_key=api_key, secret=_single_token(f["secret"]) if f.get("secret") else inline_secret, url=url, generic=generic,
         ))
 
     def _set(self, entity: Entity | None, name: FieldName, value: str, line: int) -> None:
@@ -392,11 +454,39 @@ class MarkdownCredentialParser:
         candidates = sorted((text.find(sep), sep) for sep in _SEPARATORS if text.find(sep) > 0)
         for position, sep in candidates:
             label, value = text[:position], text[position + len(sep):]
-            if len(label) > 60 or _URL.match(text[max(0, position - 5):]) and sep == ":" and label.lower().endswith(("http", "https")):
+            if len(label) > 80 or _URL.match(text[max(0, position - 5):]) and sep == ":" and label.lower().endswith(("http", "https")):
                 continue
-            if catalog.match_field(label) or catalog.split_entity_label(label) or catalog.match_entity(label):
+            if sep == ":" and value.startswith("-") and (len(value) == 1 or value[1] in " \t*`"):
+                value = value[1:]  # "Label :- value": the colon-dash separator
+            if (catalog.match_field(label) or catalog.split_entity_label(label) or catalog.match_entity(label) or catalog.target_url_name(label)
+                    or self._generic(label) is not None):
                 return label, value
         return None
+
+    def _generic(self, label: str) -> catalog.GenericProvider | None:
+        """``<Name> API Key`` outside a bookmaker's section (there, "API key" is the account's own)."""
+        entity = self._entity
+        if entity is not None and entity.kind == "bookmaker":
+            return None
+        return catalog.generic_provider(label)
+
+    def _target(self, name: str, value: str, line: int) -> None:
+        """``Target URL (<name>) :- <url>``: a bookmaker's address becomes its account; anything else is an open API."""
+        urls = _URL.findall(clean_value(value))
+        if not urls:
+            self.result.warn(f"line {line}: the target URL for '{name}' is not a web address: skipped")
+            return
+        url = urls[0].rstrip("*_`.,;)")
+        entity = catalog.match_entity(name)
+        if entity is None or entity.kind != "bookmaker":
+            host = (urlsplit(url).hostname or "").lower()
+            if host:
+                self.result.endpoints.append(OpenEndpoint(catalog.display_label(name)[:80].title() or host, host, line))
+            return
+        self._flush()
+        self._record = _Record(entity, line, self._section_title)
+        self._set(entity, "url", url, line)
+        self._flush()
 
     def _kv(self, text: str, line: int) -> bool:
         """``label: value`` (or env ``KEY=VALUE``). True when the line was understood."""
@@ -405,14 +495,25 @@ class MarkdownCredentialParser:
             return False
         label, value = split
         value = value.strip()
+        target = catalog.target_url_name(label)
+        if target is not None:
+            self._target(target, value, line)
+            return True
         field_name = catalog.match_field(label)
         entity: Entity | None = None
+        if field_name is not None and catalog.match_field(label, fuzzy=False) is None and self._generic(label) is not None:
+            field_name = None  # "Exa API Key" only resembles the "x api key" field: it names a provider
         if field_name is None:
             pair = catalog.split_entity_label(label)
             if pair is not None:
                 entity, field_name = pair
             else:
                 entity = catalog.match_entity(label)
+        if field_name is None and entity is None and (generic := self._generic(label)) is not None:
+            entity, field_name = Entity("provider", generic.provider_id), "api_key"
+            if not generic.known:
+                self._names.setdefault(generic.provider_id, generic.name)
+            self._flush()  # each "<Name> API Key" line is its own provider entry
         if field_name is None and entity is not None:
             return self._entity_value(entity, value, line)
         if field_name is None:
@@ -549,6 +650,7 @@ class MarkdownCredentialParser:
 
     # ---------------------------------------------------------------- driver
     def parse(self, text: str) -> ParseResult:
+        text = text.replace("&#x20;", " ").replace("&nbsp;", " ")  # markdown exporters pad lines with these
         lines = text.replace("\r\n", "\n").replace("\r", "\n").split("\n")
         self.result.lines = len(lines)
         i = 0
@@ -581,6 +683,9 @@ class MarkdownCredentialParser:
         if self._pending is not None:
             self.result.warn(f"line {self._pending[2]}: '{self._pending[1].replace('_', ' ')}' has no value")
         self._flush()
+        if self.result.endpoints:
+            names = ", ".join(e.name for e in self.result.endpoints[:6]) + (", ..." if len(self.result.endpoints) > 6 else "")
+            self.result.warn(f"{len(self.result.endpoints)} target URL(s) name no bookmaker ({names}): open APIs need no key; listed, not stored")
         return self.result
 
 
@@ -622,7 +727,7 @@ def _merge_duplicates(result: ParseResult) -> None:
             if value is not None:
                 setattr(first, name, value)
         result.warn(f"line {account.line}: the {catalog.bookmaker_display(account.bookmaker_id)} account from line {first.line} again: merged")
-    result.accounts = merged
+    result.accounts = _fold_target_urls(merged)
     providers: dict[tuple[str, str], ParsedProvider] = {}
     for provider in result.providers:
         key = (provider.provider_id, provider.api_key or "")
@@ -631,6 +736,25 @@ def _merge_duplicates(result: ParseResult) -> None:
             continue
         providers[key] = provider
     result.providers = list(providers.values())
+
+
+def _fold_target_urls(accounts: list[ParsedAccount]) -> list[ParsedAccount]:
+    """A ``Target URL (<Book>)`` entry and a credentialed account of the same book in one file: the URL
+    joins that account (the first one without an address of its own) instead of standing alone."""
+    kept: list[ParsedAccount] = []
+    for account in accounts:
+        if not account.url_only:
+            kept.append(account)
+            continue
+        same_book = [a for a in accounts if a.bookmaker_id == account.bookmaker_id and not a.url_only]
+        if any(a.target_host == account.target_host for a in same_book):
+            continue
+        host_less = next((a for a in same_book if a.url is None), None)
+        if host_less is not None:
+            host_less.url = account.url
+            continue
+        kept.append(account)
+    return kept
 
 
 # ---------------------------------------------------------------------------------- reading input
@@ -744,11 +868,23 @@ def _seal_account(vault: VaultCrypto, row: VaultBookmakerAccount, account: Parse
         row.target_host = (urlsplit(account.url).hostname or "")[:255] or None
 
 
+def _credential_less(row: VaultBookmakerAccount) -> bool:
+    return not (row.encrypted_username or row.encrypted_password or row.encrypted_api_key or row.encrypted_token or row.encrypted_totp_seed)
+
+
 async def _find_account(session: AsyncSession, vault: VaultCrypto, account: ParsedAccount) -> VaultBookmakerAccount | None:
+    """The row this entry describes: by identity; a target URL also by its host (the account it was
+    folded into, even after credentials gave it a new identity); a credentialed entry may claim the
+    book's credential-less target-URL row instead of standing beside it."""
     digests = identity_digests(vault, account.bookmaker_id, account.identity or "")
-    return (await session.execute(
-        select(VaultBookmakerAccount).where(VaultBookmakerAccount.bookmaker_id == account.bookmaker_id, VaultBookmakerAccount.identity_digest.in_(digests))
-    )).scalars().first()
+    book = VaultBookmakerAccount.bookmaker_id == account.bookmaker_id
+    found = (await session.execute(select(VaultBookmakerAccount).where(book, VaultBookmakerAccount.identity_digest.in_(digests)))).scalars().first()
+    if found is not None or account.target_host is None and not account.url_only:
+        return found
+    rows = list((await session.execute(select(VaultBookmakerAccount).where(book).order_by(VaultBookmakerAccount.created_at))).scalars())
+    if account.url_only:
+        return next((r for r in rows if r.target_host == account.target_host), None)
+    return next((r for r in rows if _credential_less(r) and (account.target_host is None or r.target_host in (None, account.target_host))), None)
 
 
 def _differs(vault: VaultCrypto, row: VaultBookmakerAccount, account: ParsedAccount) -> bool:
@@ -953,15 +1089,17 @@ def preview_payload(parsed: ParseResult, report: ImportReport | None = None) -> 
                 "label": a.label or catalog.bookmaker_display(a.bookmaker_id),
                 "username_hint": mask_identity(a.username) if a.username else None, "currency": a.currency or catalog.currency_for(a.bookmaker_id),
                 "has_password": bool(a.password), "has_api_key": bool(a.api_key), "has_token": bool(a.token), "has_2fa": bool(a.totp_seed),
-                "target_host": urlsplit(a.url).hostname if a.url else None, "adapter": catalog.adapter_key(a.bookmaker_id),
+                "target_host": urlsplit(a.url).hostname if a.url else None, "adapter": catalog.adapter_key(a.bookmaker_id), "url_only": a.url_only,
             }
             for a in parsed.accounts
         ],
         "providers": [
-            {"line": p.line, "provider": p.provider_id, "provider_name": catalog.provider_display(p.provider_id), "label": p.label,
-             "key_hint": key_hint(p.api_key or ""), "has_secret": bool(p.secret), "fleet_source": catalog.PROVIDER_FLEET_SOURCE.get(p.provider_id)}
+            {"line": p.line, "provider": p.provider_id, "provider_name": p.label if p.generic else catalog.provider_display(p.provider_id), "label": p.label,
+             "key_hint": key_hint(p.api_key or ""), "has_secret": bool(p.secret), "fleet_source": catalog.PROVIDER_FLEET_SOURCE.get(p.provider_id),
+             "generic": p.generic}
             for p in parsed.providers
         ],
+        "open_endpoints": [{"line": e.line, "name": e.name, "host": e.host} for e in parsed.endpoints],
         "sports": list(parsed.sports),
         "lines": parsed.lines,
     }
