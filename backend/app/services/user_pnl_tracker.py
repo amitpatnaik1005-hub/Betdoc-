@@ -43,7 +43,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from app.core.config import Settings
 from app.domain.oracle.markets import LegResult, MarketKind, has_draws, parse_market, payout_factor, settle_selection
 from app.domain.oracle.parlay_engine import SYSTEMS, SlipKind, lines_of
-from app.models.user_bets_ledger import FixtureScore, PlacedStatus, PlacedStructure, ScoreStatus, UserPlacedBet, UserPlacedLeg
+from app.models.user_bets_ledger import FixtureScore, PlacedStatus, PlacedStructure, ScoreStatus, SettlementSource, UserPlacedBet, UserPlacedLeg
 from app.schemas.ashoka import SYSTEM_STRUCTURES, PlaceBetRequest, ScoreIn
 
 logger = logging.getLogger("betdoc.ashoka.pnl")
@@ -218,15 +218,22 @@ async def _market_results(session: AsyncSession, legs: Sequence[UserPlacedLeg]) 
 
 
 async def settle_pending(session_factory: async_sessionmaker[AsyncSession], now: datetime, *, user_id: uuid.UUID | None = None) -> SettleReport:
-    """Settle every leg a score or a market result now decides, then every bet that is complete."""
+    """Settle every leg a score or a market result now decides, then every bet that is complete.
+
+    Group 73: the pending bets are locked first, ``ORDER BY id FOR UPDATE SKIP LOCKED`` (PostgreSQL), so two
+    settlers (the Celery sweep, the API settling on open, a score being recorded) never work the same bet
+    at once, and always take their locks in the same order."""
     report = SettleReport()
     async with session_factory() as session:
-        query = select(UserPlacedLeg).join(UserPlacedBet, UserPlacedBet.id == UserPlacedLeg.bet_id).where(
-            UserPlacedBet.status == PlacedStatus.PENDING.value, UserPlacedLeg.result == PlacedStatus.PENDING.value
-        )
+        locking = select(UserPlacedBet.id).where(UserPlacedBet.status == PlacedStatus.PENDING.value).order_by(UserPlacedBet.id).with_for_update(skip_locked=True)
         if user_id is not None:
-            query = query.where(UserPlacedBet.user_id == user_id)
-        pending = list((await session.execute(query)).scalars())
+            locking = locking.where(UserPlacedBet.user_id == user_id)
+        bet_ids = list((await session.execute(locking)).scalars())
+        if not bet_ids:
+            return report
+        pending = list((await session.execute(
+            select(UserPlacedLeg).where(UserPlacedLeg.bet_id.in_(bet_ids), UserPlacedLeg.result == PlacedStatus.PENDING.value)
+        )).scalars())
         if not pending:
             return report
         scores = await _scores_for(session, pending)
@@ -252,6 +259,7 @@ async def settle_pending(session_factory: async_sessionmaker[AsyncSession], now:
                 continue
             status, payout = outcome
             bet.status, bet.return_inr, bet.pnl_inr, bet.settled_at = status.value, payout, _money(payout - bet.stake_inr), now
+            bet.settlement_source = SettlementSource.AUTOMATED.value
             report.bets += 1
             report.users.add(bet.user_id)
         await session.commit()
@@ -262,6 +270,7 @@ async def record_cashout(session: AsyncSession, bet: UserPlacedBet, amount: Deci
     if bet.status != PlacedStatus.PENDING.value:
         raise ValueError("only a pending bet can be cashed out")
     bet.status, bet.return_inr, bet.pnl_inr, bet.settled_at = PlacedStatus.CASHED_OUT.value, _money(amount), _money(amount - bet.stake_inr), now
+    bet.settlement_source = SettlementSource.CASHOUT.value
     return bet
 
 

@@ -301,6 +301,22 @@ class Settings(BaseSettings):
     TWIN_PULLOUT_PROB_DROP: float = Field(default=0.35, gt=0, lt=1)  # win probability down this much (points) from the start
     TWIN_PULLOUT_TARGET_PROFIT_PCT: float = Field(default=0.50, gt=0)  # fair value (or the offer) this far over the stake
 
+    # ---- Post-execution feedback loop: CLV, model attribution, root causes, weight recalibration (Group 73) ----
+    FEEDBACK_ENABLED: bool = True
+    FEEDBACK_SWEEP_INTERVAL_SECONDS: float = Field(default=300.0, ge=30)  # settle, then attribute what settled
+    FEEDBACK_BATCH_SIZE: int = Field(default=200, ge=1, le=5000)  # settled bets attributed per sweep (locked, SKIP LOCKED)
+    FEEDBACK_CLOSING_LOOKBACK_HOURS: float = Field(default=24.0, gt=0)  # the sharp closing price is the last tick in this window before kickoff
+    FEEDBACK_WINDOW_DAYS: float = Field(default=90.0, gt=0)  # the Brier window the weights are computed over
+    FEEDBACK_MIN_SAMPLES: int = Field(default=30, ge=1)  # settled predictions a model needs before it gets a weight
+    FEEDBACK_WEIGHT_EPSILON: float = Field(default=1e-6, gt=0)  # w_m proportional to 1 / (Brier_m + epsilon)
+    FEEDBACK_LOG_LOSS_EPSILON: float = Field(default=1e-6, gt=0, lt=0.5)  # probabilities clipped to [eps, 1 - eps]
+    FEEDBACK_CALIBRATION_BINS: int = Field(default=10, ge=2, le=50)
+    FEEDBACK_RCA_CONFIDENT_PROB: float = Field(default=0.65, gt=0.5, lt=1)  # the models were this sure and the bet lost
+    FEEDBACK_RCA_STEAM_CLV_PCT: float = Field(default=-4.0, lt=0)  # closing line this far against the bet: adverse steam
+    FEEDBACK_ALERT_MAX_AGE_HOURS: float = Field(default=24.0, gt=0)  # a bet settled longer ago is attributed silently (no page)
+    FEEDBACK_RECALIBRATE_HOUR: int = Field(default=3, ge=0, le=23)  # nightly weight recalibration, ORACLE_TIMEZONE
+    FEEDBACK_RECALIBRATE_MINUTE: int = Field(default=30, ge=0, le=59)
+
     # ---- The Vault: fleet credentials and accounts (Group 70) ---------------
     # Directories a server-side path import may read from (the Control Panel's "load from path" and the CLI's
     # --file go through the same check). Default: the owner's D:\confidential folder and the project root, so the

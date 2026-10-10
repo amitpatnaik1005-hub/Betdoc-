@@ -233,3 +233,4 @@ from app.models.sentinel import SentinelAlertLog, SentinelChannel, SentinelComma
 from app.models.user_bets_ledger import FixtureScore, UserPlacedBet, UserPlacedLeg  # noqa: E402,F401
 from app.models.execution_router import RoutedOrder, RoutedSlice, VenueCircuitBreaker  # noqa: E402,F401
 from app.models.digital_twin import TwinInPlayMonitor, TwinVettingAudit  # noqa: E402,F401
+from app.models.feedback import ModelPredictionFeedback, SettlementRootCauseAudit  # noqa: E402,F401

@@ -201,6 +201,9 @@ def _slip_payload(slip: SlipCandidate, verdict: fortress.FortressVerdict, now: d
     out = ashoka_market.personalise({**core, "stake_fraction": 1.0}, stake if stake > 0 else None)
     out["stake_fraction"] = 0.0 if verdict.sizing is None else round(verdict.sizing.fraction, 6)
     out["stake_inr"] = str(stake)
+    # Group 73: each model's whole outcome distribution per leg, so settlement can score it (ranked probability score)
+    for payload, leg in zip(out["legs"], slip.legs, strict=True):
+        payload["distributions"] = {name: {r.value: round(p, 6) for r, p in dist.items()} for name, dist in leg.distributions().items()}
     return out
 
 

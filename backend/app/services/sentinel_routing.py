@@ -1,8 +1,9 @@
 """The Sentinel's routing matrix: which channels hear which alerts.
 
 Rows are the four severities plus ``HYPE`` (INFO alerts that go to a phone, not to the incident
-channels: the daily market forecast, and the twin's vetted slips and pullout calls). Columns are the four dispatchers plus ``BROWSER``: the
-Sentinel tab's HTML5 siren, which the frontend sounds for the rows that list it (FATAL by default).
+channels: the daily market forecast, the twin's vetted slips and pullout calls, and settlement
+debriefs). Columns are the four dispatchers plus ``BROWSER``: the Sentinel tab's HTML5 siren, which
+the frontend sounds for the rows that list it (FATAL by default).
 One row in ``sentinel_routing``; a missing or malformed row falls back to ``DEFAULT_MATRIX``.
 """
 
@@ -51,8 +52,8 @@ def validate(raw: Mapping[str, Any]) -> list[str]:
     return problems
 
 
-# INFO alerts the user acts on from their phone: the forecast, and the twin's slips and pullouts (Group 72)
-PHONE_KINDS = frozenset({AlertKind.MARKET_HYPE, AlertKind.TWIN_SLIP_VETTED, AlertKind.TWIN_PULLOUT})
+# INFO alerts the user acts on from their phone: the forecast, the twin's slips and pullouts (Group 72), settlements (Group 73)
+PHONE_KINDS = frozenset({AlertKind.MARKET_HYPE, AlertKind.TWIN_SLIP_VETTED, AlertKind.TWIN_PULLOUT, AlertKind.TWIN_SETTLED})
 
 
 def row_of(alert: SentinelAlert) -> str:

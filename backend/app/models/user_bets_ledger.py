@@ -57,6 +57,14 @@ class PlacedStatus(StrEnum):
     CASHED_OUT = "CASHED_OUT"
 
 
+class SettlementSource(StrEnum):
+    """Group 73: how a bet reached its final status."""
+
+    AUTOMATED = "AUTOMATED"  # scores or market results, through settle_pending
+    CASHOUT = "CASHOUT"  # the user took the bookmaker's cashout
+    MANUAL_OVERRIDE = "MANUAL_OVERRIDE"  # an administrator set the result
+
+
 class ScoreStatus(StrEnum):
     FINAL = "FINAL"
     ABANDONED = "ABANDONED"  # every leg on it is void
@@ -78,6 +86,7 @@ class UserPlacedBet(Base):
         Index("ix_user_placed_bets_user_placed", "user_id", "placed_at"),
         Index("ix_user_placed_bets_user_status", "user_id", "status"),
         Index("ix_user_placed_bets_user_settled", "user_id", "settled_at"),
+        Index("ix_user_placed_bets_feedback_due", "status", "feedback_at"),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
@@ -85,6 +94,13 @@ class UserPlacedBet(Base):
     slip_id: Mapped[str | None] = mapped_column(String(32), nullable=True)  # the Ashoka slip it came from
     vetting_audit_id: Mapped[uuid.UUID | None] = mapped_column(Uuid(as_uuid=True), nullable=True)  # Group 72: the 14-pillar audit it was placed from
     booking_code: Mapped[str | None] = mapped_column(String(32), nullable=True)  # Group 72: the code the bookmaker itself issued for the slip
+    # Group 73: closing-line value against the sharp books, how it settled, and why it lost
+    closing_odds: Mapped[Decimal | None] = mapped_column(ODDS, nullable=True)  # the sharp books' closing price of the whole slip
+    clv_pct: Mapped[float | None] = mapped_column(Float, nullable=True)  # placed / closing - 1, in percent
+    clv_sharp_pct: Mapped[float | None] = mapped_column(Float, nullable=True)  # placed x de-vigged closing probability - 1, in percent
+    settlement_source: Mapped[str | None] = mapped_column(String(16), nullable=True)  # SettlementSource
+    root_cause_tag: Mapped[str | None] = mapped_column(String(32), nullable=True)  # RootCauseTag (NONE for a bet that did not lose)
+    feedback_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)  # when attribution ran; NULL: still to do
     source: Mapped[str] = mapped_column(String(16), default="ASHOKA")  # ASHOKA | MANUAL
     bookmaker: Mapped[str] = mapped_column(String(16))  # PlacedBookmaker
     bookmaker_name: Mapped[str | None] = mapped_column(String(64), nullable=True)  # OTHER: which one
@@ -123,6 +139,9 @@ class UserPlacedLeg(Base):
     selection: Mapped[str] = mapped_column(String(16))
     odds: Mapped[Decimal] = mapped_column(ODDS)
     fair_probability: Mapped[float | None] = mapped_column(Float, nullable=True)  # Ashoka's, when it suggested the leg
+    closing_odds: Mapped[Decimal | None] = mapped_column(ODDS, nullable=True)  # Group 73: the sharp book's last price before kickoff
+    closing_fair_probability: Mapped[float | None] = mapped_column(Float, nullable=True)  # that market, Shin de-vigged
+    closing_book: Mapped[str | None] = mapped_column(String(16), nullable=True)
     result: Mapped[str] = mapped_column(String(12), default=PlacedStatus.PENDING.value)
     settled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     home_goals: Mapped[int | None] = mapped_column(Integer, nullable=True)

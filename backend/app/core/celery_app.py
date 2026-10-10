@@ -62,7 +62,7 @@ def _zoned_crontab(minute: str | int, hour: str | int, zone: str) -> ZonedCronta
 celery_app = Celery(
     "betdoc_omni",
     broker=_settings.celery_broker_url.get_secret_value(),
-    include=["app.workers.omni_poller", "app.workers.omni_quorum", "app.workers.cfo_settlement", "app.workers.sniper", "app.workers.hive_worker", "app.workers.lab_worker", "app.workers.nalanda_maintenance", "app.workers.sentinel_tasks", "app.workers.oracle_tasks", "app.workers.vault_prober", "app.workers.execution_dispatcher", "app.workers.twin_tasks"],
+    include=["app.workers.omni_poller", "app.workers.omni_quorum", "app.workers.cfo_settlement", "app.workers.sniper", "app.workers.hive_worker", "app.workers.lab_worker", "app.workers.nalanda_maintenance", "app.workers.sentinel_tasks", "app.workers.oracle_tasks", "app.workers.vault_prober", "app.workers.execution_dispatcher", "app.workers.twin_tasks", "app.workers.feedback_tasks"],
 )
 
 celery_app.conf.update(
@@ -150,6 +150,12 @@ celery_app.conf.update(
         "router-sweep": {"task": "router.sweep", "schedule": _settings.ROUTER_SWEEP_INTERVAL_SECONDS, "options": {"expires": _settings.ROUTER_SWEEP_INTERVAL_SECONDS}},
         # Group 72: the twin's in-play watch (a Redis lock keeps one tick at a time; a late tick expires unrun)
         "twin-inplay-tick": {"task": "twin.inplay_tick", "schedule": _settings.TWIN_INPLAY_POLL_SECONDS, "options": {"expires": _settings.TWIN_INPLAY_POLL_SECONDS}},
+        # Group 73: the feedback loop (settle + attribute; nightly inverse-Brier weights for pillar 1)
+        "feedback-sweep": {"task": "feedback.sweep", "schedule": _settings.FEEDBACK_SWEEP_INTERVAL_SECONDS, "options": {"expires": _settings.FEEDBACK_SWEEP_INTERVAL_SECONDS}},
+        "feedback-recalibrate": {
+            "task": "feedback.recalibrate",
+            "schedule": ZonedCrontab(minute=_settings.FEEDBACK_RECALIBRATE_MINUTE, hour=_settings.FEEDBACK_RECALIBRATE_HOUR, zone=_settings.ORACLE_TIMEZONE),
+        },
         "sentinel-market-forecast-hype": {
             "task": "sentinel.market_forecast_hype",
             "schedule": ZonedCrontab(minute=_settings.SENTINEL_HYPE_MINUTE, hour=_settings.SENTINEL_HYPE_HOUR, zone=_settings.SENTINEL_TIMEZONE),

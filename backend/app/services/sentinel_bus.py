@@ -59,6 +59,7 @@ class AlertKind(StrEnum):
     TWIN_SLIP_VETTED = "TWIN_SLIP_VETTED"  # a slip cleared all 14 pillars of the twin's fortress (Group 72)
     TWIN_PULLOUT = "TWIN_PULLOUT"  # the in-play watch recommends cashing out or hedging a placed bet
     TWIN_DRAWDOWN_HALT = "TWIN_DRAWDOWN_HALT"  # the rolling drawdown passed TWIN_DRAWDOWN_HALT_AT: the twin stakes nothing
+    TWIN_SETTLED = "TWIN_SETTLED"  # a placed bet settled: the win with its CLV, or the loss with its root cause (Group 73)
 
 
 class SentinelAlert(BaseModel):
