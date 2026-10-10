@@ -259,6 +259,48 @@ class Settings(BaseSettings):
     ORACLE_SCORES_POLL_MINUTES: float = Field(default=30.0, ge=5)  # at most once per sport per this many minutes (2 credits)
     ORACLE_SETTLE_INTERVAL_SECONDS: float = Field(default=300.0, ge=30)
 
+    # ---- The True Digital Betting Twin: the 14-pillar fortress and the in-play watch (Group 72) ----
+    TWIN_PREFIX: str = "twin"  # Redis: <prefix>:intel:<fixture>, <prefix>:model_weights, <prefix>:inplay:lock
+    TWIN_RETAIL_BOOKS: str = "parimatch,1xbet"  # where the twin's slips are placed, in priority order
+    TWIN_SHARP_BOOKS: str = "pinnacle,betfair"  # the de-vigged reference price, first complete market wins
+    TWIN_ADVISORY_PILLARS: str = ""  # pillar numbers that report but never veto ("9,11"); empty: all 14 enforced
+    TWIN_MIN_MODELS: int = Field(default=3, ge=1)  # pillar 1: models that must price every leg
+    TWIN_MIN_CONSENSUS_EV: float = Field(default=0.045, gt=0)  # pillar 1: weighted model EV per leg, and the slip's joint EV
+    TWIN_MAX_WIND_KMH: float = Field(default=25.0, gt=0)  # pillar 2
+    TWIN_MAX_RAIN_MMH: float = Field(default=2.5, gt=0)
+    TWIN_MAX_FLIGHT_DELAY_HOURS: float = Field(default=3.0, gt=0)  # pillar 3: the backed side's travel
+    TWIN_MIN_REST_HOURS: float = Field(default=72.0, gt=0)
+    TWIN_CIRCADIAN_TIMEZONES: int = Field(default=2, ge=1)  # this many time zones inside the rest window ...
+    TWIN_CIRCADIAN_PENALTY: float = Field(default=0.045, ge=0, lt=1)  # ... cut the side's win probability by this (points)
+    TWIN_KEY_PLAYER_IMPACT: float = Field(default=0.85, gt=0, le=1)  # pillar 4: a tier-1 absence
+    TWIN_MANAGER_CHANGE_DAYS: float = Field(default=7.0, ge=0)
+    TWIN_RLM_PUBLIC_SHARE: float = Field(default=0.75, gt=0, le=1)  # pillar 6: the public's ticket share that makes a drift RLM
+    TWIN_MIN_SHARP_EDGE: float = Field(default=0.05, gt=0)  # pillar 7: retail odds over the de-vigged sharp price
+    TWIN_SHARP_MAX_AGE_SECONDS: float = Field(default=300.0, ge=10)
+    TWIN_REFEREE_SPORTS: str = "soccer"  # pillar 9 applies to sport keys with these prefixes
+    TWIN_REFEREE_MAX_PENALTIES_PER_90: float = Field(default=0.45, gt=0)
+    TWIN_REFEREE_STRICT_CARDS: float = Field(default=4.8, gt=0)  # flagged in the audit, never a veto
+    TWIN_MOTIVATION_MAX_GAP: float = Field(default=0.30, gt=0, le=1)  # pillar 10: the opponent wanting it this much more vetoes
+    TWIN_DERBY_EV_MULTIPLIER: float = Field(default=1.5, ge=1)  # a derby needs this times the consensus EV bar
+    TWIN_KELLY_FRACTION: float = Field(default=0.25, gt=0, le=1)  # pillar 13: quarter Kelly ...
+    TWIN_MAX_STAKE_PCT: float = Field(default=0.05, gt=0, le=0.25)  # ... never above 5% of bankroll
+    TWIN_DRAWDOWN_WINDOW_DAYS: float = Field(default=7.0, gt=0)
+    TWIN_DRAWDOWN_SCALE_AT: float = Field(default=0.10, gt=0, lt=1)  # rolling drawdown past this halves the fraction ...
+    TWIN_DRAWDOWN_SCALE: float = Field(default=0.5, gt=0, le=1)
+    TWIN_DRAWDOWN_HALT_AT: float = Field(default=0.20, gt=0, lt=1)  # ... past this nothing is staked and the Sentinel is paged
+    TWIN_STAKE_STEP_INR: Decimal = Field(default=Decimal("50"), gt=0)  # stakes round down to this
+    TWIN_MAX_QUOTE_AGE_SECONDS: float = Field(default=60.0, ge=1)  # pillar 14: an older retail price is not executable
+    TWIN_MAX_ODDS_DRIFT_PCT: float = Field(default=0.01, ge=0, lt=1)  # pillar 14 re-check: the price may fall this much, no more
+    # pillars 2-6, 9-11: how old each kind of evidence may be (minutes)
+    TWIN_INTEL_MAX_AGE_MINUTES: dict[str, float] = Field(default_factory=lambda: {
+        "weather": 360.0, "travel": 2880.0, "injuries": 720.0, "lineups": 180.0, "referee": 4320.0,
+        "motivation": 4320.0, "public_splits": 60.0, "liquidity": 1440.0,
+    })
+    TWIN_INPLAY_ENABLED: bool = True
+    TWIN_INPLAY_POLL_SECONDS: float = Field(default=5.0, ge=1)  # Pathway B: every watched bet re-priced this often
+    TWIN_PULLOUT_PROB_DROP: float = Field(default=0.35, gt=0, lt=1)  # win probability down this much (points) from the start
+    TWIN_PULLOUT_TARGET_PROFIT_PCT: float = Field(default=0.50, gt=0)  # fair value (or the offer) this far over the stake
+
     # ---- The Vault: fleet credentials and accounts (Group 70) ---------------
     # Directories a server-side path import may read from (the Control Panel's "load from path" and the CLI's
     # --file go through the same check). Default: the owner's D:\confidential folder and the project root, so the

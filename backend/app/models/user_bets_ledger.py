@@ -83,6 +83,8 @@ class UserPlacedBet(Base):
     id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
     user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
     slip_id: Mapped[str | None] = mapped_column(String(32), nullable=True)  # the Ashoka slip it came from
+    vetting_audit_id: Mapped[uuid.UUID | None] = mapped_column(Uuid(as_uuid=True), nullable=True)  # Group 72: the 14-pillar audit it was placed from
+    booking_code: Mapped[str | None] = mapped_column(String(32), nullable=True)  # Group 72: the code the bookmaker itself issued for the slip
     source: Mapped[str] = mapped_column(String(16), default="ASHOKA")  # ASHOKA | MANUAL
     bookmaker: Mapped[str] = mapped_column(String(16))  # PlacedBookmaker
     bookmaker_name: Mapped[str | None] = mapped_column(String(64), nullable=True)  # OTHER: which one

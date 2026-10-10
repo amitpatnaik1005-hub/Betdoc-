@@ -56,6 +56,9 @@ class AlertKind(StrEnum):
     VENUE_CIRCUIT_OPEN = "VENUE_CIRCUIT_OPEN"  # the Smart Order Router paused a venue after consecutive rejects (Group 71)
     VENUE_CIRCUIT_CLOSED = "VENUE_CIRCUIT_CLOSED"
     LEGGED_POSITION = "LEGGED_POSITION"  # a routed order filled on some venues only: the position is legged
+    TWIN_SLIP_VETTED = "TWIN_SLIP_VETTED"  # a slip cleared all 14 pillars of the twin's fortress (Group 72)
+    TWIN_PULLOUT = "TWIN_PULLOUT"  # the in-play watch recommends cashing out or hedging a placed bet
+    TWIN_DRAWDOWN_HALT = "TWIN_DRAWDOWN_HALT"  # the rolling drawdown passed TWIN_DRAWDOWN_HALT_AT: the twin stakes nothing
 
 
 class SentinelAlert(BaseModel):

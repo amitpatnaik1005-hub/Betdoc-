@@ -62,7 +62,7 @@ def _zoned_crontab(minute: str | int, hour: str | int, zone: str) -> ZonedCronta
 celery_app = Celery(
     "betdoc_omni",
     broker=_settings.celery_broker_url.get_secret_value(),
-    include=["app.workers.omni_poller", "app.workers.omni_quorum", "app.workers.cfo_settlement", "app.workers.sniper", "app.workers.hive_worker", "app.workers.lab_worker", "app.workers.nalanda_maintenance", "app.workers.sentinel_tasks", "app.workers.oracle_tasks", "app.workers.vault_prober", "app.workers.execution_dispatcher"],
+    include=["app.workers.omni_poller", "app.workers.omni_quorum", "app.workers.cfo_settlement", "app.workers.sniper", "app.workers.hive_worker", "app.workers.lab_worker", "app.workers.nalanda_maintenance", "app.workers.sentinel_tasks", "app.workers.oracle_tasks", "app.workers.vault_prober", "app.workers.execution_dispatcher", "app.workers.twin_tasks"],
 )
 
 celery_app.conf.update(
@@ -148,6 +148,8 @@ celery_app.conf.update(
         "vault-release-reservations": {"task": "vault.release_reservations", "schedule": 300.0, "options": {"expires": 300.0}},
         # Group 71: the router's sweep (hold sync, ledger reconciliation, expired venue pauses, Nalanda receipts)
         "router-sweep": {"task": "router.sweep", "schedule": _settings.ROUTER_SWEEP_INTERVAL_SECONDS, "options": {"expires": _settings.ROUTER_SWEEP_INTERVAL_SECONDS}},
+        # Group 72: the twin's in-play watch (a Redis lock keeps one tick at a time; a late tick expires unrun)
+        "twin-inplay-tick": {"task": "twin.inplay_tick", "schedule": _settings.TWIN_INPLAY_POLL_SECONDS, "options": {"expires": _settings.TWIN_INPLAY_POLL_SECONDS}},
         "sentinel-market-forecast-hype": {
             "task": "sentinel.market_forecast_hype",
             "schedule": ZonedCrontab(minute=_settings.SENTINEL_HYPE_MINUTE, hour=_settings.SENTINEL_HYPE_HOUR, zone=_settings.SENTINEL_TIMEZONE),

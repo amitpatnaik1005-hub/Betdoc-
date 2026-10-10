@@ -7,6 +7,7 @@
  * - Cashout & hedge: running multiples; type the bookmaker's offer, get HOLD / CASH OUT / HEDGE LEG.
  * - Trends: sharp steam parlays, AI hybrids, public traps (a public share only when it was measured).
  * - My bets: active with live match status, settled with results; the betting twin's strengths and leaks.
+ * - Group 72: "Run 14 pillars" on any slip sends it through the Digital Twin's fortress (DigitalTwinCard).
  */
 import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { ApiError, apiClient } from "../../api/client";
@@ -29,8 +30,10 @@ import {
   type SlipsPayload,
 } from "../../lib/oracle";
 import { invalidate } from "../../lib/resource";
+import { vetSlip, type TwinAudit } from "../../lib/twin";
 import { toast } from "../../store/useToastStore";
 import { Async, Button, EmptyState, Field, NumberInput, Panel, Pill, Segmented, Select, Stat, StatGrid, TextInput, Toggle, type Tone } from "../../ui/kit";
+import { DigitalTwinCard } from "./DigitalTwinCard";
 
 const cx = (...parts: (string | false | null | undefined)[]): string => parts.filter(Boolean).join(" ");
 const refusal = (err: unknown): string => (err instanceof ApiError ? err.message : "No answer from the server");
@@ -189,7 +192,7 @@ const CHECK_LABEL: Record<string, string> = {
   consensus: "Market consensus",
 };
 
-const SlipCard = ({ initial, generatedAt }: { initial: Slip; generatedAt: string }) => {
+const SlipCard = ({ initial, generatedAt, bankroll }: { initial: Slip; generatedAt: string; bankroll: number | null }) => {
   // A re-check holds until the next generation of slips arrives; then the fresh one wins.
   const [override, setOverride] = useState<{ slip: Slip; at: string; from: string } | null>(null);
   const current = override !== null && override.from === generatedAt ? override : null;
@@ -203,6 +206,8 @@ const SlipCard = ({ initial, generatedAt }: { initial: Slip; generatedAt: string
   const [tab, setTab] = useState<string>(() => slip.comparison?.recommended ?? tabs[0] ?? slip.book);
   const [placing, setPlacing] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [audit, setAudit] = useState<TwinAudit | null>(null);
+  const [vetting, setVetting] = useState(false);
   const age = useAge(slip.odds_age_seconds, since);
   const view = slip.books.find((b) => b.bookmaker === tab);
   const sim = slip.simulation;
@@ -217,6 +222,19 @@ const SlipCard = ({ initial, generatedAt }: { initial: Slip; generatedAt: string
       toast.error("Re-check failed", refusal(err));
     } finally {
       setBusy(false);
+    }
+  };
+  const fortress = async () => {
+    setVetting(true);
+    try {
+      const result = await vetSlip(slip, bankroll);
+      setAudit(result);
+      invalidate("twin:audits");
+      toast.success(result.is_vetted ? "Ultra-vetted: 14/14 pillars" : `${result.pillars_passed}/14 pillars passed`, result.is_vetted ? "Sent to your phone" : result.rejection_reasons[0]);
+    } catch (err) {
+      toast.error("Fortress run failed", refusal(err));
+    } finally {
+      setVetting(false);
     }
   };
   const copy = () =>
@@ -329,11 +347,15 @@ const SlipCard = ({ initial, generatedAt }: { initial: Slip; generatedAt: string
           <Button size="sm" icon="content_copy" onClick={copy}>
             Copy slip
           </Button>
+          <Button size="sm" icon="shield_person" busy={vetting} onClick={() => void fortress()}>
+            Run 14 pillars
+          </Button>
           <Button size="sm" variant="primary" icon="task_alt" onClick={() => setPlacing(true)}>
             I placed this bet
           </Button>
         </div>
       </footer>
+      {audit && <DigitalTwinCard audit={audit} />}
       {placing && <PlaceBetDialog slip={slip} book={tab} onClose={() => setPlacing(false)} />}
     </article>
   );
@@ -401,7 +423,7 @@ export const VettedSlips = ({ slips }: { slips: ReturnType<typeof useSlips> }) =
               ) : (
                 <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
                   {shown.map((slip) => (
-                    <SlipCard key={slip.slip_id} initial={slip} generatedAt={p.generated_at} />
+                    <SlipCard key={slip.slip_id} initial={slip} generatedAt={p.generated_at} bankroll={p.bankroll_inr ? Number(p.bankroll_inr) : null} />
                   ))}
                 </div>
               )}

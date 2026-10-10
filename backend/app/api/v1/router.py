@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends
 
 from app.api.deps import get_current_user
 from app.api.v1 import auth, bet, exchange, ingestion, ws, execution, admin, odds, engine, capital, bet_calculator, oracle, vault, arena, market_signals, dashboard, the_wire, the_lab, the_hive, the_core, popular_picks, competitive_intel, oracle_scout, archive, control_panel, cfo_execution, sniper, portfolio, hive_trading, lab_quant, nalanda, sentinel
-from app.api.v1 import bookmakers, cfo, human_touch, omni, omni_admin, omni_fleet, parimatch_feed, phantom, sports, vault_admin, execution_router
+from app.api.v1 import bookmakers, cfo, human_touch, omni, omni_admin, omni_fleet, parimatch_feed, phantom, sports, vault_admin, execution_router, digital_twin
 
 api_router = APIRouter(prefix="/api/v1")
 
@@ -59,3 +59,6 @@ api_router.include_router(vault_admin.router)
 api_router.include_router(parimatch_feed.router)
 # Group 71: /router (the Smart Order Router: multi-venue slicing, slippage guard, venue breakers). Admin only.
 api_router.include_router(execution_router.router)
+# Group 72: /twin (the True Digital Betting Twin: the 14-pillar fortress, booking-code ledger entries, the in-play watch).
+# Per-route auth: users vet, record and watch their own slips; evidence writes and Pathway B routing are admin only.
+api_router.include_router(digital_twin.router)
