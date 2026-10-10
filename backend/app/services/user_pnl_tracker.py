@@ -41,7 +41,7 @@ from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.core.config import Settings
-from app.domain.oracle.markets import LegResult, parse_market, payout_factor, settle_selection
+from app.domain.oracle.markets import LegResult, MarketKind, has_draws, parse_market, payout_factor, settle_selection
 from app.domain.oracle.parlay_engine import SYSTEMS, SlipKind, lines_of
 from app.models.user_bets_ledger import FixtureScore, PlacedStatus, PlacedStructure, ScoreStatus, UserPlacedBet, UserPlacedLeg
 from app.schemas.ashoka import SYSTEM_STRUCTURES, PlaceBetRequest, ScoreIn
@@ -127,6 +127,8 @@ def leg_result_from_score(leg: UserPlacedLeg, score: FixtureScore, now: datetime
     home_goals, away_goals = score.home_goals, score.away_goals
     if _name(score.home) == _name(leg.away) and _name(score.away) == _name(leg.home):  # the score was recorded the other way round
         home_goals, away_goals = away_goals, home_goals
+    if ref.kind is MarketKind.MATCH_ODDS and home_goals == away_goals and leg.selection != "DRAW" and not has_draws(leg.sport_key):
+        return None  # a tie in a two-way sport: dead-heat or void by the book's rules, so the user settles it
     return settle_selection(ref, leg.selection, home_goals, away_goals)
 
 

@@ -215,7 +215,10 @@ from app.models.cfo import CfoAlertModel, TaxRecordModel, StressTestResultModel,
 from app.models.human_touch import HumanTouchConfigModel, MatchNarrativeModel, HumanOverrideLogModel  # noqa: E402,F401
 from app.models.phantom import ArbitrageOpportunityModel, PhantomCalculationLogModel  # noqa: E402,F401
 from app.models.sports import SportConfigModel  # noqa: E402,F401
-from app.models.omni_vault import OmniFleetSource, OmniProviderConfig, OmniProviderEndpoint, OmniRawPayload, OmniQuarantineLog  # noqa: E402,F401
+from app.models.omni_vault import (  # noqa: E402,F401
+    OmniFleetSource, OmniProviderConfig, OmniProviderEndpoint, OmniQuarantineLog, OmniRawPayload,
+    VaultAccountReservation, VaultBookmakerAccount, VaultFleetConfig, VaultImportRun, VaultProviderCredential,
+)
 from app.models.canonical import CanonicalEntity  # noqa: E402,F401
 # Module import, not names: integration.models imports Base from here, so it may still be initialising.
 import app.domain.integration.models  # noqa: E402,F401

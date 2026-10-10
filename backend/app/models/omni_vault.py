@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime
+from decimal import Decimal
 from enum import StrEnum
 from typing import Any
 
@@ -18,6 +19,7 @@ from sqlalchemy import (
     ForeignKey,
     Index,
     Integer,
+    Numeric,
     String,
     Text,
     UniqueConstraint,
@@ -209,3 +211,147 @@ def _block_raw_update(*_: object) -> None:
 @event.listens_for(OmniRawPayload, "before_delete")
 def _block_raw_delete(*_: object) -> None:
     raise PermissionError("OmniRawPayload rows are immutable.")
+
+
+# ---- The Vault: fleet credentials and accounts (Group 70) --------------------------------------
+class VerificationStatus(StrEnum):
+    UNVERIFIED = "UNVERIFIED"
+    OK = "OK"
+    FAILED = "FAILED"
+    UNSUPPORTED = "UNSUPPORTED"  # no sanctioned API to check it with: confirm it by hand
+
+
+_VERIFICATION_VALUES = ", ".join(f"'{v.value}'" for v in VerificationStatus)
+VAULT_MONEY = Numeric(18, 4)
+
+
+class VaultBookmakerAccount(Base):
+    """One bookmaker account in the Vault. Every secret column is AES-256-GCM ciphertext bound to this
+    row and field (``vault-account:<id>:<field>``); ``identity_digest`` is a keyed HMAC of the login
+    (or, without one, the API key), so a re-import finds the row without the plaintext."""
+
+    __tablename__ = "vault_bookmaker_accounts"
+    __table_args__ = (
+        UniqueConstraint("bookmaker_id", "identity_digest", name="uq_vault_bookmaker_accounts_identity"),
+        CheckConstraint("reserved >= 0", name="reserved_non_negative"),
+        CheckConstraint("balance IS NULL OR balance >= 0", name="balance_non_negative"),
+        CheckConstraint("stake_cap IS NULL OR stake_cap > 0", name="stake_cap_positive"),
+        CheckConstraint("priority >= 1", name="priority_positive"),
+        CheckConstraint(f"verification_status IN ({_VERIFICATION_VALUES})", name="verification_status"),
+        Index("ix_vault_bookmaker_accounts_book_active", "bookmaker_id", "is_active"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    bookmaker_id: Mapped[str] = mapped_column(String(32))  # canonical: parimatch, 1xbet, stake, pinnacle, betfair...
+    label: Mapped[str] = mapped_column(String(128))
+    identity_digest: Mapped[str] = mapped_column(String(64))
+    username_hint: Mapped[str | None] = mapped_column(String(64), nullable=True)  # pre-masked: "pa***23"
+    encrypted_username: Mapped[str | None] = mapped_column(Text, nullable=True)
+    encrypted_password: Mapped[str | None] = mapped_column(Text, nullable=True)
+    encrypted_api_key: Mapped[str | None] = mapped_column(Text, nullable=True)
+    encrypted_token: Mapped[str | None] = mapped_column(Text, nullable=True)
+    encrypted_totp_seed: Mapped[str | None] = mapped_column(Text, nullable=True)
+    encrypted_notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    encrypted_target_url: Mapped[str | None] = mapped_column(Text, nullable=True)
+    target_host: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    # keyed HMAC over every secret: a re-import sees a change without decrypting anything
+    secrets_fingerprint: Mapped[str] = mapped_column(String(64))
+    currency: Mapped[str] = mapped_column(String(8))
+    adapter_key: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    priority: Mapped[int] = mapped_column(Integer, default=100)  # 1 = the primary account of its bookmaker
+    balance: Mapped[Decimal | None] = mapped_column(VAULT_MONEY, nullable=True)  # account currency, as the user last saw it
+    stake_cap: Mapped[Decimal | None] = mapped_column(VAULT_MONEY, nullable=True)  # the user's own ceiling per order
+    reserved: Mapped[Decimal] = mapped_column(VAULT_MONEY, default=Decimal(0))  # stakes of orders in flight on this account
+    source: Mapped[str] = mapped_column(String(16), default="manual")
+    verification_status: Mapped[str] = mapped_column(String(16), default=VerificationStatus.UNVERIFIED.value)
+    verification_detail: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    last_verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+
+
+class VaultAccountReservation(Base):
+    """An order's stake held on one account until the order is settled, refused or abandoned."""
+
+    __tablename__ = "vault_account_reservations"
+    __table_args__ = (
+        CheckConstraint("amount > 0", name="amount_positive"),
+        Index("ix_vault_account_reservations_open", "account_id", "released_at"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    account_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("vault_bookmaker_accounts.id", ondelete="CASCADE"))
+    order_ref: Mapped[str] = mapped_column(String(128), unique=True)  # the order's idempotency key
+    amount: Mapped[Decimal] = mapped_column(VAULT_MONEY)
+    currency: Mapped[str] = mapped_column(String(8))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    released_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    release_reason: Mapped[str | None] = mapped_column(String(32), nullable=True)
+
+
+class VaultProviderCredential(Base):
+    """A data provider's key (The Odds API, Pinnacle API, SharpAPI...). ``linked_source_id``: the Fleet
+    Command source that runs on it (whose ``encrypted_api_key`` then holds the same key)."""
+
+    __tablename__ = "vault_provider_credentials"
+    __table_args__ = (
+        UniqueConstraint("provider_id", "key_digest", name="uq_vault_provider_credentials_key"),
+        CheckConstraint(f"verification_status IN ({_VERIFICATION_VALUES})", name="verification_status"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    provider_id: Mapped[str] = mapped_column(String(64), index=True)
+    label: Mapped[str] = mapped_column(String(128))
+    key_digest: Mapped[str] = mapped_column(String(64))
+    encrypted_api_key: Mapped[str] = mapped_column(Text)
+    api_key_hint: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    encrypted_secret: Mapped[str | None] = mapped_column(Text, nullable=True)
+    base_url: Mapped[str | None] = mapped_column(Text, nullable=True)
+    linked_source_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    source: Mapped[str] = mapped_column(String(16), default="manual")
+    verification_status: Mapped[str] = mapped_column(String(16), default=VerificationStatus.UNVERIFIED.value)
+    verification_detail: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    last_verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+
+
+class VaultFleetConfig(Base):
+    """The runtime fleet configuration (one row): what ``app.core.fleet_overlay`` installs everywhere."""
+
+    __tablename__ = "vault_fleet_config"
+    __table_args__ = (CheckConstraint("id = 1", name="singleton"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, default=1)
+    sports: Mapped[list[str]] = mapped_column(JsonColumn, default=list)
+    markets_by_sport: Mapped[dict[str, str]] = mapped_column(JsonColumn, default=dict)
+    quiet_start: Mapped[str | None] = mapped_column(String(5), nullable=True)  # "HH:MM", local time
+    quiet_end: Mapped[str | None] = mapped_column(String(5), nullable=True)
+    timezone: Mapped[str] = mapped_column(String(64), default="Asia/Kolkata")
+    account_routing: Mapped[bool] = mapped_column(Boolean, default=False)
+    version: Mapped[int] = mapped_column(Integer, default=1)
+    updated_by: Mapped[uuid.UUID | None] = mapped_column(Uuid, nullable=True)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+
+
+class VaultImportRun(Base):
+    """One import's audit trail: counts and warnings, never a value."""
+
+    __tablename__ = "vault_import_runs"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    origin: Mapped[str] = mapped_column(String(16))  # upload | text | path | cli | backup
+    content_sha256: Mapped[str] = mapped_column(String(64))
+    accounts_created: Mapped[int] = mapped_column(Integer, default=0)
+    accounts_updated: Mapped[int] = mapped_column(Integer, default=0)
+    accounts_unchanged: Mapped[int] = mapped_column(Integer, default=0)
+    providers_created: Mapped[int] = mapped_column(Integer, default=0)
+    providers_updated: Mapped[int] = mapped_column(Integer, default=0)
+    providers_unchanged: Mapped[int] = mapped_column(Integer, default=0)
+    sports_added: Mapped[list[str]] = mapped_column(JsonColumn, default=list)
+    warnings: Mapped[list[str]] = mapped_column(JsonColumn, default=list)
+    actor_id: Mapped[uuid.UUID | None] = mapped_column(Uuid, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, index=True)

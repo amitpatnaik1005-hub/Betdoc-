@@ -23,6 +23,7 @@ from app.api.endpoints import telemetry
 from app.api.v1.router import api_router
 from app.services.commander_supervisor import ProbeContext, run_supervisor
 from app.services.omni_fleet import FleetDeps, run_inprocess_fallback
+from app.services.vault import fleet_config as vault_fleet_config
 from app.domain.the_hive import HiveOrchestrator
 from app.core.live_odds import run_live_odds_relay
 from app.services.aryabhata_pipeline import run_aryabhata
@@ -87,6 +88,10 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     except Exception:  # noqa: BLE001 - a missing table before migrations must not stop the API
         logger.warning("Sandbox venue registration skipped", exc_info=True)
     app.state.bookmaker = app.state.sniper.gateway if settings.CFO_EXECUTION_MODE == "live" else PaperBookmaker()
+    try:  # the Vault's runtime fleet configuration (Group 70): activated sports, markets per sport, currencies
+        await vault_fleet_config.refresh(redis, settings, AsyncSessionLocal, force=True)
+    except Exception:  # noqa: BLE001 - before migrations the table may not exist yet
+        logger.warning("Vault fleet configuration not loaded at startup", exc_info=True)
 
     background = [
         # Every worker relays the Redis live-odds channel to the sockets it holds (cross-worker fan-out)

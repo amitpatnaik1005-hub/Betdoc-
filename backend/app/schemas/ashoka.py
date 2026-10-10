@@ -87,8 +87,8 @@ class ScoreIn(_Body):
     away: str = Field(min_length=1, max_length=128)
     sport_key: str | None = Field(default=None, max_length=64)
     kickoff: datetime | None = None
-    home_goals: int | None = Field(default=None, ge=0, le=99)
-    away_goals: int | None = Field(default=None, ge=0, le=99)
+    home_goals: int | None = Field(default=None, ge=0, le=2000)  # goals, points or runs (Group 70: every sport)
+    away_goals: int | None = Field(default=None, ge=0, le=2000)
     status: ScoreStatus = ScoreStatus.FINAL
 
     @model_validator(mode="after")

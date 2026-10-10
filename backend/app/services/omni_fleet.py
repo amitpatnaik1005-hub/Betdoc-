@@ -76,6 +76,7 @@ from app.services.omni_router import Availability, GroupStatus, PlanEntry, Sourc
 from app.services.omni_spool import SPOOL
 from app.services.omni_throttle import TokenBucket
 from app.services.sentinel_health import beat
+from app.services.vault import fleet_config as vault_fleet_config
 
 logger = logging.getLogger("betdoc.omni.fleet")
 
@@ -610,6 +611,7 @@ async def run_source(
             await deps.redis.set(keys.fleet_heartbeat(), "1", ex=int(settings.OMNI_FLEET_HEARTBEAT_SECONDS))
     if SPOOL.pending:
         await SPOOL.flush(deps.redis, settings)
+    await vault_fleet_config.refresh(deps.redis, settings, deps.session_factory)  # the Vault's sports and markets per sport
 
     if not force and not probe:
         if await _breaker_remaining(deps, source_id):
@@ -749,6 +751,7 @@ async def fleet_tick(deps: FleetDeps, dispatch: Dispatch) -> dict[str, Any]:
     """
     if SPOOL.pending:
         await SPOOL.flush(deps.redis, deps.settings)
+    await vault_fleet_config.refresh(deps.redis, deps.settings, deps.session_factory)  # sports activated in the Vault join the plan
     registry, _, states, plan, groups, _ = await fleet_plan(deps)
     keys = fleet_keys(deps.settings)
     now = time.time()

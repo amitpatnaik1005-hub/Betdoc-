@@ -120,6 +120,14 @@ def parse_market(market_type: str) -> MarketRef | None:
     return None
 
 
+DRAW_SPORTS = ("soccer", "rugbyleague", "rugbyunion", "cricket_test")  # a level score is a result here, not a tie to resolve
+
+
+def has_draws(sport_key: str | None) -> bool:
+    """Does a level score settle Match Odds as a draw? Elsewhere (tennis, NBA, T20) the books' tie rules apply."""
+    return sport_key is None or sport_key.startswith(DRAW_SPORTS)
+
+
 def _parts(line: float) -> tuple[float, ...]:
     """A quarter line is two half-stakes on its neighbours; any other line is one stake."""
     if abs(line * 2 - round(line * 2)) > 1e-9:  # x.25 or x.75

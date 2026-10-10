@@ -9,11 +9,17 @@ The key is the fleet's own (Fleet Command's vault, then the environment). Nothin
 
 Each completed event becomes a ``fixture_scores`` row under Ashoka's canonical fixture id (the same
 alias dictionary the odds normaliser uses), then ``settle_pending`` settles whatever it decides.
+
+Every sport (Group 70): a leg is "due" once its sport's usual length has passed since kickoff (football
+1h45, NBA 2h30, T20 cricket 4h, ODI 9h, tennis 3h...). Scores are read as the leading number the feed
+gives (cricket's ``"187/6"`` is 187 runs, tennis's sets won). Test cricket runs past the feed's three-day
+window, so it is left to the user's own result entry.
 """
 
 from __future__ import annotations
 
 import logging
+import re
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
@@ -32,25 +38,64 @@ from app.services.user_pnl_tracker import bump, record_score, settle_pending
 
 logger = logging.getLogger("betdoc.ashoka.scores")
 
-FINISHED_AFTER = timedelta(minutes=105)
-LOOKBACK = timedelta(days=3)
+FINISHED_AFTER = timedelta(minutes=105)  # football; see ``finished_after`` for every other sport
+LOOKBACK = timedelta(days=3)  # the scores feed's own window (daysFrom <= 3)
 SOURCE_ID = "odds_api"
+
+# How long after kickoff a match of the sport is normally over (by sport key prefix; the longest prefix wins)
+_DURATION: dict[str, timedelta] = {
+    "soccer": timedelta(minutes=105),
+    "basketball": timedelta(minutes=150),
+    "americanfootball": timedelta(minutes=210),
+    "icehockey": timedelta(minutes=165),
+    "baseball": timedelta(minutes=210),
+    "tennis": timedelta(minutes=180),
+    "cricket": timedelta(minutes=240),  # T20 leagues (IPL, Big Bash, PSL, T20 internationals)
+    "cricket_odi": timedelta(minutes=540),
+    "cricket_one_day": timedelta(minutes=540),
+    "mma": timedelta(minutes=240),
+    "boxing": timedelta(minutes=240),
+    "rugbyleague": timedelta(minutes=120),
+    "rugbyunion": timedelta(minutes=120),
+    "aussierules": timedelta(minutes=150),
+}
+_DEFAULT_DURATION = timedelta(minutes=180)
+MANUAL_ONLY = ("cricket_test",)  # multi-day: past the feed's window before it ends
+
+
+def finished_after(sport_key: str) -> timedelta:
+    best, length = _DEFAULT_DURATION, -1
+    for prefix, duration in _DURATION.items():
+        if (sport_key == prefix or sport_key.startswith(prefix + "_")) and len(prefix) > length:
+            best, length = duration, len(prefix)
+    return best
+
+
+def auto_scored(sport_key: str) -> bool:
+    return not sport_key.startswith(MANUAL_ONLY)
 
 
 async def sports_awaiting_scores(session: AsyncSession, now: datetime) -> set[str]:
+    """Sports with a pending leg whose match should be over by now (each sport by its own length)."""
     rows = await session.execute(
-        select(UserPlacedLeg.sport_key)
+        select(UserPlacedLeg.sport_key, UserPlacedLeg.kickoff)
         .join(UserPlacedBet, UserPlacedBet.id == UserPlacedLeg.bet_id)
         .where(
             UserPlacedBet.status == PlacedStatus.PENDING.value,
             UserPlacedLeg.result == PlacedStatus.PENDING.value,
             UserPlacedLeg.sport_key.is_not(None),
-            UserPlacedLeg.kickoff <= now - FINISHED_AFTER,
+            UserPlacedLeg.kickoff <= now - min(min(_DURATION.values()), _DEFAULT_DURATION),
             UserPlacedLeg.kickoff >= now - LOOKBACK,
         )
-        .distinct()
     )
-    return {s for s in rows.scalars() if s}
+    due: set[str] = set()
+    for sport, kickoff in rows.all():
+        if not sport or not auto_scored(sport) or kickoff is None:
+            continue
+        kickoff = kickoff if kickoff.tzinfo else kickoff.replace(tzinfo=UTC)
+        if kickoff <= now - finished_after(sport):
+            due.add(sport)
+    return due
 
 
 async def _api_key(session_factory: async_sessionmaker[AsyncSession], settings: Settings, vault: VaultCrypto | None) -> str | None:
@@ -84,6 +129,19 @@ async def _quota_allows(redis: Redis, settings: Settings) -> bool:
     return True
 
 
+_LEADING_NUMBER = re.compile(r"^\s*(\d{1,4})")
+
+
+def score_value(raw: Any) -> int:
+    """The number a score stands for: ``2`` -> 2, ``"187/6"`` (runs / wickets) -> 187, ``"187/6 (20)"`` -> 187."""
+    if isinstance(raw, int) and not isinstance(raw, bool):
+        return raw
+    match = _LEADING_NUMBER.match(str(raw)) if raw is not None else None
+    if match is None:
+        raise ValueError(f"not a score: {raw!r}")
+    return int(match.group(1))
+
+
 def parse_scores(events: Any, sport: str) -> list[ScoreIn]:
     """Completed events with both scores, as ``ScoreIn`` (fixture ids are filled in by the caller)."""
     out: list[ScoreIn] = []
@@ -93,7 +151,7 @@ def parse_scores(events: Any, sport: str) -> list[ScoreIn]:
         home, away = event.get("home_team"), event.get("away_team")
         scores = {str(s.get("name")): s.get("score") for s in event.get("scores") or [] if isinstance(s, dict)}
         try:
-            home_goals, away_goals = int(scores[home]), int(scores[away])
+            home_goals, away_goals = score_value(scores[home]), score_value(scores[away])
             kickoff = datetime.fromisoformat(str(event["commence_time"]).replace("Z", "+00:00"))
         except (KeyError, TypeError, ValueError):
             continue

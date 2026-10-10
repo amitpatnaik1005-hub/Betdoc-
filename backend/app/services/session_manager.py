@@ -132,7 +132,7 @@ class SessionManager:
             if not token:
                 raise SessionError("NO_CREDENTIALS", "static_bearer venue credentials need an api_key")
             return token
-        cached = await self._load(venue.id)
+        cached = await self._load(venue.session_key)
         if cached is not None and cached.access_token != stale and cached.seconds_left(self.clock()) > self.margin.total_seconds():
             return cached.access_token
         return (await self._refresh(venue, stale=stale)).access_token
@@ -143,7 +143,7 @@ class SessionManager:
         for venue in venues:
             if venue.auth_type == "static_bearer" or not venue.is_enabled:
                 continue
-            cached = await self._load(venue.id)
+            cached = await self._load(venue.session_key)
             if cached is not None and cached.seconds_left(self.clock()) > self.margin.total_seconds():
                 outcomes[venue.id] = "fresh"
                 continue
@@ -159,16 +159,16 @@ class SessionManager:
         """For the terminal: is there a session, and how long has it got (never the token itself)."""
         if venue.auth_type == "static_bearer":
             return {"authenticated": bool(venue.encrypted_credentials), "expires_at": None, "seconds_left": None}
-        cached = await self._load(venue.id)
+        cached = await self._load(venue.session_key)
         if cached is None:
             return {"authenticated": False, "expires_at": None, "seconds_left": None}
         return {"authenticated": True, "expires_at": cached.expires_at.isoformat(), "seconds_left": int(cached.seconds_left(self.clock()))}
 
     # -------------------------------------------------------------- refresh (single-flight)
     async def _refresh(self, venue: VenueConfig, *, stale: str | None) -> SessionToken:
-        lock = self._locks.setdefault(venue.id, asyncio.Lock())
-        async with lock, self._cluster_lock(venue.id):
-            cached = await self._load(venue.id)
+        lock = self._locks.setdefault(venue.session_key, asyncio.Lock())
+        async with lock, self._cluster_lock(venue.session_key):
+            cached = await self._load(venue.session_key)
             if cached is not None and cached.access_token != stale and cached.seconds_left(self.clock()) > self.margin.total_seconds():
                 return cached  # another caller refreshed while we waited
             token: SessionToken | None = None
@@ -186,7 +186,7 @@ class SessionManager:
                         token = await self._grant(venue, venue.token_path, form)
                     finally:
                         form.clear()
-            await self._store(venue.id, token)
+            await self._store(venue.session_key, token)
             logger.info("Session for %s refreshed; valid until %s", venue.id, token.expires_at.isoformat())
             return token
 

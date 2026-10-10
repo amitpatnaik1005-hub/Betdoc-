@@ -11,28 +11,42 @@ from __future__ import annotations
 
 import re
 from collections.abc import Sequence
+from datetime import UTC, datetime
 from typing import Any, ClassVar
 
 import httpx
 
 from app.adapters.ingestion.base import BaseDataIngestor, IngestionBatch, IngestionError, QuotaExhaustedError, SourcePayload
+from app.core import fleet_overlay
 from app.core.config import Settings
 
 _SPORT_KEY_RE = re.compile(r"^[a-z0-9_]+$")
 BULK_MARKETS = ("h2h", "spreads", "totals")  # what /sports/{sport}/odds serves; btts is per event only
 
 
-def odds_api_markets(settings: Settings) -> str:
-    """``ODDS_API_MARKETS`` restricted to what the bulk endpoint serves, h2h always first. Each market
-    multiplies the credits a call costs, so the default stays "h2h"."""
-    wanted = {m.strip().lower() for m in settings.ODDS_API_MARKETS.split(",") if m.strip()}
+def odds_api_markets(settings: Settings, sport: str | None = None, now: datetime | None = None) -> str:
+    """The markets one sport's call requests, restricted to what the bulk endpoint serves, h2h always
+    first. Each market multiplies the credits a call costs, so the default stays "h2h".
+
+    Precedence: the Vault's runtime switch (``fleet_overlay``: per sport, and h2h for every sport inside
+    its quiet hours), then ``ODDS_MARKETS_BY_SPORT``, then ``ODDS_API_MARKETS``."""
+    spec = None
+    if sport is not None:
+        spec = fleet_overlay.current().markets_for(sport, now or datetime.now(UTC)) or settings.ODDS_MARKETS_BY_SPORT.get(sport)
+    wanted = {m.strip().lower() for m in (spec or settings.ODDS_API_MARKETS).split(",") if m.strip()}
     return ",".join(m for m in BULK_MARKETS if m == "h2h" or m in wanted)
+
+
+def credits_per_call(settings: Settings, sport: str, now: datetime | None = None) -> int:
+    """What one /odds call for the sport costs: regions x markets."""
+    regions = [r for r in settings.ODDS_API_REGIONS.split(",") if r.strip()]
+    return max(1, len(regions)) * len(odds_api_markets(settings, sport, now).split(","))
 
 
 class OddsApiIngestor(BaseDataIngestor):
     source_id = "odds_api"
     display_name = "The Odds API"
-    description = "Licensed bookmaker prices (h2h), de-vigged into a consensus probability."
+    description = "Licensed bookmaker prices (h2h; totals and spreads per sport), de-vigged into a consensus probability."
     requires_api_key = True
     docs_url = "https://the-odds-api.com/liveapi/guides/v4/"
     requests_per_minute = 30.0
@@ -79,7 +93,7 @@ class OddsApiIngestor(BaseDataIngestor):
                 params={
                     "apiKey": self._api_key or "",
                     "regions": self._settings.ODDS_API_REGIONS,
-                    "markets": odds_api_markets(self._settings),
+                    "markets": odds_api_markets(self._settings, sport),
                     "oddsFormat": "decimal",
                     "dateFormat": "iso",
                 },

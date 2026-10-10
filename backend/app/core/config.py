@@ -42,6 +42,9 @@ class Settings(BaseSettings):
     # Markets per /odds call. Each costs regions x markets credits: "h2h" protects the quota; add
     # "totals,spreads" for Ashoka's Over/Under and Asian handicap legs (BTTS is per event only).
     ODDS_API_MARKETS: str = "h2h"
+    # Per sport, overriding ODDS_API_MARKETS ({"soccer_epl": "h2h,totals,spreads"}); the Control Panel's
+    # Vault & Fleet tab sets the same per sport at runtime, and its quiet hours drop every sport to h2h.
+    ODDS_MARKETS_BY_SPORT: dict[str, str] = {}
     ODDS_QUOTA_FLOOR: int = 10
 
     # Polymarket public Gamma API (no key). Leagues are Polymarket sport codes from GET /sports.
@@ -251,6 +254,23 @@ class Settings(BaseSettings):
     ORACLE_SCORES_POLL_MINUTES: float = Field(default=30.0, ge=5)  # at most once per sport per this many minutes (2 credits)
     ORACLE_SETTLE_INTERVAL_SECONDS: float = Field(default=300.0, ge=30)
 
+    # ---- The Vault: fleet credentials and accounts (Group 70) ---------------
+    # Directories a server-side path import may read from (the Control Panel's "load from path" and the CLI's
+    # --file go through the same check). Empty: path imports are refused; uploads and pasted text still work.
+    VAULT_IMPORT_ALLOWED_DIRS: List[str] = []
+    VAULT_IMPORT_MAX_BYTES: int = Field(default=1_000_000, ge=1_000, le=10_000_000)
+    VAULT_PROBE_ENABLED: bool = True  # the credential health prober (sanctioned APIs only)
+    VAULT_PROBE_INTERVAL_MINUTES: float = Field(default=360.0, ge=30)
+    VAULT_PROBE_SPACING_SECONDS: tuple[float, float] = (3.0, 7.0)  # random pause between two probes: a batch never bursts
+    VAULT_PROBE_MIN_INTERVAL_SECONDS: int = Field(default=60, ge=60)  # at most one probe per bookmaker per minute
+    VAULT_RESERVATION_TTL_MINUTES: float = Field(default=30.0, ge=5)  # an order's stake hold with no ledger row by then is released
+    VAULT_BACKUP_MIN_PASSPHRASE: int = Field(default=12, ge=12)
+    PINNACLE_API_BASE_URL: str = "https://api.pinnacle.com"
+    BETFAIR_IDENTITY_URL: str = "https://identitysso.betfair.com/api"
+    # Parimatch direct injection: odds posted by the user or an authorised feed (POST /parimatch/odds)
+    PARIMATCH_FEED_TOKEN: SecretStr | None = None  # X-Parimatch-Feed-Token for a feed without a user login
+    PARIMATCH_FEED_MAX_EVENTS: int = Field(default=200, ge=1, le=2000)
+
     # The Wire: public sports RSS feeds (no key needed)
     WIRE_NEWS_FEEDS: List[str] = [
         "https://feeds.bbci.co.uk/sport/rss.xml",
@@ -260,7 +280,11 @@ class Settings(BaseSettings):
 
     @property
     def odds_sport_keys(self) -> List[str]:
-        return [s.strip() for s in self.ODDS_SPORT_KEYS.split(",") if s.strip()]
+        """ODDS_SPORT_KEYS, then the sports the Vault activated (``app.core.fleet_overlay``)."""
+        from app.core.fleet_overlay import current  # noqa: PLC0415 - state only, no import cycle
+
+        keys = [s.strip() for s in self.ODDS_SPORT_KEYS.split(",") if s.strip()]
+        return keys + [s for s in current().sports if s not in keys]
 
     @property
     def polymarket_leagues(self) -> List[str]:

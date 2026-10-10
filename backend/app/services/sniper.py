@@ -6,6 +6,11 @@ translates canonical ids into the venue's ids (no mapping: REJECTED, so the rese
 back), and fires through the venue's adapter (session, outbound rate limit, slippage floor, 401
 refresh-and-refire). Every step is streamed to the user's execution terminal.
 
+Vault accounts (Group 70): with account routing on (Control Panel, Vault & Fleet) and Vault accounts
+for the order's bookmaker, the order logs in as ONE of them, the one ``account_rotator`` picks by the
+user's priority and free funds, with the whole stake held on it until the order settles. No account can
+carry it: REJECTED before anything is reserved. An order is never split across accounts.
+
 Terminal feed (``SNIPER_PREFIX``):
     <p>:feed               pub/sub  every step, every user ({user_id, ts, step, message, level, ...})
     <p>:feed:<user_id>     list     the last ``SNIPER_FEED_LENGTH`` lines for that user (newest first)
@@ -32,9 +37,12 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.adapters.execution.factory import BaseExecutionAdapter, build_adapter
 from app.adapters.execution.venue import VenueConfig
+from app.core import fleet_overlay
 from app.core.config import Settings
-from app.core.security_vault import VaultCrypto
+from app.core.security_vault import VaultCrypto, VaultDecryptionError
+from app.domain.bookmakers.adapters import canonical_bookmaker
 from app.models.execution import ExecutionVenue
+from app.models.omni_vault import VaultBookmakerAccount
 from app.services.bookmaker_gateway import BookmakerOrder, BookmakerOutcome, BookmakerResult
 from app.services.id_mapper import IdMapper, RemoteIds, UnmappedEntityError
 from app.services.omni_throttle import TokenBucket
@@ -192,7 +200,48 @@ class SniperGateway:
             await emit("map", f"No {venue.display_name} id for this {exc.kind}: aborted", "error")
             return BookmakerResult(BookmakerOutcome.REJECTED, f"UNMAPPED_{exc.kind.upper()}", venue_id=venue.id)
         await emit("map", f"event {remote.event_id} · selection {remote.selection_id}")
+        if not venue.is_sandbox:
+            routed = await self._vault_account(order, venue)
+            if isinstance(routed, BookmakerResult):
+                await emit("route", f"{routed.reason}: aborted", "error")
+                return routed
+            if routed is not None:
+                venue = routed
         return Route(venue, remote)
+
+    async def _vault_account(self, order: BookmakerOrder, venue: VenueConfig) -> VenueConfig | BookmakerResult | None:
+        """The venue logged in as the Vault account that carries this order, or None (the venue's own login)."""
+        from app.services.vault import fleet_config  # noqa: PLC0415 - Group 70, loaded on first use
+        from app.services.vault.account_rotator import NoAccount, reserve  # noqa: PLC0415
+        from app.services.vault.registry import venue_for_account  # noqa: PLC0415
+
+        await fleet_config.refresh(self.redis, self.settings, self.session_factory)
+        if not fleet_overlay.current().account_routing or self.sessions.vault is None:
+            return None
+        book = canonical_bookmaker(order.bookmaker_id) or order.bookmaker_id
+        async with self.session_factory() as session:
+            if (await session.execute(select(VaultBookmakerAccount.id).where(VaultBookmakerAccount.bookmaker_id == book).limit(1))).first() is None:
+                return None  # no Vault accounts for this book: the venue's own credentials
+            choice = await reserve(session, book, order.venue_stake, order.client_ref, currency=order.currency)
+            if isinstance(choice, NoAccount):
+                await session.rollback()
+                return BookmakerResult(BookmakerOutcome.REJECTED, f"NO_VAULT_ACCOUNT_{choice.reason}", venue_id=venue.id)
+            row = await session.get(VaultBookmakerAccount, choice.account_id)
+            try:
+                routed = venue_for_account(venue, row, self.sessions.vault)  # type: ignore[arg-type]
+            except VaultDecryptionError:
+                await session.rollback()
+                return BookmakerResult(BookmakerOutcome.REJECTED, "VAULT_ACCOUNT_UNREADABLE", venue_id=venue.id)
+            await session.commit()
+        await self.feed.emit(order.user_id, "route", f"Account: {choice.label} ({choice.currency}), stake held on it", ref=order.client_ref, bookmaker=order.bookmaker_id)
+        return routed
+
+    async def _release_vault_hold(self, order: BookmakerOrder, reason: str) -> None:
+        from app.services.vault.account_rotator import release  # noqa: PLC0415
+
+        async with self.session_factory() as session:
+            if await release(session, order.client_ref, reason):
+                await session.commit()
 
     async def place(self, order: BookmakerOrder, route: Route | None = None) -> BookmakerResult:
         emit = self._emitter(order)
@@ -211,6 +260,8 @@ class SniperGateway:
         elif result.outcome is BookmakerOutcome.REJECTED:
             status = f"{result.http_status} " if result.http_status else ""
             await emit("result", f"{status}{result.reason}: rejected, rolling back", "error")
+            if venue.session_scope is not None:
+                await self._release_vault_hold(order, "rejected")
         else:
             await emit("result", f"{result.reason}: no confirmation, stake held in exposure for reconciliation", "warning")
         return result

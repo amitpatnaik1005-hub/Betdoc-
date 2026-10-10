@@ -1,9 +1,10 @@
 """What each bookmaker costs: commission on net winnings and the currency its account settles in.
 
 A venue row that executes for the bookmaker (its own id, or listed in its routes) sets both; a
-bookmaker without one falls back to ``EXCHANGE_COMMISSION_RATES`` / ``BOOKMAKER_CURRENCIES``, and
-then to the book's own currency: a regional key's suffix (``_uk`` GBP, ``_nl`` EUR, ``_au`` AUD...),
-the UK-licensed books and exchanges in GBP, prediction markets in USD. Only an unknown, unsuffixed
+bookmaker without one falls back to ``EXCHANGE_COMMISSION_RATES`` / ``BOOKMAKER_CURRENCIES``, then to
+the currency of its accounts in the Vault (Group 70, ``fleet_overlay``), and then to the book's own
+currency: a regional key's suffix (``_uk`` GBP, ``_nl`` EUR, ``_au`` AUD...), the UK-licensed books
+and exchanges in GBP, prediction markets in USD. Only an unknown, unsuffixed
 book is assumed to hold rupees. A foreign currency without a live rate is refused (``fx_rates``),
 so a wrong default can only hide a price, never mis-price one. The sandbox catch-all never
 overrides: it stands in for the real bookmaker, so it must price like it.
@@ -16,6 +17,7 @@ from dataclasses import dataclass
 from decimal import Decimal
 
 from app.adapters.execution.venue import VenueConfig
+from app.core import fleet_overlay
 from app.core.config import Settings
 from app.domain.math.arbitrage_calc import HOME_CURRENCY, MAX_COMMISSION
 
@@ -61,7 +63,10 @@ def bookmaker_terms(bookmaker_id: str, settings: Settings, venue: VenueConfig | 
         commission = Decimal(str(settings.EXCHANGE_COMMISSION_RATES.get(bookmaker_id, 0)))
     if not ZERO <= commission < MAX_COMMISSION:
         commission = MAX_COMMISSION - Decimal("0.0001")  # a misconfigured rate prices the book as worthless, never as free
-    currency = (own.currency if own is not None and own.currency else settings.BOOKMAKER_CURRENCIES.get(bookmaker_id) or default_currency(bookmaker_id)).upper()
+    currency = (
+        own.currency if own is not None and own.currency
+        else settings.BOOKMAKER_CURRENCIES.get(bookmaker_id) or fleet_overlay.current().currencies.get(bookmaker_id) or default_currency(bookmaker_id)
+    ).upper()
     return BookmakerTerms(commission, currency)
 
 

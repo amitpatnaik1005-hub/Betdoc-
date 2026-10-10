@@ -32,6 +32,7 @@ class VenueConfig:
     is_enabled: bool = True
     commission_rate: Decimal | None = None  # None: the bookmaker's default (settings)
     currency: str | None = None  # None: the bookmaker's default (settings), else INR
+    session_scope: str | None = None  # a Vault account (Group 70): its own login session, apart from the venue's
 
     @classmethod
     def from_row(cls, row: ExecutionVenue) -> VenueConfig:
@@ -56,6 +57,11 @@ class VenueConfig:
             commission_rate=None if row.commission_rate is None else Decimal(row.commission_rate),
             currency=row.currency,
         )
+
+    @property
+    def session_key(self) -> str:
+        """What the venue's login session is cached under: one per account when a Vault account carries the order."""
+        return self.id if self.session_scope is None else f"{self.id}@{self.session_scope}"
 
     def url(self, path: str) -> str:
         return self.base_url.rstrip("/") + "/" + path.lstrip("/")

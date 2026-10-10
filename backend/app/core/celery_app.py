@@ -62,7 +62,7 @@ def _zoned_crontab(minute: str | int, hour: str | int, zone: str) -> ZonedCronta
 celery_app = Celery(
     "betdoc_omni",
     broker=_settings.celery_broker_url.get_secret_value(),
-    include=["app.workers.omni_poller", "app.workers.omni_quorum", "app.workers.cfo_settlement", "app.workers.sniper", "app.workers.hive_worker", "app.workers.lab_worker", "app.workers.nalanda_maintenance", "app.workers.sentinel_tasks", "app.workers.oracle_tasks"],
+    include=["app.workers.omni_poller", "app.workers.omni_quorum", "app.workers.cfo_settlement", "app.workers.sniper", "app.workers.hive_worker", "app.workers.lab_worker", "app.workers.nalanda_maintenance", "app.workers.sentinel_tasks", "app.workers.oracle_tasks", "app.workers.vault_prober"],
 )
 
 celery_app.conf.update(
@@ -139,6 +139,13 @@ celery_app.conf.update(
         },
         "oracle-poll-scores": {"task": "oracle.poll_scores", "schedule": 900.0, "options": {"expires": 900.0}},
         "oracle-scan-trending": {"task": "oracle.scan_trending", "schedule": 600.0, "options": {"expires": 600.0}},
+        # The Vault (Group 70): credential health (sanctioned APIs, paced), and stake held by finished orders
+        "vault-probe-credentials": {
+            "task": "vault.probe_credentials",
+            "schedule": _settings.VAULT_PROBE_INTERVAL_MINUTES * 60.0,
+            "options": {"expires": _settings.VAULT_PROBE_INTERVAL_MINUTES * 60.0},
+        },
+        "vault-release-reservations": {"task": "vault.release_reservations", "schedule": 300.0, "options": {"expires": 300.0}},
         "sentinel-market-forecast-hype": {
             "task": "sentinel.market_forecast_hype",
             "schedule": ZonedCrontab(minute=_settings.SENTINEL_HYPE_MINUTE, hour=_settings.SENTINEL_HYPE_HOUR, zone=_settings.SENTINEL_TIMEZONE),
