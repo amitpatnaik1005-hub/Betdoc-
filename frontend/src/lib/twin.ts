@@ -1,4 +1,4 @@
-/** The True Digital Betting Twin (backend `app/api/v1/digital_twin.py`, Group 72): the 14-pillar fortress, the booking-code ledger, the in-play watch. */
+/** The True Digital Betting Twin (backend `app/api/v1/digital_twin.py`, Group 72): the fortress (15 pillars since Group 75), the booking-code ledger, the in-play watch. */
 import { apiClient } from "../api/client";
 import type { Scorecard, Slip } from "./oracle";
 import { useResource } from "./resource";

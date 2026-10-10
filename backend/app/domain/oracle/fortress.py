@@ -1,4 +1,4 @@
-"""The 14-pillar fortress: the twin's last word on a slip before it reaches the user (Group 72).
+"""The 15-pillar fortress: the twin's last word on a slip before it reaches the user (Groups 72, 75).
 
 The fortress runs over a slip the parlay engine has already priced and simulated (Group 69) at a retail
 book (Parimatch, 1xBet), plus the evidence gathered for its fixtures. Every pillar returns PASS, FAIL or
@@ -35,8 +35,13 @@ passes (``TWIN_ADVISORY_PILLARS`` may name pillars that only report).
     The stake rounds down to ``stake_step``; one that rounds to nothing fails.
 14. Execution gate. The kill switch is off (and Redis can say so) and every retail price is fresh.
     ``confirm`` re-runs this pillar against a re-fetched price before the slip is placed or routed.
+15. The Never-Forget shield (Group 75). Each leg's situation (weather, rest, referee, steam, price: what
+    the pillars above read) is compared with every lost leg the post-mortem memorised; one as alike as
+    ``NEVER_FORGET_SIMILARITY_THRESHOLD`` to an ACTIVE lesson of the same shape is vetoed. A lesson the leg
+    lacks the evidence to be compared with leaves the pillar unverified. Every leg's situation is kept in
+    the pillar's metrics: it is what a later post-mortem memorises.
 
-No slip is a certainty: the audit's numbers are what it is worth, and passing 14 pillars says how much
+No slip is a certainty: the audit's numbers are what it is worth, and passing every pillar says how much
 was checked, not that it cannot lose.
 """
 
@@ -50,6 +55,7 @@ from decimal import ROUND_DOWN, Decimal
 from enum import StrEnum
 from typing import Any
 
+from app.domain.oracle import never_forget as nf
 from app.domain.oracle.markets import MarketKind, MarketRef
 from app.domain.oracle.parlay_engine import LegCandidate, Quote, SlipCandidate
 from app.schemas.twin import FixtureIntel
@@ -57,14 +63,15 @@ from app.schemas.twin import FixtureIntel
 PAISA = Decimal("0.01")
 PILLAR_KEYS: dict[int, str] = {
     1: "model_consensus", 2: "weather", 3: "travel_fatigue", 4: "injuries", 5: "lineups", 6: "market_microstructure", 7: "sharp_price",
-    8: "crowd_parlays", 9: "referee", 10: "motivation", 11: "liquidity", 12: "independence", 13: "sizing", 14: "execution_gate",
+    8: "crowd_parlays", 9: "referee", 10: "motivation", 11: "liquidity", 12: "independence", 13: "sizing", 14: "execution_gate", 15: "never_forget",
 }
 PILLAR_TITLES: dict[int, str] = {
     1: "Model consensus & zero-negative-EV veto", 2: "Weather & pitch", 3: "Travel & circadian fatigue", 4: "Injury wire & dressing room",
     5: "Official lineups", 6: "Reverse line movement & steam", 7: "De-vigged sharp price", 8: "Crowd parlay forensics",
     9: "Referee profile", 10: "Motivation & derby", 11: "Liquidity & stake limits", 12: "Leg independence",
-    13: "Fractional Kelly & drawdown breaker", 14: "Kill switch & fresh price",
+    13: "Fractional Kelly & drawdown breaker", 14: "Kill switch & fresh price", 15: "Never-Forget shield",
 }
+PILLAR_COUNT = len(PILLAR_KEYS)
 
 
 class Status(StrEnum):
@@ -117,10 +124,11 @@ class FortressPolicy:
     max_odds_drift_pct: float
     intel_max_age: Mapping[str, timedelta]
     advisory: frozenset[int] = frozenset()
+    never_forget: nf.NeverForgetPolicy | None = None  # None: pillar 15 is switched off
 
     @classmethod
     def from_settings(cls, settings: Any) -> FortressPolicy:
-        advisory = frozenset(int(p) for p in str(settings.TWIN_ADVISORY_PILLARS).replace(" ", "").split(",") if p.isdigit() and 1 <= int(p) <= 14)
+        advisory = frozenset(int(p) for p in str(settings.TWIN_ADVISORY_PILLARS).replace(" ", "").split(",") if p.isdigit() and 1 <= int(p) <= PILLAR_COUNT)
         return cls(
             min_models=settings.TWIN_MIN_MODELS, min_ev=settings.TWIN_MIN_CONSENSUS_EV,
             max_wind_kmh=settings.TWIN_MAX_WIND_KMH, max_rain_mmh=settings.TWIN_MAX_RAIN_MMH,
@@ -137,6 +145,7 @@ class FortressPolicy:
             max_odds_drift_pct=settings.TWIN_MAX_ODDS_DRIFT_PCT,
             intel_max_age={k: timedelta(minutes=float(v)) for k, v in settings.TWIN_INTEL_MAX_AGE_MINUTES.items()},
             advisory=advisory,
+            never_forget=nf.NeverForgetPolicy.from_settings(settings) if settings.NEVER_FORGET_ENABLED else None,
         )
 
 
@@ -242,6 +251,7 @@ class FortressInputs:
     model_weights: Mapping[str, float]
     book_max_stake: Decimal | None  # the configured venue maximum, if any
     now: datetime
+    lessons: Sequence[nf.Lesson] | None = ()  # the Never-Forget vault (pillar 15); None: it could not be read
 
 
 @dataclass(frozen=True, slots=True)
@@ -567,6 +577,76 @@ def pillar_14(kill_switch: bool | None, quotes: Sequence[Quote], now: datetime, 
                         {"max_age_seconds": round(max((q.age(now) for q in quotes), default=0.0), 1)})
 
 
+def leg_situation(ev: LegEvidence, now: datetime, policy: FortressPolicy, nfp: nf.NeverForgetPolicy, consensus: float | None, edge: float | None) -> nf.Situation:
+    """What the fortress knew about the leg, from the same fresh evidence the other pillars read."""
+    weather = _section(ev.intel, "weather", now, policy)
+    travel = _section(ev.intel, "travel", now, policy)
+    referee = _section(ev.intel, "referee", now, policy)
+    splits = _section(ev.intel, "public_splits", now, policy)
+    rest = None
+    if travel is not None:
+        side = backed_side(ev.leg.market, ev.leg.selection)
+        rest = (travel.home if side == "HOME" else travel.away).rest_hours if side else min(travel.home.rest_hours, travel.away.rest_hours)
+    share = ev.public_share
+    if splits is not None and (measured := splits.splits.get(ev.leg.market.key, {}).get(ev.leg.selection)) is not None:
+        share = measured.tickets_pct
+    return nf.situation(
+        nfp, odds=ev.quote.odds, indoor=None if weather is None else weather.indoor,
+        rain_mmh=None if weather is None else weather.precipitation_mmh, wind_kmh=None if weather is None else weather.wind_kmh,
+        rest_hours=rest, cards_per_game=None if referee is None else referee.cards_per_game, penalties_per_90=None if referee is None else referee.penalties_per_90,
+        steam_against=None if ev.steam_selections is None else any(s != ev.leg.selection for s in ev.steam_selections),
+        model_ev=consensus, sharp_edge=edge, public_share=share,
+    )
+
+
+def pillar_15(inputs: FortressInputs, policy: FortressPolicy, consensus: Mapping[str, float], edges: Mapping[str, float], *, fallback: nf.NeverForgetPolicy | None = None) -> PillarResult:
+    """Every leg's situation against the memorised lost legs. ``consensus`` and ``edges`` per leg id come from
+    pillars 1 and 7; ``fallback`` records the situations when the shield is switched off."""
+    nfp = policy.never_forget or fallback
+    rows: list[dict[str, Any]] = []
+    vetoes: list[str] = []
+    unclear: list[str] = []
+    shadow: list[dict[str, Any]] = []
+    lessons = list(inputs.lessons) if inputs.lessons is not None else []
+    for ev in inputs.legs:
+        leg_id = ev.leg.leg_id
+        shape = nf.bet_shape(ev.leg.market, ev.leg.selection)
+        if nfp is None:
+            rows.append({"leg": leg_id, "shape": shape})
+            continue
+        sit = leg_situation(ev, inputs.now, policy, nfp, consensus.get(leg_id), edges.get(leg_id))
+        row: dict[str, Any] = {"leg": leg_id, "shape": shape, **sit.as_dict()}
+        if policy.never_forget is not None and inputs.lessons is not None:
+            found = nf.scan(shape, sit.vector, lessons, nfp)
+            row["closest"] = None if found.closest is None else found.closest.as_dict()
+            row["compared"] = found.compared
+            if found.vetoes:
+                top = found.vetoes[0]
+                row["vetoes"] = [m.as_dict() for m in found.vetoes]
+                vetoes.append(f"{_label(ev)}: {top.similarity:.0%} like lesson {top.lesson.rule_code} ({top.lesson.lesson[:240]})")
+            if found.shadow:
+                row["shadow"] = [m.as_dict() for m in found.shadow]
+                shadow.extend({"leg": leg_id, **m.as_dict()} for m in found.shadow)
+            for lesson, missing in found.inconclusive:
+                unclear.append(f"{_label(ev)} against {lesson.rule_code} (no fresh {', '.join(missing) or 'evidence'})")
+        rows.append(row)
+    active = sum(1 for lesson in lessons if lesson.status == nf.ACTIVE)
+    metrics: dict[str, Any] = {"legs": rows, "lessons": {"active": active, "experimental": sum(1 for lesson in lessons if lesson.status == nf.EXPERIMENTAL)},
+                               "shadow_matches": shadow, **({"policy": nfp.as_dict()} if nfp is not None else {})}
+    if policy.never_forget is None:
+        return PillarResult(15, Status.ADVISORY, "[off] the Never-Forget shield is switched off (NEVER_FORGET_ENABLED): nothing compared", metrics)
+    if inputs.lessons is None:
+        return PillarResult(15, Status.UNVERIFIED, "the Never-Forget vault cannot be read: no leg can be cleared of a past trap", metrics)
+    if vetoes:
+        return PillarResult(15, Status.FAIL, "; ".join(vetoes), metrics)
+    if unclear:
+        return PillarResult(15, Status.UNVERIFIED, "cannot rule out " + "; ".join(unclear[:4]) + (" ..." if len(unclear) > 4 else ""), metrics)
+    if not active:
+        return PillarResult(15, Status.PASS, "no lesson memorised yet" + (f" ({len(lessons)} experimental, shadow only)" if lessons else ""), metrics)
+    closest = max((r["closest"]["similarity"] for r in rows if r.get("closest")), default=None)
+    return PillarResult(15, Status.PASS, f"no leg resembles any of {active} lesson(s)" + (f"; the closest is {closest:.0%} alike" if closest is not None else ""), metrics)
+
+
 def drift_floors(odds: Sequence[float], policy: FortressPolicy) -> list[float]:
     return [o * (1.0 - policy.max_odds_drift_pct) for o in odds]
 
@@ -579,15 +659,19 @@ def _by_fixture(legs: Sequence[LegEvidence]) -> dict[str, LegEvidence]:
 
 
 # ================================================================ the verdict
-def run(inputs: FortressInputs, policy: FortressPolicy, sharp_books: Sequence[str]) -> FortressVerdict:
+def run(inputs: FortressInputs, policy: FortressPolicy, sharp_books: Sequence[str], *, situations: nf.NeverForgetPolicy | None = None) -> FortressVerdict:
+    """``situations`` records every leg's situation in pillar 15 even while the shield is switched off."""
     p10, bars = pillar_10(inputs, policy)
     p1, consensus = pillar_1(inputs, policy, bars)
     p7, edge = pillar_7(inputs, policy, sharp_books)
     p13, sizing = pillar_13(inputs, policy)
+    leg_consensus = {row["leg"]: row["consensus_ev"] for row in p1.metrics.get("legs", []) if row.get("consensus_ev") is not None}
+    leg_edges = {row["leg"]: row["edge"] for row in p7.metrics.get("legs", [])}
     results = [
         p1, pillar_2(inputs, policy), pillar_3(inputs, policy), pillar_4(inputs, policy), pillar_5(inputs, policy), pillar_6(inputs, policy), p7,
         pillar_8(inputs), pillar_9(inputs, policy), p10, pillar_11(inputs, policy, None if sizing is None else sizing.stake), pillar_12(inputs), p13,
         pillar_14(inputs.kill_switch, [ev.quote for ev in inputs.legs], inputs.now, policy),
+        pillar_15(inputs, policy, leg_consensus, leg_edges, fallback=situations),
     ]
     final: list[PillarResult] = []
     for r in results:
@@ -598,4 +682,4 @@ def run(inputs: FortressInputs, policy: FortressPolicy, sharp_books: Sequence[st
     passed = sum(1 for r in final if r.status is Status.PASS)
     vetted = all(r.status in (Status.PASS, Status.ADVISORY) for r in final)
     reasons = tuple(f"P{r.number} {PILLAR_TITLES[r.number]}: {r.reason}" for r in final if r.status in (Status.FAIL, Status.UNVERIFIED))
-    return FortressVerdict(tuple(final), vetted, passed, round(passed / 14 * 100, 2), sizing, consensus, edge, reasons)
+    return FortressVerdict(tuple(final), vetted, passed, round(passed / len(final) * 100, 2), sizing, consensus, edge, reasons)

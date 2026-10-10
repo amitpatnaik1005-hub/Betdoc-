@@ -9,6 +9,7 @@ import { CashoutPanel, MyBets, ScorecardStrip, TrendingFeed, TwinPanel, VettedSl
 import { TwinFortressPanel } from '../components/oracle/DigitalTwinCard';
 import { SettlementFeedbackPanel } from '../components/oracle/SettlementFeedbackPanel';
 import { ModelRecalibrationPanel } from '../components/oracle/ModelRecalibrationPanel';
+import { NeverForgetLearningJournal } from '../components/oracle/NeverForgetLearningJournal';
 import { ashokaHeadline, useSlips } from '../lib/oracle';
 import { Async, Button, EmptyState, Field, Meter, NumberInput, Page, Panel, Pill, Select, Stat, StatGrid, StatusBadge, num } from '../ui/kit';
 
@@ -338,6 +339,7 @@ export const TheOracle = () => {
       <TwinFortressPanel />
       <SettlementFeedbackPanel />
       <ModelRecalibrationPanel />
+      <NeverForgetLearningJournal />
       <CashoutPanel />
       <TrendingFeed />
       <MyBets />

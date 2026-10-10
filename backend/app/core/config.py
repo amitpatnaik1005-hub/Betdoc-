@@ -341,6 +341,40 @@ class Settings(BaseSettings):
     TWIN_RECALIBRATION_LOSS_COOLDOWN_HOURS: float = Field(default=6.0, gt=0)  # at most one triggered run per this
     TWIN_RECALIBRATION_LOCK_SECONDS: int = Field(default=120, ge=10)  # one run at a time
 
+    # ---- The Never-Forget shield: pillar 15, lessons from lost legs (Group 75) ----
+    NEVER_FORGET_ENABLED: bool = True  # off: pillar 15 passes with nothing checked, and no loss is memorised
+    NEVER_FORGET_SIMILARITY_THRESHOLD: float = Field(default=0.82, gt=0.5, le=1.0)  # exp(-gamma D_w^2) at or above: the same situation
+    NEVER_FORGET_GAMMA: float = Field(default=4.0, gt=0)
+    # w_k per feature (normalised over the features both vectors carry); a feature with no weight is recorded, never compared
+    NEVER_FORGET_FEATURE_WEIGHTS: dict[str, float] = Field(default_factory=lambda: {
+        "rain": 0.25, "wind": 0.15, "fatigue": 0.25, "cards": 0.15, "penalties": 0.10, "steam": 0.05, "odds": 0.05,
+    })
+    # x~ = min(1, raw / scale); odds: (odds - 1) / scale
+    NEVER_FORGET_FEATURE_SCALES: dict[str, float] = Field(default_factory=lambda: {
+        "rain": 10.0, "wind": 50.0, "cards": 8.0, "penalties": 1.0, "odds": 10.0, "model_ev": 0.20, "sharp_edge": 0.20,
+    })
+    NEVER_FORGET_FULL_REST_HOURS: float = Field(default=72.0, gt=0)  # fatigue x~ = clamp((full - rest) / span, 0, 1)
+    NEVER_FORGET_FATIGUE_SPAN_HOURS: float = Field(default=48.0, gt=0)
+    NEVER_FORGET_MIN_COVERAGE: float = Field(default=0.6, gt=0, le=1)  # the share of a lesson's feature weight a comparison needs
+    NEVER_FORGET_MATCH_SCOPE: Literal["shape", "any"] = "shape"  # shape: a lesson guards the same market kind and side of it only
+    NEVER_FORGET_SHADOW_CAUSES: tuple[str, ...] = ("VARIANCE_BAD_LUCK",)  # a loss with this root cause is kept as an EXPERIMENTAL lesson
+    NEVER_FORGET_MAX_MATCH_RATE: float = Field(default=0.10, gt=0, le=1)  # a lesson matching more of the legs seen recently is too broad ...
+    NEVER_FORGET_SPECIFICITY_MIN_LEGS: int = Field(default=20, ge=1)  # ... judged once this many comparable legs were seen ...
+    NEVER_FORGET_SPECIFICITY_WINDOW_DAYS: float = Field(default=30.0, gt=0)  # ... over this window (EXPERIMENTAL until promoted)
+    NEVER_FORGET_SPECIFICITY_MAX_AUDITS: int = Field(default=2000, ge=10)  # the most recent fortress runs read for it
+
+    # ---- Experience (FA-2): XP for discipline, wins, lessons and shielded losses (Group 75) ----
+    XP_AWARD_SLIP_VETTED: int = Field(default=25, ge=1)  # once per slip that clears every enforced pillar
+    XP_AWARD_BET_WON: int = Field(default=50, ge=1)
+    XP_AWARD_LOSS_PREVENTED: int = Field(default=150, ge=1)  # once the leg pillar 15 vetoed has lost
+    XP_AWARD_MISTAKE_MEMORIZED: int = Field(default=200, ge=1)
+    XP_AWARD_STREAK_BONUS: int = Field(default=500, ge=1)
+    XP_STREAK_DAYS: int = Field(default=7, ge=2)  # consecutive days (ORACLE_TIMEZONE) of fortress runs and only vetted bets placed
+    # rank -> the XP that reaches it, ascending from 0
+    XP_TIERS: dict[str, int] = Field(default_factory=lambda: {
+        "ROOKIE": 0, "QUANT_APPRENTICE": 1001, "HIGH_ROLLER": 5001, "SYNDICATE_MASTER": 15001, "THE_ORACLE": 50001,
+    })
+
     # ---- The Vault: fleet credentials and accounts (Group 70) ---------------
     # Directories a server-side path import may read from (the Control Panel's "load from path" and the CLI's
     # --file go through the same check). Default: the owner's D:\confidential folder and the project root, so the
@@ -521,6 +555,24 @@ class Settings(BaseSettings):
     def validate_expiry(cls, v: int) -> int:
         if v <= 0:
             raise ValueError("ACCESS_TOKEN_EXPIRE_MINUTES must be positive")
+        return v
+
+    @field_validator("NEVER_FORGET_FEATURE_WEIGHTS", "NEVER_FORGET_FEATURE_SCALES")
+    @classmethod
+    def validate_never_forget_features(cls, v: dict[str, float], info: object) -> dict[str, float]:
+        field = getattr(info, "field_name", "")
+        if any(x < 0 for x in v.values()) or (field.endswith("SCALES") and any(x <= 0 for x in v.values())):
+            raise ValueError(f"{field}: weights are not negative and scales are positive")
+        if field.endswith("WEIGHTS") and sum(v.values()) <= 0:
+            raise ValueError(f"{field}: at least one feature needs a weight")
+        return v
+
+    @field_validator("XP_TIERS")
+    @classmethod
+    def validate_xp_tiers(cls, v: dict[str, int]) -> dict[str, int]:
+        floors = list(v.values())
+        if not floors or floors[0] != 0 or any(b <= a for a, b in zip(floors, floors[1:])):
+            raise ValueError("XP_TIERS: ranks in ascending order, the first reached at 0 XP")
         return v
 
 

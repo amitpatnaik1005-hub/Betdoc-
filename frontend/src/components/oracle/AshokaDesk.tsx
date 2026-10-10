@@ -7,7 +7,7 @@
  * - Cashout & hedge: running multiples; type the bookmaker's offer, get HOLD / CASH OUT / HEDGE LEG.
  * - Trends: sharp steam parlays, AI hybrids, public traps (a public share only when it was measured).
  * - My bets: active with live match status, settled with results; the betting twin's strengths and leaks.
- * - Group 72: "Run 14 pillars" on any slip sends it through the Digital Twin's fortress (DigitalTwinCard).
+ * - Group 72: "Run the fortress" on any slip sends it through the Digital Twin's fortress (DigitalTwinCard).
  */
 import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { ApiError, apiClient } from "../../api/client";
@@ -230,7 +230,7 @@ const SlipCard = ({ initial, generatedAt, bankroll }: { initial: Slip; generated
       const result = await vetSlip(slip, bankroll);
       setAudit(result);
       invalidate("twin:audits");
-      toast.success(result.is_vetted ? "Ultra-vetted: 14/14 pillars" : `${result.pillars_passed}/14 pillars passed`, result.is_vetted ? "Sent to your phone" : result.rejection_reasons[0]);
+      toast.success(result.is_vetted ? `Ultra-vetted: ${result.pillars_passed}/${result.pillars.length} pillars` : `${result.pillars_passed}/${result.pillars.length} pillars passed`, result.is_vetted ? "Sent to your phone" : result.rejection_reasons[0]);
     } catch (err) {
       toast.error("Fortress run failed", refusal(err));
     } finally {
@@ -348,7 +348,7 @@ const SlipCard = ({ initial, generatedAt, bankroll }: { initial: Slip; generated
             Copy slip
           </Button>
           <Button size="sm" icon="shield_person" busy={vetting} onClick={() => void fortress()}>
-            Run 14 pillars
+            Run the fortress
           </Button>
           <Button size="sm" variant="primary" icon="task_alt" onClick={() => setPlacing(true)}>
             I placed this bet

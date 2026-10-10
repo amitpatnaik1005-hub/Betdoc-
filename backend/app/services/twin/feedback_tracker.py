@@ -22,6 +22,8 @@
 4. **Escalate** to the recalibration engine (Group 74) when the losses blamed on the models pile up
    (``TWIN_RECALIBRATION_LOSS_TRIGGER_COUNT`` in ``..._HOURS``). The engine is the only publisher of
    pillar 1's weights; this loop only feeds it.
+5. **Never forget** (Group 75): every lost leg of a twin-audited bet becomes a lesson pillar 15 guards
+   against, the legs pillar 15 vetoed are settled against their scores, and the XP they earned is paid.
 """
 
 from __future__ import annotations
@@ -181,12 +183,13 @@ class FeedbackReport:
     alerts: int = 0
     root_causes: Counter[str] = field(default_factory=Counter)
     recalibration_run: str | None = None  # the run the losses triggered, if they did
+    never_forget: dict[str, int] = field(default_factory=dict)  # lessons memorised, vetoes resolved, XP paid (Group 75)
 
     def as_dict(self) -> dict[str, Any]:
         return {"settled_bets": self.settled_bets, "settled_legs": self.settled_legs, "attributed_bets": self.attributed_bets,
                 "feedback_records": self.feedback_records, "total_pnl_inr": str(self.total_pnl_inr.quantize(PAISA)), "alerts": self.alerts,
                 "root_causes": dict(self.root_causes),
-                "recalibration_run": self.recalibration_run}
+                "recalibration_run": self.recalibration_run, "never_forget": dict(self.never_forget)}
 
 
 def _weather_breach(intel: Any, settings: Settings) -> str | None:
@@ -245,6 +248,7 @@ async def sweep(sessions: async_sessionmaker[AsyncSession], redis: Redis | None,
         bets = list((await session.execute(query)).scalars())
         if not bets:
             await session.commit()
+            report.never_forget = await _never_forget(sessions, redis, settings, now, [])
             return report
         ids = [b.id for b in bets]
         legs: dict[uuid.UUID, list[UserPlacedLeg]] = defaultdict(list)
@@ -339,8 +343,20 @@ async def sweep(sessions: async_sessionmaker[AsyncSession], redis: Redis | None,
 
         triggered = await model_calibrator.maybe_loss_trigger(sessions, redis, settings, now)
         report.recalibration_run = None if triggered is None else str(triggered.id)
+    report.never_forget = await _never_forget(sessions, redis, settings, now, [b for b in bets if b.status == PlacedStatus.WON.value])
     logger.info("feedback sweep: %s", report.as_dict())
     return report
+
+
+async def _never_forget(sessions: async_sessionmaker[AsyncSession], redis: Redis | None, settings: Settings, now: datetime, won: Sequence[UserPlacedBet]) -> dict[str, int]:
+    """Step 5. Attribution is committed before it: a failure here is logged and the next sweep picks up what it missed."""
+    from app.services.twin import never_forget  # noqa: PLC0415 - it imports the vetting service
+
+    try:
+        return await never_forget.learn(sessions, redis, settings, now, won)
+    except Exception:  # noqa: BLE001 - attribution stands; memorising retries on the next sweep
+        logger.exception("never-forget step failed; the next sweep retries it")
+        return {}
 
 
 def _rupees(value: Decimal | None, signed: bool = False) -> str:

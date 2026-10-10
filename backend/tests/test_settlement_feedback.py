@@ -52,6 +52,7 @@ from app.models.feedback import ModelPredictionFeedback, RootCauseTag, Settlemen
 from app.models.hive_bots import TradingBot
 from app.models.model_calibration import ModelRecalibrationRun, ModelWeightAudit, RecalibrationTrigger
 from app.models.nalanda_lake import NalandaTick
+from app.models.never_forget import AshokaMistakeMemory, NeverForgetPreventionAudit, NeverForgetRule, UserXPProfile, XPAuditLog
 from app.models.omni_vault import OmniFleetSource
 from app.models.popular_picks import ParlayReviewGateModel, PopularParlayModel
 from app.models.user_bets_ledger import FixtureScore, PlacedStatus, UserPlacedBet, UserPlacedLeg
@@ -69,6 +70,7 @@ TABLES = [
     UserPlacedBet.__table__, UserPlacedLeg.__table__, FixtureScore.__table__, PopularParlayModel.__table__, ParlayReviewGateModel.__table__,
     TwinVettingAudit.__table__, TwinInPlayMonitor.__table__, NalandaTick.__table__, ModelPredictionFeedback.__table__, SettlementRootCauseAudit.__table__,
     ModelRecalibrationRun.__table__, ModelWeightAudit.__table__,
+    AshokaMistakeMemory.__table__, NeverForgetRule.__table__, NeverForgetPreventionAudit.__table__, UserXPProfile.__table__, XPAuditLog.__table__,
 ]
 TEST_REDIS_URL = os.environ["TEST_REDIS_URL"]  # forced onto the isolated test database by tests/conftest.py
 TEST_POSTGRES_URL = os.environ.get("TEST_POSTGRES_URL")

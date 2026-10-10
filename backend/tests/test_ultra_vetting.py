@@ -51,6 +51,7 @@ from app.models.cfo_vault import BankrollAccount, MarketResult
 from app.models.control_panel import SystemSettingsModel
 from app.models.digital_twin import TwinInPlayMonitor, TwinVettingAudit
 from app.models.hive_bots import TradingBot
+from app.models.never_forget import AshokaMistakeMemory, NeverForgetPreventionAudit, NeverForgetRule, UserXPProfile, XPAuditLog
 from app.models.omni_vault import OmniFleetSource
 from app.models.popular_picks import ParlayReviewGateModel, PopularParlayModel
 from app.models.sentinel import Severity
@@ -66,6 +67,7 @@ TABLES = [
     User.__table__, TradingBot.__table__, BankrollAccount.__table__, OmniFleetSource.__table__, MarketResult.__table__, SystemSettingsModel.__table__,
     UserPlacedBet.__table__, UserPlacedLeg.__table__, FixtureScore.__table__, PopularParlayModel.__table__, ParlayReviewGateModel.__table__,
     TwinVettingAudit.__table__, TwinInPlayMonitor.__table__,
+    AshokaMistakeMemory.__table__, NeverForgetRule.__table__, NeverForgetPreventionAudit.__table__, UserXPProfile.__table__, XPAuditLog.__table__,
 ]
 TEST_REDIS_URL = os.environ["TEST_REDIS_URL"]  # forced onto the isolated test database by tests/conftest.py
 TEST_POSTGRES_URL = os.environ.get("TEST_POSTGRES_URL")
@@ -269,10 +271,10 @@ def test_asian_handicap_quarter_lines_half_win_and_half_lose() -> None:
 
 
 # ================================================================ the fortress, pillar by pillar
-def test_a_clean_slip_clears_all_fourteen_pillars(settings: Settings) -> None:
+def test_a_clean_slip_clears_every_pillar(settings: Settings) -> None:
     verdict = fortress.run(inputs(max_stake=D("50000")), policy(settings), ("pinnacle", "betfair"))
-    assert [p.status for p in verdict.pillars] == [Status.PASS] * 14, verdict.reasons
-    assert verdict.is_vetted and verdict.passed == 14 and verdict.conviction == 100.0 and not verdict.reasons
+    assert [p.status for p in verdict.pillars] == [Status.PASS] * 15, verdict.reasons  # Group 75: pillar 15, an empty vault
+    assert verdict.is_vetted and verdict.passed == 15 and verdict.conviction == 100.0 and not verdict.reasons
     assert verdict.sizing is not None and verdict.sizing.stake > 0 and verdict.sizing.fraction <= 0.05
     assert verdict.consensus_ev is not None and verdict.consensus_ev >= 0.045 and verdict.sharp_edge is not None and verdict.sharp_edge >= 0.05
     assert [p.as_dict()["key"] for p in verdict.pillars][:2] == ["model_consensus", "weather"]
@@ -344,9 +346,9 @@ def test_the_model_veto_the_derby_bar_and_correlated_legs(settings: Settings) ->
 def test_missing_evidence_is_never_a_pass_and_advisory_pillars_report_without_vetoing(settings: Settings) -> None:
     bare = fortress.run(inputs(intel=lambda _leg: None), policy(settings), ("pinnacle",))
     unverified = {p.number for p in bare.pillars if p.status is Status.UNVERIFIED}
-    assert unverified == {2, 3, 4, 5, 9, 10, 11} and not bare.is_vetted and bare.passed == 7 and bare.conviction == 50.0
+    assert unverified == {2, 3, 4, 5, 9, 10, 11} and not bare.is_vetted and bare.passed == 8 and bare.conviction == round(8 / 15 * 100, 2)
     relaxed = fortress.run(inputs(intel=intel_ok(NOW, referee=None)), policy(settings, advisory=frozenset({9})), ("pinnacle",))
-    assert status_of(relaxed, 9) is Status.ADVISORY and relaxed.is_vetted and relaxed.passed == 13
+    assert status_of(relaxed, 9) is Status.ADVISORY and relaxed.is_vetted and relaxed.passed == 14
     assert FortressPolicy.from_settings(settings.model_copy(update={"TWIN_ADVISORY_PILLARS": "9, 11,x,99"})).advisory == frozenset({9, 11})
 
 
@@ -429,7 +431,7 @@ async def test_vet_confirm_place_with_a_booking_code_and_watch_the_pullout(sessi
         bare = (await client.post("/api/v1/twin/vet", json={"leg_ids": [leg_id], "bankroll_inr": "100000"})).json()
         assert bare["is_vetted"] is False and bare["bookmaker"] == "1xbet" and bare["developer_credit"] == "Amit Ashok Kumar Patnaik"
         assert {p["number"] for p in bare["pillars"] if p["status"] == "UNVERIFIED"} == {2, 3, 4, 5, 9, 10, 11}
-        assert {p["number"] for p in bare["pillars"] if p["status"] == "PASS"} == {1, 6, 7, 8, 12, 13, 14}, bare["rejection_reasons"]
+        assert {p["number"] for p in bare["pillars"] if p["status"] == "PASS"} == {1, 6, 7, 8, 12, 13, 14, 15}, bare["rejection_reasons"]
 
         # the evidence arrives (an administrator, or a feed through the same endpoint)
         written = (await client.put(f"/api/v1/twin/intel/{fixture}", json=intel_ok(datetime.now(UTC)).model_dump(mode="json", exclude_none=True))).json()
@@ -437,16 +439,16 @@ async def test_vet_confirm_place_with_a_booking_code_and_watch_the_pullout(sessi
         shown = (await client.get(f"/api/v1/twin/intel/{fixture}")).json()
         assert shown["sections"]["referee"]["name"] == "A. Referee"
         vetted = (await client.post("/api/v1/twin/vet", json={"leg_ids": [leg_id], "bankroll_inr": "100000"})).json()
-        assert vetted["is_vetted"] is True and vetted["pillars_passed"] == 14 and vetted["conviction_score"] == 100.0, vetted["rejection_reasons"]
+        assert vetted["is_vetted"] is True and vetted["pillars_passed"] == 15 and vetted["conviction_score"] == 100.0, vetted["rejection_reasons"]
         stake = D(vetted["stake_inr"])
         assert D("0") < stake <= D("5000") and stake % D("50") == 0 and vetted["sharp_edge"] >= 0.05
         slip = vetted["slip"]
-        assert slip["stake_inr"] == vetted["stake_inr"] and "Twin fortress 14/14 · vetted" in slip["quick_copy"] and slip["legs"][0]["prices"]["1xbet"] == 2.45
+        assert slip["stake_inr"] == vetted["stake_inr"] and "Twin fortress 15/15 · vetted" in slip["quick_copy"] and slip["legs"][0]["prices"]["1xbet"] == 2.45
         assert {b["bookmaker"] for b in slip["books"] if b["available"]} == {"1xbet", "parimatch"}  # the twin prices at retail books only
 
         # the phone hears about it, once per slip
         alerts = [a for a in await stream(redis, settings) if a.kind is AlertKind.TWIN_SLIP_VETTED]
-        assert len(alerts) == 1 and alerts[0].detail["audit_id"] == vetted["id"] and "14/14" in alerts[0].title
+        assert len(alerts) == 1 and alerts[0].detail["audit_id"] == vetted["id"] and "15/15" in alerts[0].title
 
         listed = (await client.get("/api/v1/twin/audits", params={"vetted": True})).json()
         assert [a["id"] for a in listed["audits"]] == [vetted["id"]]

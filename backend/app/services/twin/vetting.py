@@ -1,4 +1,4 @@
-"""The twin's fortress run: gather the evidence, run the 14 pillars, keep the audit (Group 72).
+"""The twin's fortress run: gather the evidence, run the 15 pillars, keep the audit (Groups 72, 75).
 
 ``vet`` takes a slip as Ashoka's slips carry it (leg ids and a structure), re-reads every leg from the live
 market, keeps only the retail books' prices (``TWIN_RETAIL_BOOKS``), lets the parlay engine price and
@@ -8,7 +8,9 @@ simulate it at the best retail book quoting every leg, then gathers what the con
   store (2-6, 9-11), BetDoc's own measured public share per selection (6), live public-trap parlays (8),
   the calibration store's model weights (1);
 * the user's bankroll (the caller's figure, else the CFO main account) and rolling drawdown from their
-  settled bets (13); the kill switch, from Redis and the Control Panel's emergency stop (14).
+  settled bets (13); the kill switch, from Redis and the Control Panel's emergency stop (14);
+* the Never-Forget vault, read from the database on every run (15). Its vetoes are kept as prevention
+  rows, and a vetted slip (and a run of disciplined days) earns the user XP (Group 75).
 
 Every run is an audit row. A vetted slip pages the user's phone through the Sentinel; a drawdown past the
 halt line pages CRITICAL. ``confirm`` re-runs pillar 14 against freshly read prices just before the slip
@@ -30,12 +32,14 @@ from typing import Any
 from redis.asyncio import Redis
 from redis.exceptions import RedisError
 from sqlalchemy import select
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.adapters.execution.venue import VenueStakeRules
 from app.core.config import Settings
 from app.domain.bookmakers.adapters import canonical_bookmaker
 from app.domain.oracle import fortress
+from app.domain.oracle import never_forget as nf
 from app.domain.oracle.parlay_engine import LegCandidate, ParlayEngine, SlipCandidate, SlipKind
 from app.models.cfo_vault import BankrollAccount
 from app.models.control_panel import SETTINGS_SINGLETON_ID, SystemSettingsModel
@@ -195,7 +199,7 @@ def _sharp_market(leg: LegCandidate, by_id: dict[str, LegCandidate], sharp: Sequ
 def _slip_payload(slip: SlipCandidate, verdict: fortress.FortressVerdict, now: datetime) -> dict[str, Any]:
     """Ashoka's slip serialisation (legs, bookmaker views, Parimatch vs 1xBet, quick copy) at the twin's stake."""
     core = ashoka_market.slip_core(slip, now)
-    core["badge"] = f"Twin fortress {verdict.passed}/14" + (" · vetted" if verdict.is_vetted else "")
+    core["badge"] = f"Twin fortress {verdict.passed}/{len(verdict.pillars)}" + (" · vetted" if verdict.is_vetted else "")
     stake = verdict.sizing.stake if verdict.sizing is not None else Decimal("0.00")
     # personalise() stakes floor(bankroll x fraction): bankroll = the twin's stake and fraction 1 reproduce it exactly
     out = ashoka_market.personalise({**core, "stake_fraction": 1.0}, stake if stake > 0 else None)
@@ -233,6 +237,7 @@ async def vet(
         wallet = await bankroll_for(session, user_id, bankroll) if user_id is not None else bankroll
         drawdown = await drawdown_for(session, user_id, wallet, now, settings.TWIN_DRAWDOWN_WINDOW_DAYS) if user_id is not None else 0.0
         halted = await kill_switch_state(session, redis, settings)
+    vault = await _vault(sessions, settings)
     evidence = [
         fortress.LegEvidence(
             leg=leg, quote=quote, sharp_market=_sharp_market(leg, by_id, sharp), intel=intel.get(leg.fixture_id),
@@ -243,10 +248,10 @@ async def vet(
     ]
     inputs = fortress.FortressInputs(
         slip=slip, legs=evidence, bankroll=wallet, drawdown=drawdown, kill_switch=halted, model_weights=weights,
-        book_max_stake=VenueStakeRules.for_venue(slip.book, settings).max_stake, now=now,
+        book_max_stake=VenueStakeRules.for_venue(slip.book, settings).max_stake, now=now, lessons=vault,
     )
     policy = fortress.FortressPolicy.from_settings(settings)
-    verdict = fortress.run(inputs, policy, sharp)
+    verdict = fortress.run(inputs, policy, sharp, situations=nf.NeverForgetPolicy.from_settings(settings))
     sizing = verdict.sizing
     audit = TwinVettingAudit(
         id=uuid.uuid4(), user_id=user_id, slip_id=slip.slip_id, kind=slip.kind.value, leg_ids=[leg.leg_id for leg in slip.legs], bookmaker=slip.book,
@@ -259,6 +264,7 @@ async def vet(
     async with sessions() as session:
         session.add(audit)
         await session.commit()
+    await _shield_and_xp(sessions, settings, audit, now)
     if verdict.is_vetted:
         await emit_alert(redis, settings, vetted_alert(audit))
     if sizing is not None and sizing.halted:
@@ -272,11 +278,52 @@ async def vet(
     return audit
 
 
+async def _vault(sessions: async_sessionmaker[AsyncSession], settings: Settings) -> list[nf.Lesson] | None:
+    """Pillar 15's lessons; None when the database cannot give them (the pillar is then unverified)."""
+    if not settings.NEVER_FORGET_ENABLED:
+        return []
+    from app.services.twin import never_forget  # noqa: PLC0415 - it imports this module
+
+    try:
+        async with sessions() as session:
+            return await never_forget.lessons(session)
+    except SQLAlchemyError:
+        logger.exception("never-forget vault unreadable: pillar 15 unverified")
+        return None
+
+
+async def _shield_and_xp(sessions: async_sessionmaker[AsyncSession], settings: Settings, audit: TwinVettingAudit, now: datetime) -> None:
+    """Keep pillar 15's vetoes, and pay the user's XP for a vetted slip and a disciplined streak. The audit is
+    already committed: a failure here is logged, never turned into a failed run."""
+    from app.models.never_forget import XPActionType  # noqa: PLC0415
+    from app.services.twin import never_forget, xp_engine  # noqa: PLC0415 - they import this module
+
+    try:
+        await never_forget.record_vetoes(sessions, audit, now)
+    except SQLAlchemyError:
+        logger.exception("never-forget: the vetoes of audit %s were not recorded", audit.id)
+    if audit.user_id is None:
+        return
+    try:
+        async with sessions() as session:
+            if audit.is_vetted:
+                await xp_engine.award(session, settings, xp_engine.Award(
+                    audit.user_id, XPActionType.SLIP_VETTED, f"slip:{audit.slip_id}", f"Slip {audit.slip_id} cleared all {audit.pillars_passed} pillars at {audit.bookmaker}",
+                    {"audit_id": str(audit.id)},
+                ), now)
+            streak = await xp_engine.streak_award(session, audit.user_id, settings, now)
+            if streak is not None:
+                await xp_engine.award(session, settings, streak, now)
+            await session.commit()
+    except SQLAlchemyError:
+        logger.exception("xp: audit %s earned nothing (database error)", audit.id)
+
+
 def vetted_alert(audit: TwinVettingAudit) -> SentinelAlert:
     slip = audit.slip or {}
     return SentinelAlert(
         kind=AlertKind.TWIN_SLIP_VETTED, severity=Severity.INFO, source="digital_twin",
-        title=f"ASHOKA twin: {audit.pillars_passed}/14 pillars · {slip.get('title', audit.kind)} @ {audit.total_odds} · stake ₹{audit.stake_inr:,}",
+        title=f"ASHOKA twin: {audit.pillars_passed}/{len(audit.pillars or []) or fortress.PILLAR_COUNT} pillars · {slip.get('title', audit.kind)} @ {audit.total_odds} · stake ₹{audit.stake_inr:,}",
         body=str(slip.get("quick_copy", ""))[:4000], dedupe_key=f"twin:vetted:{audit.slip_id}",
         detail={"audit_id": str(audit.id), "bookmaker": audit.bookmaker, "stake_inr": str(audit.stake_inr), "joint_ev": audit.joint_ev},
     )
@@ -349,7 +396,7 @@ def place_request(audit: TwinVettingAudit, body: LedgerFromAudit) -> PlaceBetReq
     return PlaceBetRequest(
         slip_id=audit.slip_id, source="ASHOKA", bookmaker=body.bookmaker, bookmaker_name="Ashoka twin" if body.bookmaker is PlacedBookmaker.OTHER else None,
         structure=PlacedStructure(audit.kind), stake_inr=body.stake_inr, placed_odds=body.placed_odds, placed_at=body.placed_at, legs=legs,
-        notes=f"Twin audit {audit.id} · {audit.pillars_passed}/14 pillars",
+        notes=f"Twin audit {audit.id} · {audit.pillars_passed}/{len(audit.pillars or []) or fortress.PILLAR_COUNT} pillars",
     )
 
 

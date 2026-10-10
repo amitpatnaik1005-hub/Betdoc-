@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends
 
 from app.api.deps import get_current_user
 from app.api.v1 import auth, bet, exchange, ingestion, ws, execution, admin, odds, engine, capital, bet_calculator, oracle, vault, arena, market_signals, dashboard, the_wire, the_lab, the_hive, the_core, popular_picks, competitive_intel, oracle_scout, archive, control_panel, cfo_execution, sniper, portfolio, hive_trading, lab_quant, nalanda, sentinel
-from app.api.v1 import bookmakers, cfo, human_touch, omni, omni_admin, omni_fleet, parimatch_feed, phantom, sports, vault_admin, execution_router, digital_twin, settlement_feedback, model_calibration
+from app.api.v1 import bookmakers, cfo, human_touch, omni, omni_admin, omni_fleet, parimatch_feed, phantom, sports, vault_admin, execution_router, digital_twin, settlement_feedback, model_calibration, never_forget, user_xp
 
 api_router = APIRouter(prefix="/api/v1")
 
@@ -59,10 +59,13 @@ api_router.include_router(vault_admin.router)
 api_router.include_router(parimatch_feed.router)
 # Group 71: /router (the Smart Order Router: multi-venue slicing, slippage guard, venue breakers). Admin only.
 api_router.include_router(execution_router.router)
-# Group 72: /twin (the True Digital Betting Twin: the 14-pillar fortress, booking-code ledger entries, the in-play watch).
+# Group 72: /twin (the True Digital Betting Twin: the fortress (15 pillars since Group 75), booking-code ledger entries, the in-play watch).
 # Per-route auth: users vet, record and watch their own slips; evidence writes and Pathway B routing are admin only.
 api_router.include_router(digital_twin.router)
 # Group 73: /twin/settlement (the feedback loop: CLV, model attribution, root causes, weight recalibration). Per-route auth.
 api_router.include_router(settlement_feedback.router)
 # Group 74: /twin/calibration (the model recalibration engine: lifecycle states, pillar 1's weights, overrides). Per-route auth.
 api_router.include_router(model_calibration.router)
+# Group 75: /twin/never-forget (pillar 15's lessons, vetoes and their measured record) and /user/xp (experience). Per-route auth.
+api_router.include_router(never_forget.router)
+api_router.include_router(user_xp.router)

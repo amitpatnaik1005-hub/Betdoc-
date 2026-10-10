@@ -62,6 +62,7 @@ class AlertKind(StrEnum):
     TWIN_SETTLED = "TWIN_SETTLED"  # a placed bet settled: the win with its CLV, or the loss with its root cause (Group 73)
     MODEL_RECALIBRATED = "MODEL_RECALIBRATED"  # the recalibration engine published pillar 1's weights (Group 74)
     MODEL_DRIFT = "MODEL_DRIFT"  # a model went on probation or was benched
+    NEVER_FORGET_LESSON = "NEVER_FORGET_LESSON"  # a lost leg became a Never-Forget lesson (Group 75)
 
 
 class SentinelAlert(BaseModel):

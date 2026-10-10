@@ -235,3 +235,4 @@ from app.models.execution_router import RoutedOrder, RoutedSlice, VenueCircuitBr
 from app.models.digital_twin import TwinInPlayMonitor, TwinVettingAudit  # noqa: E402,F401
 from app.models.feedback import ModelPredictionFeedback, SettlementRootCauseAudit  # noqa: E402,F401
 from app.models.model_calibration import ModelRecalibrationRun, ModelWeightAudit  # noqa: E402,F401
+from app.models.never_forget import AshokaMistakeMemory, NeverForgetPreventionAudit, NeverForgetRule, UserXPProfile, XPAuditLog  # noqa: E402,F401

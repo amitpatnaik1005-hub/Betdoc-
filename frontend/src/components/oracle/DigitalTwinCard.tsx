@@ -1,7 +1,7 @@
 /**
  * ASHOKA's Digital Twin on The Oracle page (Group 72).
  *
- * - DigitalTwinCard: one 14-pillar audit. Every pillar with its verdict and reason (missing evidence shows as
+ * - DigitalTwinCard: one fortress audit (14 pillars, 15 since Group 75). Every pillar with its verdict and reason (missing evidence shows as
  *   UNVERIFIED, never as a pass), the twin's stake, the legs with the bookmaker's own search codes, Copy, a
  *   price re-check just before placing, and "Add to my P&L ledger" with the booking code the bookmaker issued.
  * - TwinFortressPanel: recent audits, the in-play watches (win probability now vs at placing, fair value,
@@ -160,7 +160,7 @@ export const DigitalTwinCard = ({ audit, credit }: { audit: TwinAudit; credit?: 
         </div>
         <div className="flex flex-wrap gap-1.5">
           <Pill tone={audit.is_vetted ? "good" : "warning"} icon={audit.is_vetted ? "verified" : "gpp_maybe"}>
-            {audit.pillars_passed}/14 pillars · {audit.conviction_score.toFixed(0)}%
+            {audit.pillars_passed}/{audit.pillars.length} pillars · {audit.conviction_score.toFixed(0)}%
           </Pill>
           <Pill tone={audit.is_vetted ? "good" : "critical"}>{audit.is_vetted ? "Ultra-vetted" : "Not vetted"}</Pill>
         </div>
@@ -176,9 +176,9 @@ export const DigitalTwinCard = ({ audit, credit }: { audit: TwinAudit; credit?: 
 
       <section className="flex flex-col gap-2">
         <div className="flex items-center justify-between gap-2">
-          <p className="text-xs font-semibold text-stone-500 dark:text-stone-400">{showAll ? "The 14 pillars" : failing.length ? `${failing.length} pillar${failing.length === 1 ? "" : "s"} not passed` : "Every pillar passed"}</p>
+          <p className="text-xs font-semibold text-stone-500 dark:text-stone-400">{showAll ? `The ${audit.pillars.length} pillars` : failing.length ? `${failing.length} pillar${failing.length === 1 ? "" : "s"} not passed` : "Every pillar passed"}</p>
           <Button size="sm" variant="ghost" onClick={() => setShowAll((v) => !v)}>
-            {showAll ? "Only what failed" : "Show all 14"}
+            {showAll ? "Only what failed" : `Show all ${audit.pillars.length}`}
           </Button>
         </div>
         <ul className="grid grid-cols-1 gap-2 md:grid-cols-2">
@@ -224,7 +224,7 @@ export const DigitalTwinCard = ({ audit, credit }: { audit: TwinAudit; credit?: 
 
       <footer className="flex flex-wrap items-center justify-between gap-3 border-t border-stone-200/70 pt-3 dark:border-stone-700/60">
         <p className="text-[11px] text-stone-400 dark:text-stone-500">
-          Developer: {credit ?? audit.developer_credit ?? "—"} · 14 pillars measure how much was checked, not a certainty
+          Developer: {credit ?? audit.developer_credit ?? "—"} · the pillars measure how much was checked, not a certainty
         </p>
         <div className="flex flex-wrap gap-2">
           <Button size="sm" icon="content_copy" onClick={copy}>
@@ -316,10 +316,10 @@ export const TwinFortressPanel = () => {
   };
   return (
     <Panel
-      title="Digital twin · 14-pillar fortress"
+      title="Digital twin · the fortress"
       icon="shield_person"
       className="lg:col-span-12"
-      subtitle="Run any slip through the 14 pillars from its card above; vetted slips, your placed twin bets and their in-play watch live here"
+      subtitle="Run any slip through every pillar from its card above (15 since the Never-Forget shield); vetted slips, your placed twin bets and their in-play watch live here"
       updatedAt={audits.updatedAt}
       actions={
         <Button size="sm" variant="ghost" icon="sync" busy={busy} onClick={() => void tick()}>
@@ -344,7 +344,7 @@ export const TwinFortressPanel = () => {
           <Async
             resource={audits}
             isEmpty={(d) => d.audits.length === 0}
-            empty={<EmptyState icon="shield" title={which === "VETTED" ? "No slip has cleared all 14 pillars" : "No audits yet"} detail="Use “Run 14 pillars” on a slip above. Missing evidence (weather, lineups, injuries, referee …) keeps a pillar unverified, and an unverified pillar is never a pass." />}
+            empty={<EmptyState icon="shield" title={which === "VETTED" ? "No slip has cleared every pillar" : "No audits yet"} detail="Use “Run the fortress” on a slip above. Missing evidence (weather, lineups, injuries, referee …) keeps a pillar unverified, and an unverified pillar is never a pass." />}
           >
             {(d) => (
               <ul className="flex flex-col gap-2">
@@ -360,7 +360,7 @@ export const TwinFortressPanel = () => {
                         {a.slip.title} · {bookLabel(a.bookmaker)} @ {a.total_odds ?? "—"} · {Number(a.stake_inr) > 0 ? rupees(a.stake_inr) : "no stake"}
                       </span>
                       <span className="flex items-center gap-2 text-[11px] text-stone-500">
-                        <Pill tone={a.is_vetted ? "good" : "warning"}>{a.pillars_passed}/14</Pill>
+                        <Pill tone={a.is_vetted ? "good" : "warning"}>{a.pillars_passed}/{a.pillars.length}</Pill>
                         {formatDateTime(a.created_at)}
                       </span>
                     </button>

@@ -1,6 +1,6 @@
-"""The True Digital Betting Twin (Group 72): the 14-pillar audit of a slip, and the in-play watch on a placed bet.
+"""The True Digital Betting Twin (Group 72): the fortress audit of a slip (14 pillars, 15 since Group 75), and the in-play watch on a placed bet.
 
-* ``twin_vetting_audits``: one row per run of the 14-pillar fortress over a slip (its legs as
+* ``twin_vetting_audits``: one row per run of the fortress over a slip (its legs as
   ``fixture|market|selection`` ids). Every pillar's status (PASS / FAIL / UNVERIFIED / ADVISORY), its
   reason and its numbers are kept in ``pillars``; the slip as priced (book, odds, legs, stake) in
   ``slip``. ``is_vetted`` is true only when every enforced pillar passed. A pillar with no evidence is
@@ -53,7 +53,7 @@ def _values(enum: type[StrEnum]) -> str:
 class TwinVettingAudit(Base):
     __tablename__ = "twin_vetting_audits"
     __table_args__ = (
-        CheckConstraint("pillars_passed >= 0 AND pillars_passed <= 14", name="pillars_bounded"),
+        CheckConstraint("pillars_passed >= 0 AND pillars_passed <= 15", name="pillars_bounded"),
         CheckConstraint("conviction_score >= 0 AND conviction_score <= 100", name="conviction_bounded"),
         CheckConstraint("stake_inr >= 0", name="stake_not_negative"),
         Index("ix_twin_vetting_audits_user_created", "user_id", "created_at"),
@@ -76,7 +76,7 @@ class TwinVettingAudit(Base):
     consensus_ev: Mapped[float | None] = mapped_column(Float, nullable=True)  # the weakest leg's weighted model EV
     sharp_edge: Mapped[float | None] = mapped_column(Float, nullable=True)  # the weakest leg's edge over the de-vigged sharp price
     pillars_passed: Mapped[int] = mapped_column(Integer, default=0)
-    conviction_score: Mapped[float] = mapped_column(Float, default=0.0)  # pillars passed / 14, in percent
+    conviction_score: Mapped[float] = mapped_column(Float, default=0.0)  # pillars passed / pillars run (14 before Group 75, 15 since), in percent
     is_vetted: Mapped[bool] = mapped_column(Boolean, default=False)
     pillars: Mapped[list[dict[str, Any]]] = mapped_column(JsonColumn, default=list)  # [{number, key, status, reason, metrics}]
     rejection_reasons: Mapped[list[str]] = mapped_column(JsonColumn, default=list)
