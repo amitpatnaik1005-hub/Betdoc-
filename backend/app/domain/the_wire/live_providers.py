@@ -1,7 +1,8 @@
 """Live Wire providers: real sports news (RSS) and real scores (The Odds API).
 
-Weather is deliberately not fabricated: no feed BetDoc ingests carries venue locations, so the
-weather provider reports nothing until venue data exists.
+Venue weather comes from the Wire's own scan since Group 78 (``app/services/the_wire/weather.py``: venues from the
+seed, ESPN and Open-Meteo's geocoder, forecasts from Open-Meteo); the dashboard reads its snapshots through
+``app/services/the_wire/providers.py``.
 """
 
 from __future__ import annotations
@@ -19,7 +20,7 @@ from xml.etree import ElementTree
 
 import httpx
 
-from app.schemas.the_wire import MatchScore, NewsItem, WeatherReport
+from app.schemas.the_wire import MatchScore, NewsItem
 
 logger = logging.getLogger("betdoc.vidur.wire")
 
@@ -140,10 +141,3 @@ class OddsApiScoreProvider:
             )
         except (KeyError, TypeError, ValueError):
             return None
-
-
-class VenueWeatherUnavailable:
-    """No ingested feed carries venues, so there is no honest per-match forecast to give."""
-
-    async def fetch_weather(self, match_ids: Sequence[str]) -> list[WeatherReport]:  # noqa: ARG002
-        return []

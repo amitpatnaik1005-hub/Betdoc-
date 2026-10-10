@@ -65,6 +65,8 @@ class AlertKind(StrEnum):
     NEVER_FORGET_LESSON = "NEVER_FORGET_LESSON"  # a lost leg became a Never-Forget lesson (Group 75)
     CFO_REGIME_CHANGE = "CFO_REGIME_CHANGE"  # KUMBHA's drawdown regime changed: throttle, halt (CRITICAL, latched) or back to full sizing (Group 76)
     CFO_REBALANCE = "CFO_REBALANCE"  # a venue rebalance plan with transfers was recorded
+    WIRE_BREAKING_NEWS = "WIRE_BREAKING_NEWS"  # VIDUR read news at an alerting impact about a tracked fixture (Group 78)
+    WIRE_STEAM_CATALYST = "WIRE_STEAM_CATALYST"  # the market followed a piece of news inside the catalyst window
 
 
 class SentinelAlert(BaseModel):

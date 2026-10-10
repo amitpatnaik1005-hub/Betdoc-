@@ -457,6 +457,98 @@ class Settings(BaseSettings):
         "https://feeds.bbci.co.uk/sport/football/rss.xml",
         "https://feeds.bbci.co.uk/sport/cricket/rss.xml",
     ]
+    # ---- The Wire: VIDUR's feeds become the fortress's evidence (Group 78) ----
+    WIRE_SCAN_ENABLED: bool = True  # the beat's news, ESPN and weather scans
+    WIRE_PREFIX: str = "betdoc:wire"  # Redis: the live channel, recent frames, ESPN links
+    WIRE_RECENT_FRAMES: int = Field(default=50, ge=1, le=500)  # what a new /ws/the-wire socket is sent first
+    WIRE_HTTP_TIMEOUT_SECONDS: float = Field(default=8.0, gt=0)
+    WIRE_USER_AGENT: str = "BetDoc-Wire/2.0"
+    WIRE_HORIZON_HOURS: float = Field(default=72.0, gt=0)  # fixtures kicking off within this are scanned
+    # news: RSS (above) and newsapi.org when a key is set
+    NEWSAPI_ORG_API_KEY: SecretStr | None = None
+    WIRE_NEWSAPI_URL: str = "https://newsapi.org/v2/top-headlines"
+    WIRE_NEWSAPI_PARAMS: dict[str, str] = Field(default_factory=lambda: {"category": "sports", "language": "en", "pageSize": "50"})
+    WIRE_NEWS_SCAN_MINUTES: int = Field(default=3, ge=1, le=59)
+    WIRE_NEWS_MAX_AGE_HOURS: float = Field(default=48.0, gt=0)  # older articles are not ingested
+    WIRE_NEWS_LIMIT: int = Field(default=60, ge=1, le=500)  # the dashboard and ticker show this many
+    # host suffix -> credibility (tier 1 1.0, tier 2 0.9, tier 3 0.75, tabloids 0.4); unknown hosts get the default
+    WIRE_SOURCE_CREDIBILITY: dict[str, float] = Field(default_factory=lambda: {
+        "bbc.co.uk": 1.0, "bbc.com": 1.0, "reuters.com": 1.0,
+        "skysports.com": 0.9, "espn.com": 0.9, "espn.co.uk": 0.9, "espncricinfo.com": 0.9, "theathletic.com": 0.9, "nytimes.com": 0.9,
+        "theguardian.com": 0.85,
+        "marca.com": 0.75, "as.com": 0.75, "gazzetta.it": 0.75, "lequipe.fr": 0.75, "kicker.de": 0.75,
+        "thesun.co.uk": 0.4, "dailymail.co.uk": 0.4, "mirror.co.uk": 0.4, "dailystar.co.uk": 0.4,
+    })
+    WIRE_SOURCE_DEFAULT_CREDIBILITY: float = Field(default=0.4, ge=0, le=1)  # tier 4: an unverified aggregator
+    WIRE_SENTIMENT_MEDIUM: float = Field(default=0.35, gt=0, lt=1)  # |S| over this lifts an unclassified item to MEDIUM
+    WIRE_CRITICAL_WINDOW_HOURS: float = Field(default=2.0, gt=0)  # an absence or sacking this close to a mentioned kickoff is CRITICAL
+    WIRE_ALERT_IMPACTS: List[str] = Field(default_factory=lambda: ["CRITICAL"])  # news on a tracked fixture at these impacts pages
+    # news-to-steam catalysts: the mentioned fixture's de-vigged consensus moves this much, the news's way, inside the window
+    WIRE_CATALYST_WINDOW_SECONDS: float = Field(default=900.0, gt=0)
+    WIRE_CATALYST_MIN_PROB_SHIFT: float = Field(default=0.035, gt=0, lt=1)
+    WIRE_CATALYST_IMPACTS: List[str] = Field(default_factory=lambda: ["CRITICAL", "HIGH"])
+    # venue weather (Open-Meteo: free, no key) and the scoring friction factor
+    WIRE_OPEN_METEO_FORECAST_URL: str = "https://api.open-meteo.com/v1/forecast"
+    WIRE_OPEN_METEO_GEOCODING_URL: str = "https://geocoding-api.open-meteo.com/v1/search"
+    WIRE_WEATHER_SCAN_MINUTES: int = Field(default=30, ge=5, le=59)
+    WIRE_MATCH_HOURS: dict[str, float] = Field(default_factory=lambda: {
+        "soccer": 2.0, "americanfootball": 3.5, "baseball": 3.0, "cricket": 8.0, "tennis": 3.0, "rugby": 2.0, "aussierules": 2.5,
+    })  # the forecast window after kickoff, by sport key prefix
+    WIRE_MATCH_HOURS_DEFAULT: float = Field(default=2.5, gt=0)
+    WIRE_INDOOR_SPORT_PREFIXES: List[str] = Field(default_factory=lambda: ["basketball", "icehockey", "mma", "boxing", "esports"])
+    WIRE_GEOCODER_FUZZY_CUTOFF: float = Field(default=0.85, gt=0, le=1)  # 0.70 maps "Manchester City" to United's ground
+    WIRE_TEMP_COLD_BANDS: List[tuple[float, float]] = Field(default_factory=lambda: [(0.0, 0.92), (10.0, 0.96)])  # under each bound: the factor
+    WIRE_TEMP_HOT_ABOVE_C: float = 32.0
+    WIRE_TEMP_HOT_FACTOR: float = Field(default=0.95, gt=0)
+    WIRE_WIND_FREE_KMH: float = Field(default=15.0, ge=0)
+    WIRE_WIND_SLOPE: float = Field(default=0.008, ge=0)  # per km/h over the free speed
+    WIRE_WIND_FLOOR: float = Field(default=0.70, gt=0, le=1)
+    WIRE_RAIN_LIGHT_FACTOR: float = Field(default=0.90, gt=0)
+    WIRE_RAIN_HEAVY_MMH: float = Field(default=5.0, gt=0)
+    WIRE_RAIN_HEAVY_FACTOR: float = Field(default=0.78, gt=0)  # also any snow
+    WIRE_ALTITUDE_SLOPE: float = Field(default=0.00006, ge=0)  # per metre
+    WIRE_ALTITUDE_CAP_M: float = Field(default=2500.0, ge=0)
+    WIRE_DEW_SPORT_PREFIXES: List[str] = Field(default_factory=lambda: ["cricket"])
+    WIRE_DEW_FACTOR: float = Field(default=1.15, gt=0)
+    WIRE_DEW_HUMIDITY_PCT: float = Field(default=75.0, ge=0, le=100)
+    WIRE_DEW_LOCAL_FROM: str = Field(default="19:30", pattern=r"^\d{2}:\d{2}$")  # local time at the venue
+    # ESPN's public scoreboard and match summaries (scores with the clock, venues, team sheets, injuries, officials, cards)
+    WIRE_ESPN_ENABLED: bool = True
+    WIRE_ESPN_BASE_URL: str = "https://site.api.espn.com/apis/site/v2/sports"
+    WIRE_ESPN_LEAGUES: dict[str, str] = Field(default_factory=lambda: {  # The Odds API sport key -> ESPN league path
+        "soccer_epl": "soccer/eng.1", "soccer_efl_champ": "soccer/eng.2", "soccer_spain_la_liga": "soccer/esp.1", "soccer_italy_serie_a": "soccer/ita.1",
+        "soccer_germany_bundesliga": "soccer/ger.1", "soccer_france_ligue_one": "soccer/fra.1", "soccer_netherlands_eredivisie": "soccer/ned.1",
+        "soccer_portugal_primeira_liga": "soccer/por.1", "soccer_spl": "soccer/sco.1", "soccer_usa_mls": "soccer/usa.1", "soccer_mexico_ligamx": "soccer/mex.1",
+        "soccer_brazil_campeonato": "soccer/bra.1", "soccer_argentina_primera_division": "soccer/arg.1", "soccer_uefa_champs_league": "soccer/uefa.champions",
+        "soccer_uefa_europa_league": "soccer/uefa.europa", "soccer_uefa_europa_conference_league": "soccer/uefa.europa.conf",
+        "americanfootball_nfl": "football/nfl", "americanfootball_ncaaf": "football/college-football", "basketball_nba": "basketball/nba",
+        "basketball_wnba": "basketball/wnba", "basketball_ncaab": "basketball/mens-college-basketball", "baseball_mlb": "baseball/mlb",
+        "icehockey_nhl": "hockey/nhl", "mma_mixed_martial_arts": "mma/ufc",
+    })
+    WIRE_ESPN_SYNC_MINUTES: int = Field(default=2, ge=1, le=59)
+    WIRE_ESPN_DAYS_BACK: int = Field(default=1, ge=0, le=7)  # yesterday's finished matches feed the officiating records
+    WIRE_ESPN_SUMMARY_REFRESH_MINUTES: float = Field(default=30.0, gt=0)  # a fixture's summary (sheets, injuries) is re-read this often ...
+    WIRE_ESPN_SUMMARY_NEAR_MINUTES: float = Field(default=5.0, gt=0)  # ... and this often inside the critical window
+    WIRE_TEAM_MATCH_CUTOFF: float = Field(default=0.80, gt=0, le=1)  # ESPN team name vs the odds feed's
+    WIRE_KICKOFF_TOLERANCE_MINUTES: float = Field(default=90.0, gt=0)
+    # absences: delta = -min(cap, sum rating/scale x lambda(position) x (1 - replacement) x status weight)
+    WIRE_POSITION_WEIGHTS: dict[str, dict[str, float]] = Field(default_factory=lambda: {
+        "soccer": {"G": 1.4, "GK": 1.4, "F": 1.3, "ST": 1.3, "CF": 1.3, "CD": 1.2, "CB": 1.2, "D": 1.2, "CM": 1.1, "M": 1.1, "DM": 1.1, "AM": 1.1,
+                   "LB": 0.8, "RB": 0.8, "LWB": 0.8, "RWB": 0.8, "LW": 0.9, "RW": 0.9, "LM": 0.9, "RM": 0.9},
+        "basketball": {"PG": 1.5, "C": 1.4, "SG": 1.2, "SF": 1.2},
+        "americanfootball": {"QB": 3.5, "OT": 1.3, "LT": 1.3, "DE": 1.2, "EDGE": 1.2, "CB": 1.0},
+        "cricket": {"BOWLER_PACE": 1.6, "BATTER_TOP": 1.5, "WK": 1.1},
+    })
+    WIRE_POSITION_DEFAULT_WEIGHT: float = Field(default=1.0, gt=0)
+    WIRE_ABSENCE_STATUS_WEIGHTS: dict[str, float] = Field(default_factory=lambda: {"OUT": 1.0, "SUSPENDED": 1.0, "DOUBTFUL": 0.5, "QUESTIONABLE": 0.25})
+    WIRE_RATING_SCALE: float = Field(default=10.0, gt=0)  # player ratings run 0 .. this
+    WIRE_RATING_FULL_COST: float = Field(default=0.10, gt=0, lt=1)  # a top-rated player at weight 1: this much of the side's win probability
+    WIRE_LINEUP_MAX_DELTA: float = Field(default=0.25, gt=0, lt=1)  # one side's win probability moves at most this much
+    WIRE_REPLACEMENT_QUALITY_DEFAULT: float = Field(default=0.0, ge=0, lt=1)
+    # referees: tendencies from officiating records, shrunk towards the league's mean
+    WIRE_REFEREE_PRIOR_MATCHES: float = Field(default=10.0, ge=0)
+    WIRE_REFEREE_MIN_MATCHES: int = Field(default=5, ge=1)  # fewer: the profile is shown but not written to the fortress
+    WIRE_REFEREE_TOTALS_LINE: float = Field(default=2.5, gt=0)
 
     @property
     def odds_sport_keys(self) -> List[str]:

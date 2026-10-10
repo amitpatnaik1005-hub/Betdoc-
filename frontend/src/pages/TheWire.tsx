@@ -1,19 +1,29 @@
-import { useEffect, useMemo, useState } from 'react';
+/**
+ * The Wire (Commander VIDUR): news, scores, venue weather, absences, referees and news-to-steam catalysts.
+ * Group 78 made it the twin fortress's feed: what this page shows is what the pillars read. Architect: Amit Ashok Kumar Patnaik.
+ */
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { apiClient } from '../api/client';
 import { useLiveOdds } from '../lib/api';
 import { formatAgo, formatOdds, formatPct, formatTime } from '../lib/format';
 import { useResource } from '../lib/resource';
+import { IMPACT_TONE, scanWire, useWireDashboard, useWireFixtures, useWireStream, type WireFrame } from '../lib/the_wire';
 import { subscribeChannel } from '../services/realtime';
+import { useAuthStore } from '../store/useAuthStore';
+import { LineupImpactPanel } from '../components/wire/LineupImpactPanel';
+import { LiveNewsTicker } from '../components/wire/LiveNewsTicker';
+import { MatchWeatherCard } from '../components/wire/MatchWeatherCard';
+import { RefereeBoard } from '../components/wire/RefereeBoard';
+import { SteamCatalystCard } from '../components/wire/SteamCatalystCard';
+import { TacticalAudioAlert } from '../components/wire/TacticalAudioAlert';
+import { useTacticalAudio } from '../lib/the_wire_audio';
 import { CommanderHero, MOTIFS } from '../ui/hero';
 import { Async, Button, EmptyState, Page, Panel, Pill, StatusBadge } from '../ui/kit';
 
 // ---------------------------------------------------------------------------
 // CONTRACTS
 // ---------------------------------------------------------------------------
-interface NewsItem { id: string; source: string; title: string; summary: string; url: string; published_at: string }
-interface MatchScore { match_id: string; home_team: string; away_team: string; home_score: number; away_score: number; status: string; clock: string | null }
-interface WireDashboard { news: NewsItem[]; scores: MatchScore[]; weather: Record<string, unknown> }
 interface SteamAlert { match_id: string; selection_id: string; market_type: string; opening_odds: number; current_odds: number; implied_prob_delta_pct: number; triggering_bookmakers: string[]; detected_at: string }
 interface OmniMessage { topic?: string; provider?: string; provider_name?: string; category?: string; payload?: unknown; at: string }
 
@@ -24,11 +34,18 @@ export const TheWire = () => {
   const odds = useLiveOdds();
   const matchIds = useMemo(() => (odds.data ?? []).slice(0, 50).map((m) => m.id), [odds.data]);
   const idsKey = matchIds.join(',');
-  const wire = useResource('the-wire:dashboard', () => apiClient.get<WireDashboard>('/the-wire/dashboard', { match_ids: idsKey }), { intervalMs: 60_000 });
+  const wire = useWireDashboard(idsKey);
+  const fixtures = useWireFixtures();
+  const isAdmin = useAuthStore((s) => s.user?.role === 'ADMIN');
+  const audio = useTacticalAudio();
+  const [scanning, setScanning] = useState(false);
   const refreshWire = wire.refresh;
-  useEffect(() => {
-    if (idsKey) void refreshWire(); // fixtures arrived or changed: fetch their scores
-  }, [idsKey, refreshWire]);
+  const announce = audio.announce;
+  const onFrame = useCallback((frame: WireFrame) => {
+    announce(frame);
+    if (frame.type === 'news' || frame.type === 'catalyst') void refreshWire();
+  }, [announce, refreshWire]);
+  const stream = useWireStream(onFrame);
   const steam = useResource('signals:steam', () => apiClient.get<SteamAlert[]>('/signals/steam-moves', { window_minutes: 120 }), { intervalMs: 30_000 });
   const [omni, setOmni] = useState<OmniMessage[]>([]);
 
@@ -45,6 +62,10 @@ export const TheWire = () => {
   const teamsByMatch = useMemo(() => new Map((odds.data ?? []).map((m) => [m.id, `${m.home_team} v ${m.away_team}`])), [odds.data]);
   const news = wire.data?.news ?? [];
   const scores = wire.data?.scores ?? [];
+  const catalysts = wire.data?.catalysts ?? [];
+  const tracked = fixtures.data?.fixtures ?? [];
+  const weathered = tracked.filter((f) => f.weather !== null);
+  const credit = wire.data?.developer_credit ?? stream.developer ?? 'Amit Ashok Kumar Patnaik';
   const live = scores.filter((s) => s.status === 'LIVE');
   const sentiment = useMemo(() => {
     const rows = [...(steam.data ?? [])].sort((a, b) => Math.abs(b.implied_prob_delta_pct) - Math.abs(a.implied_prob_delta_pct));
@@ -57,18 +78,33 @@ export const TheWire = () => {
     <Page>
       <CommanderHero
         commander="VIDUR"
-        headline={`VIDUR ACTIVE. ${news.length} headlines intercepted, ${live.length} match${live.length === 1 ? '' : 'es'} in play, ${sentiment.rows.length} steam signals.`}
+        headline={`VIDUR ACTIVE. ${news.length} headlines intercepted, ${live.length} match${live.length === 1 ? '' : 'es'} in play, ${catalysts.length} catalyst${catalysts.length === 1 ? '' : 's'} today.`}
         motif={MOTIFS.waves}
-        detail="News from public sports RSS feeds, scores from The Odds API for the fixtures you price, market sentiment from steam moves."
+        detail={`News from RSS and newsapi.org scored for impact and credibility; scores, team sheets and injuries from ESPN; venue weather from Open-Meteo; all of it written to the twin's fortress. Architect: ${credit}.`}
         actions={
           <>
-            <Button variant="primary" icon="refresh" busy={wire.loading && wire.data !== undefined} onClick={() => void wire.refresh()}>Refresh intercepts</Button>
+            <Button variant="primary" icon="refresh" busy={wire.loading && wire.data !== undefined} onClick={() => { void wire.refresh(); void fixtures.refresh(); }}>Refresh intercepts</Button>
             <Button icon="sensors" onClick={() => void steam.refresh()}>Refresh sentiment</Button>
+            <TacticalAudioAlert armed={audio.armed} toggle={audio.toggle} supported={audio.supported} />
+            {isAdmin && (
+              <Button icon="radar" busy={scanning} onClick={async () => {
+                setScanning(true);
+                try {
+                  await scanWire();
+                } finally {
+                  setScanning(false);
+                  void wire.refresh();
+                  void fixtures.refresh();
+                }
+              }}>Scan now</Button>
+            )}
           </>
         }
       />
 
-      <Panel title="Intercept feed" icon="wifi_tethering" className="lg:col-span-7" updatedAt={wire.updatedAt} subtitle="public RSS">
+      <LiveNewsTicker items={news} live={stream.connected} />
+
+      <Panel title="Intercept feed" icon="wifi_tethering" className="lg:col-span-7" updatedAt={wire.updatedAt} subtitle="RSS · newsapi.org, scored">
         <Async resource={wire} skeletonRows={6} isEmpty={() => news.length === 0} empty={<EmptyState icon="newspaper" title="No headlines" detail="The news feeds are unreachable from the API server right now." />}>
           {() => (
             <ul className="flex max-h-[640px] flex-col gap-3 overflow-y-auto pr-1">
@@ -76,8 +112,18 @@ export const TheWire = () => {
                 <li key={n.id}>
                   <a href={n.url} target="_blank" rel="noopener noreferrer" className="group block rounded-2xl bg-stone-50 p-4 transition-[background-color,transform] duration-300 hover:-translate-y-0.5 hover:bg-stone-100/80 active:scale-[0.99] dark:bg-white/[0.03] dark:hover:bg-white/[0.05]">
                     <div className="flex items-center justify-between gap-2 text-[11px] text-stone-400">
-                      <span className="font-semibold ">{n.source}</span>
-                      <span>{formatAgo(n.published_at)}</span>
+                      <span className="flex items-center gap-1.5">
+                        <span className="font-semibold">{n.source}</span>
+                        {n.tactical_impact && <Pill tone={IMPACT_TONE[n.tactical_impact]}>{n.tactical_impact}</Pill>}
+                        {n.associated_steam_move_id && <Pill tone="info" icon="bolt">moved the market</Pill>}
+                      </span>
+                      <span className="flex items-center gap-2">
+                        {n.sentiment_score !== null && n.sentiment_score !== undefined && (
+                          <span className={`font-mono ${n.sentiment_score < 0 ? 'text-rose-500' : n.sentiment_score > 0 ? 'text-emerald-600' : ''}`}>{n.sentiment_score > 0 ? '+' : ''}{n.sentiment_score.toFixed(2)}</span>
+                        )}
+                        {n.source_credibility !== null && n.source_credibility !== undefined && <span title="source credibility">{Math.round(n.source_credibility * 100)}%</span>}
+                        <span>{formatAgo(n.published_at)}</span>
+                      </span>
                     </div>
                     <p className="mt-1 text-sm font-semibold leading-snug text-stone-800 group-hover:underline dark:text-stone-100">{n.title}</p>
                     {n.summary && <p className="mt-1 line-clamp-2 text-xs text-stone-500 dark:text-stone-400">{n.summary}</p>}
@@ -98,6 +144,7 @@ export const TheWire = () => {
                   <li key={s.match_id} className="flex items-center justify-between gap-3 rounded-xl bg-stone-50 px-3 py-2 text-sm dark:bg-white/[0.03]">
                     <span className="min-w-0 truncate text-stone-700 dark:text-stone-200">{s.home_team} v {s.away_team}</span>
                     <span className="flex shrink-0 items-center gap-2">
+                      {s.status === 'LIVE' && (s.detail || s.clock) && <span className="font-mono text-[11px] text-emerald-600">{s.detail ?? s.clock}</span>}
                       {s.status !== 'SCHEDULED' && <span className="font-mono font-semibold tabular-nums">{s.home_score}-{s.away_score}</span>}
                       <StatusBadge status={s.status === 'FT' ? 'COMPLETED' : s.status === 'LIVE' ? 'RUNNING' : 'QUEUED'} label={s.status} />
                     </span>
@@ -106,7 +153,7 @@ export const TheWire = () => {
               </ul>
             )}
           </Async>
-          <p className="mt-3 text-[11px] text-stone-400">Venue weather is not shown: none of the ingested feeds carry venue locations.</p>
+          <p className="mt-3 text-[11px] text-stone-400">The clock comes from ESPN where the Wire paired the fixture; otherwise The Odds API's score.</p>
         </Panel>
 
         <Panel title="Sentiment radar" icon="sensors" updatedAt={steam.updatedAt} actions={<StatusBadge status={mood === 'BULLISH' ? 'ONLINE' : mood === 'BEARISH' ? 'WARNING' : 'IDLE'} label={`Market ${mood.toLowerCase()}`} />}>
@@ -136,6 +183,34 @@ export const TheWire = () => {
           </Async>
         </Panel>
       </div>
+
+      <Panel title="Venue weather" icon="partly_cloudy_day" className="lg:col-span-7" updatedAt={fixtures.updatedAt} subtitle="Open-Meteo · friction factor Π">
+        <Async resource={fixtures} isEmpty={() => weathered.length === 0} empty={<EmptyState icon="cloud_off" title="No forecasts yet" detail="The weather scan runs every 30 minutes. A fixture whose venue is unknown gets no weather, never a default climate." />}>
+          {() => (
+            <div className="grid max-h-[560px] grid-cols-1 gap-3 overflow-y-auto pr-1 2xl:grid-cols-2">
+              {weathered.map((f) => f.weather && <MatchWeatherCard key={f.fixture_id} weather={f.weather} title={`${f.home} v ${f.away}`} />)}
+            </div>
+          )}
+        </Async>
+      </Panel>
+
+      <Panel title="Steam catalysts" icon="bolt" className="lg:col-span-5" updatedAt={wire.updatedAt} subtitle="last 24h">
+        {catalysts.length === 0 ? (
+          <EmptyState icon="query_stats" title="No catalyst yet" detail="A CRITICAL or HIGH story becomes a catalyst when the named fixture's consensus moves 3.5 points its way within 15 minutes." />
+        ) : (
+          <div className="flex max-h-[560px] flex-col gap-2 overflow-y-auto pr-1">
+            {catalysts.map((c) => <SteamCatalystCard key={`${c.article_id}-${c.match_id}`} alert={c} fixture={teamsByMatch.get(c.match_id)} />)}
+          </div>
+        )}
+      </Panel>
+
+      <Panel title="Absences & lineup delta" icon="personal_injury" className="lg:col-span-6" updatedAt={fixtures.updatedAt} subtitle="ESPN injury lists · operator ratings">
+        <LineupImpactPanel fixtures={tracked} />
+      </Panel>
+
+      <Panel title="Referees" icon="sports" className="lg:col-span-6" subtitle="tendencies from officiating records">
+        <RefereeBoard fixtures={tracked} />
+      </Panel>
 
       <Panel title="Omni ingestion stream" icon="stream" className="lg:col-span-12" bodyClassName="p-0" subtitle="Redis → WebSocket relay">
         {omni.length === 0 ? (
