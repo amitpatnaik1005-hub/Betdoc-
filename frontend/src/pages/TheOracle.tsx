@@ -7,6 +7,7 @@ import { useExecutionStore } from '../store/useExecutionStore';
 import { CommanderHero, MOTIFS } from '../ui/hero';
 import { CashoutPanel, MyBets, ScorecardStrip, TrendingFeed, TwinPanel, VettedSlips } from '../components/oracle/AshokaDesk';
 import { TwinFortressPanel } from '../components/oracle/DigitalTwinCard';
+import { SettlementFeedbackPanel } from '../components/oracle/SettlementFeedbackPanel';
 import { ashokaHeadline, useSlips } from '../lib/oracle';
 import { Async, Button, EmptyState, Field, Meter, NumberInput, Page, Panel, Pill, Select, Stat, StatGrid, StatusBadge, num } from '../ui/kit';
 
@@ -334,6 +335,7 @@ export const TheOracle = () => {
       <ScorecardStrip />
       <VettedSlips slips={slips} />
       <TwinFortressPanel />
+      <SettlementFeedbackPanel />
       <CashoutPanel />
       <TrendingFeed />
       <MyBets />
