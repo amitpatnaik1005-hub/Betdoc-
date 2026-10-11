@@ -173,7 +173,7 @@ export const NeverForgetLearningJournal = () => {
                     {words(p.rank_title)} · level {p.level}
                   </p>
                   <p className="text-[11px] text-stone-500 dark:text-stone-400">
-                    {p.slips_vetted_count} vetted · {p.bets_won_count} won · {p.mistakes_learned_count} lessons · {p.losses_prevented_count} losses shielded · {p.streak_bonuses_count} streaks
+                    {p.slips_vetted_count} vetted · {p.bets_won_count} won · {p.mistakes_learned_count} lessons · {p.losses_prevented_count} losses shielded · {p.streak_bonuses_count} streaks · {p.disciplined_bets_count} disciplined bets
                   </p>
                 </div>
               </div>

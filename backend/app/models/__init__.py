@@ -238,3 +238,4 @@ from app.models.model_calibration import ModelRecalibrationRun, ModelWeightAudit
 from app.models.never_forget import AshokaMistakeMemory, NeverForgetPreventionAudit, NeverForgetRule, UserXPProfile, XPAuditLog  # noqa: E402,F401
 from app.models.cfo_growth import CFOAdvisoryLog, CFOGrowthSimulation, CFORebalanceRecommendation  # noqa: E402,F401
 from app.models.the_wire import InjuryRosterReport, NewsArticleSentiment, OfficiatingRecord, RefereeProfile, VenueLocation, WeatherSnapshot  # noqa: E402,F401
+from app.models.sports_config import LeagueRegistry, SportConfiguration  # noqa: E402,F401  (Group 79)

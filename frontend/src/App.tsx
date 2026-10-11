@@ -41,6 +41,7 @@ const TheOracle = lazy(() => import('./pages/TheOracle').then(m => ({ default: m
 const Phantom = lazy(() => import('./pages/Phantom').then(m => ({ default: m.Phantom })));
 const TheArchive = lazy(() => import('./pages/TheArchive').then(m => ({ default: m.TheArchive })));
 const ControlPanel = lazy(() => import('./pages/ControlPanel').then(m => ({ default: m.ControlPanel })));
+const SportsEngine = lazy(() => import('./pages/SportsEngine').then(m => ({ default: m.SportsEngine })));
 
 // ---------------------------------------------------------------------------
 // UTILITIES PRESERVED FROM ORIGINAL
@@ -382,6 +383,7 @@ const NAV_ITEMS: readonly { to: string; label: string; icon: string; bot: Comman
   { to: '/vault',          label: 'The Vault',      icon: 'account_balance', bot: 'KUMBHA'   },
   { to: '/phantom',        label: 'Phantom',        icon: 'blur_on',         bot: 'GARUDA'   },
   { to: '/wire',           label: 'The Wire',       icon: 'newspaper',       bot: 'VIDUR'    },
+  { to: '/sports',         label: 'Sports Engine',  icon: 'sports',          bot: 'ARYABHATA'},
   { to: '/archive',        label: 'Archive',        icon: 'inventory_2',     bot: 'TODAR MAL'},
   { to: '/core',           label: 'Core',           icon: 'memory',          bot: 'PRATAP'   },
   { to: '/control-panel',  label: 'Control Panel',  icon: 'settings',        bot: 'KAUTILYA' },
@@ -801,6 +803,11 @@ const App = () => {
         <Route path="/wire" element={
           <AnimatedRoute>
             <TheWire />
+          </AnimatedRoute>
+        } />
+        <Route path="/sports" element={
+          <AnimatedRoute>
+            <SportsEngine />
           </AnimatedRoute>
         } />
         <Route path="/core" element={

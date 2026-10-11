@@ -98,6 +98,7 @@ export interface XpProfile {
   losses_prevented_count: number;
   mistakes_learned_count: number;
   streak_bonuses_count: number;
+  disciplined_bets_count: number;
   last_action_at: string | null;
   tiers: { level: number; rank: string; min_xp: number }[];
   awards: Record<string, number>;
@@ -135,6 +136,7 @@ export const XP_ACTION_LABEL: Record<string, string> = {
   LOSS_PREVENTED: "Loss shielded",
   MISTAKE_MEMORIZED: "Lesson memorised",
   STREAK_BONUS: "Disciplined streak",
+  DISCIPLINED_BET: "Disciplined sizing",
 };
 
 /** The situation's evidence as the fortress read it, in words. */
