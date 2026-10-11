@@ -50,6 +50,7 @@ class XPActionType(StrEnum):
     LOSS_PREVENTED = "LOSS_PREVENTED"  # a leg pillar 15 vetoed went on to lose
     MISTAKE_MEMORIZED = "MISTAKE_MEMORIZED"
     STREAK_BONUS = "STREAK_BONUS"
+    DISCIPLINED_BET = "DISCIPLINED_BET"  # Group 79: a positive-edge bet within its sport Kelly stake, no tilt flag
 
 
 def _values(enum: type[StrEnum]) -> str:
@@ -171,6 +172,7 @@ class UserXPProfile(Base):
     losses_prevented_count: Mapped[int] = mapped_column(Integer, default=0)
     mistakes_learned_count: Mapped[int] = mapped_column(Integer, default=0)
     streak_bonuses_count: Mapped[int] = mapped_column(Integer, default=0)
+    disciplined_bets_count: Mapped[int] = mapped_column(Integer, default=0, server_default="0")  # Group 79
     last_action_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, onupdate=utc_now)

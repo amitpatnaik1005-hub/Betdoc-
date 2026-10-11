@@ -11,6 +11,8 @@ total reaches; ranks describe progress and unlock nothing (no execution right de
     MISTAKE_MEMORIZED  XP_AWARD_MISTAKE_MEMORIZED  a lost leg became a lesson
     STREAK_BONUS       XP_AWARD_STREAK_BONUS       every XP_STREAK_DAYS consecutive days (ORACLE_TIMEZONE) with a fortress
                                                    run and no bet placed without a vetted audit
+    DISCIPLINED_BET    XP_AWARD_DISCIPLINED_BET    a positive-edge bet staked within its sport-calibrated Kelly stake with no
+                                                   tilt, revenge or loss-chasing flag (Group 79, once per bet)
 """
 
 from __future__ import annotations
@@ -36,6 +38,7 @@ logger = logging.getLogger("betdoc.xp")
 COUNTERS = {
     XPActionType.SLIP_VETTED: "slips_vetted_count", XPActionType.BET_WON: "bets_won_count", XPActionType.LOSS_PREVENTED: "losses_prevented_count",
     XPActionType.MISTAKE_MEMORIZED: "mistakes_learned_count", XPActionType.STREAK_BONUS: "streak_bonuses_count",
+    XPActionType.DISCIPLINED_BET: "disciplined_bets_count",
 }
 
 
@@ -85,7 +88,7 @@ async def profile_for(session: AsyncSession, user_id: uuid.UUID, settings: Setti
     first = next(iter(settings.XP_TIERS))
     await session.execute(insert_ignore(session, UserXPProfile).values(
         id=uuid.uuid4(), user_id=user_id, total_xp=0, level=1, rank_title=first, slips_vetted_count=0, bets_won_count=0, losses_prevented_count=0,
-        mistakes_learned_count=0, streak_bonuses_count=0, created_at=now, updated_at=now,
+        mistakes_learned_count=0, streak_bonuses_count=0, disciplined_bets_count=0, created_at=now, updated_at=now,
     ))
     query = select(UserXPProfile).where(UserXPProfile.user_id == user_id).execution_options(populate_existing=True)
     return (await session.execute(query.with_for_update() if lock else query)).scalar_one()
@@ -171,6 +174,7 @@ def profile_view(profile: UserXPProfile | None, user_id: uuid.UUID, settings: Se
         "losses_prevented_count": 0 if profile is None else profile.losses_prevented_count,
         "mistakes_learned_count": 0 if profile is None else profile.mistakes_learned_count,
         "streak_bonuses_count": 0 if profile is None else profile.streak_bonuses_count,
+        "disciplined_bets_count": 0 if profile is None else profile.disciplined_bets_count,
         "last_action_at": None if profile is None or profile.last_action_at is None else profile.last_action_at.isoformat(),
         "tiers": [{"level": i + 1, "rank": rank, "min_xp": floor} for i, (rank, floor) in enumerate(settings.XP_TIERS.items())],
         "awards": {a.value: amount_for(a, settings) for a in XPActionType}, "streak_days_required": settings.XP_STREAK_DAYS,

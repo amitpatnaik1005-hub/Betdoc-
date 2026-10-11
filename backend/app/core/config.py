@@ -414,6 +414,7 @@ class Settings(BaseSettings):
     XP_AWARD_LOSS_PREVENTED: int = Field(default=150, ge=1)  # once the leg pillar 15 vetoed has lost
     XP_AWARD_MISTAKE_MEMORIZED: int = Field(default=200, ge=1)
     XP_AWARD_STREAK_BONUS: int = Field(default=500, ge=1)
+    XP_AWARD_DISCIPLINED_BET: int = Field(default=40, ge=1)  # Group 79: once per bet the discipline read clears (FA-2)
     XP_STREAK_DAYS: int = Field(default=7, ge=2)  # consecutive days (ORACLE_TIMEZONE) of fortress runs and only vetted bets placed
     # rank -> the XP that reaches it, ascending from 0
     XP_TIERS: dict[str, int] = Field(default_factory=lambda: {
@@ -549,6 +550,42 @@ class Settings(BaseSettings):
     WIRE_REFEREE_PRIOR_MATCHES: float = Field(default=10.0, ge=0)
     WIRE_REFEREE_MIN_MATCHES: int = Field(default=5, ge=1)  # fewer: the profile is shown but not written to the fortress
     WIRE_REFEREE_TOTALS_LINE: float = Field(default=2.5, gt=0)
+
+    # ---- The multi-sport engine: nine sport adapters, omni-provider line shopping (Group 79) ----
+    SPORTS_SCAN_ENABLED: bool = True  # the beat's consensus poll and arbitrage screen
+    SPORTS_PREFIX: str = "betdoc:sports"  # Redis: boards per feed key, the edge list, the live channels
+    SPORTS_ODDS_POLL_SECONDS: float = Field(default=60.0, ge=10)  # poll_multi_sport_consensus_odds
+    SPORTS_ARB_SCREEN_SECONDS: float = Field(default=30.0, ge=5)  # screen_cross_provider_arbitrage
+    SPORTS_FEED_MIN_INTERVAL_SECONDS: float = Field(default=900.0, ge=30)  # one feed key is fetched at most this often (quota)
+    SPORTS_ODDS_REGIONS: str = "uk,eu,us,au"
+    SPORTS_BOARD_TTL_SECONDS: int = Field(default=3600, ge=60)
+    SPORTS_MIN_EDGE: float = Field(default=0.02, gt=0, lt=1)  # a value line: EV over the fair (model or sharp) price
+    SPORTS_MIN_ARBITRAGE: float = Field(default=0.015, gt=0, lt=1)  # a cross-venue arbitrage: guaranteed return over this
+    SPORTS_NORMALIZATION_BUDGET_MS: float = Field(default=12.0, gt=0)  # FA-3: one event's odds normalised within this
+    SPORTS_MAX_EDGES: int = Field(default=200, ge=1, le=5000)  # the edge list kept in Redis
+    # FA-4: the CFO's fractional Kelly per sport (model parameter uncertainty); overrides app.domain.sports.twin_bridge's table
+    SPORTS_KELLY_MULTIPLIERS: dict[str, float] = Field(default_factory=lambda: {
+        "soccer": 0.35, "cricket": 0.25, "basketball": 0.40, "tennis": 0.30, "baseball": 0.35, "american_football": 0.50,
+        "ice_hockey": 0.30, "combat": 0.20, "esports": 0.25,
+    })
+    # The Wire's absence impact (0..1) as wins above replacement, per sport (a 1.0-impact player is this many WAR)
+    SPORTS_WAR_PER_IMPACT: dict[str, float] = Field(default_factory=lambda: {
+        "soccer": 6.0, "basketball": 12.0, "american_football": 4.0, "baseball": 6.0, "ice_hockey": 4.0,
+    })
+    # Omni-provider catalogue (Categories A-E): keys come from the Vault first, these settings second, never from Git
+    PINNACLE_API_KEY: SecretStr | None = None
+    BETFAIR_APP_KEY: SecretStr | None = None
+    PARIMATCH_TARGET_URL: str = "https://parimatchs1.com/en/all-live"
+    ONE_XBET_TARGET_URL: str = "https://indian.1xbet.com/en"
+    STAKE_TARGET_URL: str = "https://stake.com/sports/home"
+    RAPIDAPI_KEY: SecretStr | None = None
+    ODDSPAPI_API_KEY: SecretStr | None = None
+    SHARPAPI_API_KEY: SecretStr | None = None
+    SPORTSDATA_IO_KEY: SecretStr | None = None
+    SPORTMONKS_API_KEY: SecretStr | None = None
+    THE_RUNDOWN_API_KEY: SecretStr | None = None
+    KALSHI_BASE_URL: str = "https://api.elections.kalshi.com/trade-api/v2"
+    MANIFOLD_BASE_URL: str = "https://api.manifold.markets/v0"
 
     @property
     def odds_sport_keys(self) -> List[str]:
