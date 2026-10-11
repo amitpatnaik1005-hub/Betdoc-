@@ -140,12 +140,23 @@
 14. **EXHAUSTIVE RETROSPECTIVE INTEGRATION MATRIX ACROSS ALL PRIOR GROUPS (GROUPS 1 TO 78)**:
     The multi-sport quantitative engine does NOT operate in an isolated silo. It must seamlessly interface with every prior capability established in BetDoc:
     - **Integration with the 17 Commander Fleet**:
-      * **ASHOKA (Scout Oracle & Parlay Generator - Groups 45 & 69)**: When generating multi-sport accumulators (doubles, trebles, Heinz, Trixie), Ashoka must call `calculate_fair_odds()` across distinct sport adapters and apply the multi-sport correlation discount penalty.
-      * **GARUDA (Ingestion Fleet Orchestrator - Groups 59-60)**: Orchestrates the 100+ provider connectors, managing distributed Redis locks (`OmniRedisKeys.fleet_lock`) and rate-limit windows (`OmniRedisKeys.rate_window`).
-      * **PANINI (Universal Entity Resolution)**: Normalizes team, league, and player string aliases across all 100+ feeds (e.g., mapping "Manchester City", "Man City", and "MCFC" to canonical ID `soccer_epl_mci`).
-      * **ARYABHATA (Quantitative Modeling - Groups 54-58)**: Houses the underlying numerical solvers (Dixon-Coles bivariate optimizer, DLS exponential decay constants, Markov transition matrices).
-      * **SHIVAJI & RANI CHENNAMMA (Risk Fortress & Capital Shield)**: Monitor cross-sport portfolio risk and veto any wager that violates capital preservation rules.
-      * **SUBHASH (Automated Execution Sniper)**: Routes validated betting slips directly to **Parimatch** (`https://parimatchs1.com/en/all-live`) as the primary execution book, falling back to 1xBet or Stake for derivative props.
+      1. **ASHOKA (The Oracle & Scout - Groups 45 & 69)**: When generating multi-sport accumulators (doubles, trebles, Heinz, Trixie), Ashoka calls `calculate_fair_odds()` across distinct sport adapters and applies multi-sport correlation discount penalties.
+      2. **KAUTILYA (Command Center & Master Governor)**: Orchestrates the overall fleet, desk clearance levels, and operational governance across all sports modules.
+      3. **BAJIRAO (The Arena & Live Execution)**: Ingests sub-second live odds ticks and micro-market updates for fast-moving in-play games.
+      4. **VIDUR (The Hive & The Wire - Group 78)**: Synthesizes breaking news, ESPN injury reports, squad rotations, and market sentiment catalysts.
+      5. **KUMBHA (The Vault & Capital Preservation - Group 76)**: Interfaces with CFO Capital allocation and portfolio risk growth rules.
+      6. **PANINI (Universal Entity Resolution)**: Normalizes team, league, and player string aliases across all 100+ feeds to canonical IDs (e.g., mapping "Manchester City", "Man City", "MCFC" to `soccer_epl_mci`).
+      7. **PRATAP (Factory Floor Engine Room)**: Manages core batch quantitative evaluations across all daily multi-sport match schedules.
+      8. **GARUDA (Ingestion Fleet Orchestrator - Groups 59-60)**: Orchestrates the 100+ provider connectors, managing distributed Redis locks (`OmniRedisKeys.fleet_lock`) and rate-limit windows (`OmniRedisKeys.rate_window`).
+      9. **TODAR MAL (The Ledger & Multi-Currency Settlement)**: Audits bet accounting and multi-currency conversions (INR, USD, EUR, USDT) across bookmakers.
+      10. **ARYABHATA (Quantitative Modeling Suite - Groups 54-58)**: Houses the underlying numerical solvers (Dixon-Coles bivariate optimizer, DLS exponential decay curves, Markov transition matrices, Four Factors, BaseRuns, EPA).
+      11. **CHANAKYA (Grand Strategic Portfolio Allocation)**: Synthesizes value edges across multiple sports to optimize long-term expected portfolio growth.
+      12. **SHIVAJI (The Fortress & Capital Shield)**: Enforces all 5 stop-loss mechanisms, monitoring open multi-sport positions to veto trades that violate drawdown thresholds.
+      13. **DRONA (Master Mentor & Backtesting Lab - Group 77)**: Verifies multi-sport models against historical tick data in vectorized backtests before deploying to live markets.
+      14. **BHEESHMA (Senior Guardian & Never-Forget Mistake Guard - Group 75)**: Vetoes emotionally tilted bets or wagers that duplicate past logged user mistakes.
+      15. **KARNA (Dynamic Risk Taker & Arbitrage Matrix)**: Scans cross-provider odds to identify arbitrage opportunities and positive EV market mispricings.
+      16. **ARJUNA (Precision Targeting & Sharp Benchmark)**: Performs sharp line shopping, benchmarking retail quotes against Pinnacle and Betfair Exchange true probabilities.
+      17. **ASHVATTHAMA (Automated Execution Sniper)**: Routes validated betting slips directly to **Parimatch** (`https://parimatchs1.com/en/all-live`) as the primary capital account where the user's main bankroll sits, falling back to 1xBet or Stake for retail props and accumulators.
     - **Integration with All 5 Stop-Loss Mechanisms (Group 77)**:
       1. *Trailing Stop*: Continuously recalculates live win probability via sport adapters to lock in cashout profits.
       2. *Hard Equity Floor*: Halts all new orders across all 9 sports if daily portfolio drawdown reaches the stop threshold.
