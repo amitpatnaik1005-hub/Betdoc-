@@ -46,6 +46,7 @@ const TheArchive = lazy(() => import('./pages/TheArchive').then(m => ({ default:
 const ControlPanel = lazy(() => import('./pages/ControlPanel').then(m => ({ default: m.ControlPanel })));
 const SportsEngine = lazy(() => import('./pages/SportsEngine').then(m => ({ default: m.SportsEngine })));
 const PaperTradingSandbox = lazy(() => import('./pages/PaperTradingSandbox').then(m => ({ default: m.PaperTradingSandbox })));
+const LiveDesk = lazy(() => import('./pages/LiveDesk').then(m => ({ default: m.LiveDesk })));
 
 // ---------------------------------------------------------------------------
 // UTILITIES PRESERVED FROM ORIGINAL
@@ -834,6 +835,17 @@ const App = () => {
             <PaperTradingSandbox />
           </AnimatedRoute>
         } />
+        <Route path="/live-desk" element={
+          <AnimatedRoute>
+            <LiveDesk />
+          </AnimatedRoute>
+        } />
+        <Route path="/real-money" element={
+          <AnimatedRoute>
+            <LiveDesk />
+          </AnimatedRoute>
+        } />
+        <Route path="/execution-gateway" element={<Navigate replace to="/live-desk" />} />
         <Route path="/core" element={
           <AnimatedRoute>
             <Core />

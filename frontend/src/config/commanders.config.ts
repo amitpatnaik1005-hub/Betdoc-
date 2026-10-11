@@ -230,7 +230,7 @@ export const COMMANDER_REGISTRY: Readonly<Record<CommanderId, CommanderProfile>>
     id: "ASHVATTHAMA",
     name: "Ashvatthama",
     domain: "Execution Router / Bookmaker Gateway (Parimatch)",
-    routePrefixes: ["/execution-gateway"],
+    routePrefixes: ["/live-desk", "/execution-gateway"],
     networkProtocol: "HYBRID",
     theme: { primary: "#FB923C", glow: "rgba(251, 146, 60, 0.55)", accent: "#FFEDD5" },
     clearanceLevel: 6,

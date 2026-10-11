@@ -606,6 +606,14 @@ class Settings(BaseSettings):
     CURRENCY_CRYPTO_URL: str = "https://api.coingecko.com/api/v3"  # USDT and BTC in INR
     CURRENCY_HTTP_TIMEOUT_SECONDS: float = Field(default=6.0, gt=0)
 
+    # ---- Real-Money Live Desk, Parimatch execution gateway, SHIVAJI circuit breaker (Group 95) ----
+    REAL_MAX_STAKE_PCT: float = Field(default=0.05, gt=0, le=0.5)  # 5% max single wager ceiling
+    REAL_MIN_EDGE: float = Field(default=0.015, ge=0, le=0.5)  # 1.5% minimum edge floor
+    REAL_DAILY_DRAWDOWN_PCT: float = Field(default=0.15, gt=0, le=1.0)  # 15% daily drawdown stop-loss limit
+    REAL_LOSS_STREAK_LIMIT: int = Field(default=3, ge=1, le=20)  # 3 consecutive losses
+    REAL_COOLDOWN_MINUTES: int = Field(default=30, ge=1, le=1440)  # 30-minute cool-down
+    REAL_SETTLE_INTERVAL_SECONDS: float = Field(default=60.0, ge=10)
+
     @property
     def odds_sport_keys(self) -> List[str]:
         """ODDS_SPORT_KEYS, then the sports the Vault activated (``app.core.fleet_overlay``)."""

@@ -7,6 +7,7 @@
  * LIVE mode never places a bet by itself: ASHVATTHAMA issues the Parimatch ticket and the trader places it by hand.
  */
 import { useEffect, useState } from "react";
+import { useLocation, useNavigate } from "react-router-dom";
 import { usePaperAccount, usePaperPerformance } from "../../lib/paper_trading";
 import { MOCK_AUTH } from "../../store/useAuthStore";
 import { usePaperTradingStore } from "../../store/usePaperTradingStore";
@@ -17,6 +18,8 @@ const pill =
   "inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[11px] font-semibold tracking-wide transition-[background-color,color,transform] duration-300 active:scale-[0.97]";
 
 export const TradingModeToggle = () => {
+  const navigate = useNavigate();
+  const location = useLocation();
   const isPaperMode = usePaperTradingStore((s) => s.isPaperMode);
   const setPaperMode = usePaperTradingStore((s) => s.setPaperMode);
   const account = usePaperAccount(!MOCK_AUTH);
@@ -31,7 +34,12 @@ export const TradingModeToggle = () => {
   }, [armed]);
 
   const goLive = () => {
-    if (!isPaperMode) return;
+    if (!isPaperMode) {
+      if (location.pathname !== "/live-desk") {
+        navigate("/live-desk");
+      }
+      return;
+    }
     if (!liveReady && !armed) {
       setArmed(true);
       toast.warning(
@@ -42,7 +50,15 @@ export const TradingModeToggle = () => {
     }
     setArmed(false);
     setPaperMode(false);
+    navigate("/live-desk");
     toast.info("Live real money", "ASHVATTHAMA will issue Parimatch tickets for you to place by hand. Nothing is placed automatically.");
+  };
+
+  const goPaper = () => {
+    setPaperMode(true);
+    if (location.pathname === "/live-desk") {
+      navigate("/sandbox");
+    }
   };
 
   return (
@@ -51,7 +67,7 @@ export const TradingModeToggle = () => {
         type="button"
         role="radio"
         aria-checked={isPaperMode}
-        onClick={() => setPaperMode(true)}
+        onClick={goPaper}
         title="Forward-test with virtual rupees at real-time odds"
         className={`${pill} ${isPaperMode ? "bg-emerald-600 text-white shadow-sm dark:bg-emerald-500/90" : "text-stone-500 hover:text-stone-800 dark:text-stone-400 dark:hover:text-stone-200"}`}
       >

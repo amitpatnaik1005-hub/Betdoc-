@@ -240,3 +240,4 @@ from app.models.cfo_growth import CFOAdvisoryLog, CFOGrowthSimulation, CFORebala
 from app.models.the_wire import InjuryRosterReport, NewsArticleSentiment, OfficiatingRecord, RefereeProfile, VenueLocation, WeatherSnapshot  # noqa: E402,F401
 from app.models.sports_config import LeagueRegistry, SportConfiguration  # noqa: E402,F401  (Group 79)
 from app.models.paper_trading import CurrencyExchangeRate, PaperAccount, PaperBet, PaperLedgerEntry, TaxLedgerEntry  # noqa: E402,F401  (Group 80)
+from app.models.real_money import RealBankroll, RealBetTicket, RealCashTransaction  # noqa: E402,F401  (Group 95)
