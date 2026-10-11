@@ -92,6 +92,36 @@
      across both SQLite and PostgreSQL engines using `httpx.ASGITransport(app=app)`.
    - Upon successful verification, commit Group 79 and run `git push origin feature/garuda-ingestion`.
 
+11. **MANDATORY INTEGRATION WITH THE TRUE DIGITAL BETTING TWIN (15-PILLAR MATRIX)**:
+    Every quantitative pricing adapter and bet resolver must feed structured metrics directly into the True Digital Betting Twin engine (established in Group 72):
+    - **Pillar 1 (Multi-Model Consensus)**: Sport-specific fair probability output must cross-validate with the ensemble threshold (minimum 3 independent analytical sub-models per sport).
+    - **Pillar 4 (Venue Weather & Pitch Physics)**: Ingest pitch degradation indices, temperature, atmospheric humidity, and evening dew factor (Cricket, Baseball, NFL, Tennis) from Open-Meteo into the pricing matrix.
+    - **Pillar 5 (Lineup Absences & Replacement WAR)**: Quantify player absence impact using positional WAR (Wins Above Replacement) and usage percentage metrics for Basketball, NFL, Baseball, and Soccer.
+    - **Pillar 6 (Official & Referee Bias)**: Track umpire strike zone tendencies (Baseball), referee penalty/foul frequency (Soccer, NBA, NHL), and judge scoring variances (MMA).
+    - **Pillar 9 (Sharp Market Benchmark & Line Shopping)**: Enforce strict comparison between Pinnacle/Betfair sharp true lines and retail recreational odds (Stake, 1xBet, Parimatch).
+    - **Pillar 15 (Confidence & Sizing Index)**: Output a consolidated 0-100 composite confidence score before submitting any recommendation to the CFO Capital engine.
+
+12. **MANDATORY CROSS-SPORT COMPLIANCE WITH FEATURE ADDITIONS (FA-1 THROUGH FA-8)**:
+    - **FA-1 (In-Play Stop-Loss Shield)**: Live win probabilities from all 9 sport adapters must emit continuous tick streams to trigger automated cashout / hedge thresholds if in-play drawdown exceeds predefined tolerances.
+    - **FA-2 (Mistake Memory Guard & User XP Engine)**: Track multi-sport betting patterns to flag emotional tilts, revenge betting on non-core sports, and award XP for mathematically disciplined bets.
+    - **FA-3 (Sub-Second Latency Sentinel)**: Ensure multi-sport odds normalization occurs in <12ms across all WebSocket and REST feeds.
+    - **FA-4 (CFO Capital Growth & Sport-Specific Fractional Kelly)**: Apply sport-calibrated fractional Kelly multipliers based on model parameter uncertainty:
+      * Soccer (Bivariate Poisson): 0.35 Kelly
+      * Cricket (DLS / Markov): 0.25 Kelly
+      * Basketball (Four Factors): 0.40 Kelly
+      * Tennis (O'Malley Markov): 0.30 Kelly
+      * Baseball (BaseRuns): 0.35 Kelly
+      * NFL (EPA Key Numbers): 0.50 Kelly
+      * NHL (xG Poisson): 0.30 Kelly
+      * MMA (Strike Differential): 0.20 Kelly
+      * Esports (Map Veto Markov): 0.25 Kelly
+    - **FA-8 (OmniRoute Multi-Bookmaker Gateway)**: Automatically route bet slips to the highest price provider among Pinnacle, Betfair, Parimatch, Stake, and 1xBet.
+
+13. **CELERY BEAT PERIODIC BACKGROUND TASK SPECIFICATION**:
+    Configure Celery periodic beat tasks to execute background multi-sport odds polling:
+    - `poll_multi_sport_consensus_odds`: Runs every 60 seconds across all 9 sports.
+    - `screen_cross_provider_arbitrage`: Runs every 30 seconds across all 10 omni-providers to identify live arb opportunities and positive EV lines.
+
 ---
 
 ## 🏛️ PART 1: SYSTEM ARCHITECTURE & 9-SPORT MATHEMATICAL FORMULATIONS
