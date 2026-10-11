@@ -71,8 +71,8 @@ The Paper Trading Sandbox operates a forward-testing virtual portfolio ledger go
   $$\text{MaxDD} = \max_{t} \text{Drawdown}_t$$
 - **Profit Factor**:
   $$\text{Profit Factor} = \frac{\sum \text{Gross Profits}}{\sum \text{Gross Losses}}$$
-- **Sharpe Ratio (Daily Virtual Paper Returns)**:
-  $$\text{Sharpe} = \frac{\mathbb{E}[R_p - R_f]}{\sigma(R_p)}$$
+- **Sharpe Ratio (Annualized Daily Paper Performance)**:
+  $$\text{Sharpe} = \frac{\mathbb{E}[R_p - R_f]}{\sigma(R_p)} \times \sqrt{365}$$
   where $R_f$ is annualized risk-free rate (assumed 6.5% for Indian Sovereign Bonds) scaled to daily returns.
 
 ### 2. Indian Section 115BBJ 30% Flat Tax Formulation
@@ -93,7 +93,8 @@ All 17 commanders work synchronously with the Paper Trading Sandbox and Parimatc
    - *Role in Group 80*: Emits single-directional value bets across all 9 sports. In Paper Mode, recommendations render a `[ 🧪 Place Mock Bet (₹) ]` action.
 2. **KAUTILYA (The Strategist & Portfolio Architect)**:
    - *Domain*: Kelly Criterion Capital Allocation & Staking Strategy.
-   - *Role in Group 80*: Computes per-sport fractional Kelly stakes ($f^* = \frac{bp - q}{b} \times K_{\text{sport}}$) and monitors virtual portfolio variance.
+   - *Formula*: $f^* = \frac{b p - q}{b} \times K_{\text{sport}}$ (per-sport fractional Kelly).
+   - *Role in Group 80*: Computes per-sport fractional Kelly stakes and monitors virtual portfolio variance.
 3. **BAJIRAO (The Striker & Momentum Tracker)**:
    - *Domain*: Early Line Movement & Steam Move Detection.
    - *Role in Group 80*: Intercepts closing line value (CLV) shifts and executes paper bets at peak line advantage.
@@ -201,7 +202,27 @@ The Paper Trading Sandbox integrates with the True Digital Betting Twin and Feat
 
 ---
 
-## 🛠️ PART 6: BACKEND DROP-IN IMPLEMENTATION (FILES 1 TO 9)
+## 📜 PART 6: RETROSPECTIVE ARCHITECTURE & FLEET SYNTHESIS (GROUPS 1 TO 79)
+
+Group 80 builds directly on top of the established fleet architecture:
+- **Groups 1-68 (Core Engine, Models & Vault)**: Fast execution, encrypted vault storage for provider tokens, and baseline database sessions.
+- **Group 69 (The Oracle & Ashoka)**: The high-conviction value betting desk.
+- **Group 70 (The Hive & Multi-Agent Swarm)**: Swarm consensus across 17 commanders.
+- **Group 71 (The Wire & Ingestion)**: Real-time intelligence processing.
+- **Group 72 (The True Digital Betting Twin & 15 Pillars)**: Personalized risk profiling and decision matrix.
+- **Group 73 (Settlement Feedback Loops)**: Resolving bets against verified match data.
+- **Group 74 (Model Recalibration & Dynamic Weights)**: Adapting pricing models to market efficiency.
+- **Group 75 (Never-Forget Mistake Guard & XP Engine)**: User memory journal and gamified discipline tracking.
+- **Group 76 (Bankroll Growth Strategies)**: Compound growth modeling and capital preservation.
+- **Group 77 (Manual Parlay Builder & Stop-Loss Shield)**: Multi-leg parlay construction and automatic hedging.
+- **Group 78 (Complete News & Wire Integration)**: Deep context extraction from 100+ news and weather APIs.
+- **Group 79 (Multi-Sport Quantitative Engine Expansion)**: 9 sport adapters, DLS cricket engine, BaseRuns baseball, Four Factors basketball, and 27-bet settlement.
+- **Group 80 (Paper Trading Sandbox & Multi-Currency Engine)**:
+  Synthesizes all 79 prior groups into a forward-testing sandbox that empowers the user to verify fleet performance with ₹1,00,000 virtual capital before placing real money wagers on Parimatch.
+
+---
+
+## 🛠️ PART 7: BACKEND DROP-IN IMPLEMENTATION (FILES 1 TO 9)
 
 ### FILE 1: `backend/app/models/paper_trading.py`
 Drop-in SQLAlchemy models for Paper Trading accounts, mock bets, exchange rates, and tax ledger:
