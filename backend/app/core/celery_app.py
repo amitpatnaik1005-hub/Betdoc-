@@ -62,7 +62,7 @@ def _zoned_crontab(minute: str | int, hour: str | int, zone: str, day_of_week: s
 celery_app = Celery(
     "betdoc_omni",
     broker=_settings.celery_broker_url.get_secret_value(),
-    include=["app.workers.omni_poller", "app.workers.omni_quorum", "app.workers.cfo_settlement", "app.workers.sniper", "app.workers.hive_worker", "app.workers.lab_worker", "app.workers.nalanda_maintenance", "app.workers.sentinel_tasks", "app.workers.oracle_tasks", "app.workers.vault_prober", "app.workers.execution_dispatcher", "app.workers.twin_tasks", "app.workers.feedback_tasks", "app.workers.calibration_tasks", "app.workers.cfo_growth_tasks", "app.workers.the_wire_tasks", "app.workers.sports_tasks"],
+    include=["app.workers.omni_poller", "app.workers.omni_quorum", "app.workers.cfo_settlement", "app.workers.sniper", "app.workers.hive_worker", "app.workers.lab_worker", "app.workers.nalanda_maintenance", "app.workers.sentinel_tasks", "app.workers.oracle_tasks", "app.workers.vault_prober", "app.workers.execution_dispatcher", "app.workers.twin_tasks", "app.workers.feedback_tasks", "app.workers.calibration_tasks", "app.workers.cfo_growth_tasks", "app.workers.the_wire_tasks", "app.workers.sports_tasks", "app.workers.paper_trading_tasks"],
 )
 
 celery_app.conf.update(
@@ -169,6 +169,11 @@ celery_app.conf.update(
                                        "options": {"expires": _settings.SPORTS_ODDS_POLL_SECONDS}},
         "sports-screen-arbitrage": {"task": "sports.screen_cross_provider_arbitrage", "schedule": _settings.SPORTS_ARB_SCREEN_SECONDS,
                                     "options": {"expires": _settings.SPORTS_ARB_SCREEN_SECONDS}},
+        # Group 80: the Paper Trading Sandbox settles from recorded final scores; TODAR MAL keeps the exchange rates fresh
+        "paper-trading-auto-settlement": {"task": "paper_trading.settle_pending_paper_bets", "schedule": float(_settings.PAPER_SETTLE_INTERVAL_SECONDS),
+                                          "options": {"expires": float(_settings.PAPER_SETTLE_INTERVAL_SECONDS)}},
+        "currency-refresh-rates": {"task": "currency.refresh_rates", "schedule": float(_settings.CURRENCY_REFRESH_SECONDS),
+                                   "options": {"expires": float(_settings.CURRENCY_REFRESH_SECONDS)}},
         "sentinel-market-forecast-hype": {
             "task": "sentinel.market_forecast_hype",
             "schedule": ZonedCrontab(minute=_settings.SENTINEL_HYPE_MINUTE, hour=_settings.SENTINEL_HYPE_HOUR, zone=_settings.SENTINEL_TIMEZONE),

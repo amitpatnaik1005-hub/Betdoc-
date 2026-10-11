@@ -31,6 +31,7 @@ from app.domain.the_hive import HiveOrchestrator
 from app.models import BetLedger
 from app.models.competitive_intel import CompetitorBotModel
 from app.models.control_panel import SETTINGS_SINGLETON_ID, SystemSettingsModel
+from app.models.paper_trading import PaperBet, PaperBetStatus
 from app.models.phantom import ArbitrageOpportunityModel
 from app.models.risk import StopLossEventModel
 from app.models.the_core import BacktestJobModel, EngineTaskStatus, SmallcaseRegistryModel, SmallcaseStatus
@@ -163,8 +164,13 @@ async def _arjuna(db: AsyncSession, _: ProbeContext) -> tuple[BotStatus, dict[st
     return (BotStatus.DEGRADED if unresolved else BotStatus.ONLINE), {"orders_awaiting_reconciliation": unresolved}
 
 
-async def _devraya(_: AsyncSession, ctx: ProbeContext) -> tuple[BotStatus, dict[str, Any]]:
-    return BotStatus.ONLINE, {"live_clients": ctx.ws_clients()}
+async def _ashvatthama(db: AsyncSession, ctx: ProbeContext) -> tuple[BotStatus, dict[str, Any]]:
+    """The execution router: open paper slips it executed, the last day's fills and the live WebSocket lane."""
+    since = datetime.now(UTC) - timedelta(hours=24)
+    pending = await _count(db, select(func.count()).where(PaperBet.status == PaperBetStatus.PENDING.value))
+    fills = await _count(db, select(func.count()).where(PaperBet.placed_at >= since))
+    return (BotStatus.WORKING if pending else BotStatus.ONLINE), {
+        "open_paper_slips": pending, "paper_fills_24h": fills, "live_clients": ctx.ws_clients()}
 
 
 PROBES: dict[LegendaryBot, Probe] = {
@@ -184,7 +190,7 @@ PROBES: dict[LegendaryBot, Probe] = {
     LegendaryBot.BHEESHMA: _bheeshma,
     LegendaryBot.KARNA: _karna,
     LegendaryBot.ARJUNA: _arjuna,
-    LegendaryBot.DEVRAYA: _devraya,
+    LegendaryBot.ASHVATTHAMA: _ashvatthama,
 }
 
 

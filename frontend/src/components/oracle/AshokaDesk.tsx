@@ -33,6 +33,7 @@ import { invalidate } from "../../lib/resource";
 import { vetSlip, type TwinAudit } from "../../lib/twin";
 import { toast } from "../../store/useToastStore";
 import { Async, Button, EmptyState, Field, NumberInput, Panel, Pill, Segmented, Select, Stat, StatGrid, TextInput, Toggle, type Tone } from "../../ui/kit";
+import { PlaceMockBetButton } from "./PlaceMockBetButton";
 import { DigitalTwinCard } from "./DigitalTwinCard";
 
 const cx = (...parts: (string | false | null | undefined)[]): string => parts.filter(Boolean).join(" ");
@@ -350,6 +351,7 @@ const SlipCard = ({ initial, generatedAt, bankroll }: { initial: Slip; generated
           <Button size="sm" icon="shield_person" busy={vetting} onClick={() => void fortress()}>
             Run the fortress
           </Button>
+          <PlaceMockBetButton slip={slip} book={tab} />
           <Button size="sm" variant="primary" icon="task_alt" onClick={() => setPlacing(true)}>
             I placed this bet
           </Button>

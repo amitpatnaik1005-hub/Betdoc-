@@ -1,4 +1,4 @@
-"""Async WebSocket connection manager for PROTOCOL/MESSAGE providers (DEVRAYA HFT lane).
+"""Async WebSocket connection manager for PROTOCOL/MESSAGE providers (ASHVATTHAMA HFT lane).
 
 Every frame is (1) published to Redis Pub/Sub immediately and (2) batched into the immutable
 raw landing zone. Run: ``python -m app.services.omni_ws_client``

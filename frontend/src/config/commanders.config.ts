@@ -21,7 +21,7 @@ export const COMMANDER_IDS = [
   "BHEESHMA",
   "KARNA",
   "ARJUNA",
-  "DEVRAYA",
+  "ASHVATTHAMA",
 ] as const;
 
 export type CommanderId = (typeof COMMANDER_IDS)[number];
@@ -141,8 +141,8 @@ export const COMMANDER_REGISTRY: Readonly<Record<CommanderId, CommanderProfile>>
   "TODAR MAL": {
     id: "TODAR MAL",
     name: "Todar Mal",
-    domain: "Archive / Data Warehouse",
-    routePrefixes: ["/archive"],
+    domain: "Archive / Multi-Currency & Tax Ledger",
+    routePrefixes: ["/archive", "/sandbox", "/paper-trading"],
     networkProtocol: "REST",
     theme: { primary: "#10B981", glow: "rgba(16, 185, 129, 0.55)", accent: "#A7F3D0" },
     clearanceLevel: 8,
@@ -226,11 +226,11 @@ export const COMMANDER_REGISTRY: Readonly<Record<CommanderId, CommanderProfile>>
     status: "STANDBY",
     scene: "command",
   },
-  DEVRAYA: {
-    id: "DEVRAYA",
-    name: "Devraya",
-    domain: "Visualization / UI Rendering",
-    routePrefixes: ["/visualization"],
+  ASHVATTHAMA: {
+    id: "ASHVATTHAMA",
+    name: "Ashvatthama",
+    domain: "Execution Router / Bookmaker Gateway (Parimatch)",
+    routePrefixes: ["/execution-gateway"],
     networkProtocol: "HYBRID",
     theme: { primary: "#FB923C", glow: "rgba(251, 146, 60, 0.55)", accent: "#FFEDD5" },
     clearanceLevel: 6,

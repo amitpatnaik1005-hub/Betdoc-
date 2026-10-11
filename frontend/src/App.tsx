@@ -12,7 +12,6 @@ import {
 
 import { BRAND, AnimatedGlyph, type GlyphMotion, BetdocLogo as BrandLogo } from './ui/brand';
 import { useUIStore } from './store/useUIStore';
-import { formatINR, formatSignedINR } from './lib/format';
 import ExecutionTerminal from './components/ExecutionTerminal';
 import { ScoutDrawer as EmbeddedScout } from './components/oracle/ScoutDrawer';
 import LoginForm from './components/LoginForm';
@@ -29,6 +28,10 @@ import { emergencyStop, resumeTrading, useControls, useDashboardSummary } from '
 import { invalidate } from './lib/resource';
 import { startRealtime } from './services/realtime';
 import { toast } from './store/useToastStore';
+import { TradingModeToggle } from './components/navigation/TradingModeToggle';
+import { CurrencySelector } from './components/currency/CurrencySelector';
+import { useDisplayMoney } from './components/currency/useDisplayMoney';
+import { usePaperTradingStore } from './store/usePaperTradingStore';
 
 const CommandCenter = lazy(() => import('./pages/CommandCenter').then(m => ({ default: m.CommandCenter })));
 const TheArena = lazy(() => import('./pages/TheArena').then(m => ({ default: m.TheArena })));
@@ -42,6 +45,7 @@ const Phantom = lazy(() => import('./pages/Phantom').then(m => ({ default: m.Pha
 const TheArchive = lazy(() => import('./pages/TheArchive').then(m => ({ default: m.TheArchive })));
 const ControlPanel = lazy(() => import('./pages/ControlPanel').then(m => ({ default: m.ControlPanel })));
 const SportsEngine = lazy(() => import('./pages/SportsEngine').then(m => ({ default: m.SportsEngine })));
+const PaperTradingSandbox = lazy(() => import('./pages/PaperTradingSandbox').then(m => ({ default: m.PaperTradingSandbox })));
 
 // ---------------------------------------------------------------------------
 // UTILITIES PRESERVED FROM ORIGINAL
@@ -232,6 +236,8 @@ const StageHeader = (): ReactElement => {
   const activeCommander = useCommanderStore((s) => s.activeCommander);
   const isCompact = useUIStore((s) => s.isCompact);
   const toggleLeft = useUIStore((s) => s.toggleLeft);
+  const money = useDisplayMoney();
+  const isPaperMode = usePaperTradingStore((s) => s.isPaperMode);
   // "Live" means the cross-section event bus is open; the odds feed is reported alongside it.
   const socketStatus: SocketStatus =
     MOCK_AUTH ? 'offline'
@@ -297,16 +303,23 @@ const StageHeader = (): ReactElement => {
               <span className="text-stone-300 dark:text-stone-700"> · </span>
               <span className="text-stone-400 dark:text-stone-500">Odds feed {oddsLive ? (oddsTransport === 'polling' ? 'polling' : 'streaming') : 'idle'}</span>
               <span className="text-stone-300 dark:text-stone-700"> · </span>
-              <span className="text-stone-400 dark:text-stone-500">INR book</span>
+              <span className="text-stone-400 dark:text-stone-500">INR book{money.converted ? ` · shown in ${money.currency}` : ''}</span>
+              <span className="text-stone-300 dark:text-stone-700"> · </span>
+              <span className="text-stone-400 dark:text-stone-500" title="Developer Credit">Amit Ashok Kumar Patnaik</span>
             </p>
           </div>
         </div>
       </div>
 
+      <div className="flex flex-wrap items-center gap-2" aria-label={isPaperMode ? 'Paper trading mode' : 'Live real-money mode'}>
+        <TradingModeToggle />
+        <CurrencySelector />
+      </div>
+
       <div className="flex w-full divide-x divide-stone-100 rounded-3xl bg-white shadow-soft sm:w-auto dark:divide-white/[0.05] dark:bg-stone-900 dark:shadow-none">
-        <StatTile label="Bankroll" value={summary.data ? formatINR(bankroll) : '—'} icon="account_balance_wallet" motionPreset="breathe" tone="positive" changeKey={bankroll} />
-        <StatTile label="Exposure" value={summary.data ? formatINR(exposure) : '—'} icon="inventory_2" motionPreset="sway" tone="caution" changeKey={exposure} />
-        <StatTile label="Today" value={summary.data ? formatSignedINR(dayPnl) : '—'} icon={pnlIcon} motionPreset="drift" tone={pnlTone} changeKey={dayPnl} />
+        <StatTile label="Bankroll" value={summary.data ? money.format(bankroll) : '—'} icon="account_balance_wallet" motionPreset="breathe" tone="positive" changeKey={bankroll} />
+        <StatTile label="Exposure" value={summary.data ? money.format(exposure) : '—'} icon="inventory_2" motionPreset="sway" tone="caution" changeKey={exposure} />
+        <StatTile label="Today" value={summary.data ? `${dayPnl > 0 ? '+' : ''}${money.format(dayPnl)}` : '—'} icon={pnlIcon} motionPreset="drift" tone={pnlTone} changeKey={dayPnl} />
       </div>
     </header>
   );
@@ -384,6 +397,7 @@ const NAV_ITEMS: readonly { to: string; label: string; icon: string; bot: Comman
   { to: '/phantom',        label: 'Phantom',        icon: 'blur_on',         bot: 'GARUDA'   },
   { to: '/wire',           label: 'The Wire',       icon: 'newspaper',       bot: 'VIDUR'    },
   { to: '/sports',         label: 'Sports Engine',  icon: 'sports',          bot: 'ARYABHATA'},
+  { to: '/sandbox',        label: 'Paper Trading',  icon: 'experiment',      bot: 'TODAR MAL'},
   { to: '/archive',        label: 'Archive',        icon: 'inventory_2',     bot: 'TODAR MAL'},
   { to: '/core',           label: 'Core',           icon: 'memory',          bot: 'PRATAP'   },
   { to: '/control-panel',  label: 'Control Panel',  icon: 'settings',        bot: 'KAUTILYA' },
@@ -808,6 +822,16 @@ const App = () => {
         <Route path="/sports" element={
           <AnimatedRoute>
             <SportsEngine />
+          </AnimatedRoute>
+        } />
+        <Route path="/sandbox" element={
+          <AnimatedRoute>
+            <PaperTradingSandbox />
+          </AnimatedRoute>
+        } />
+        <Route path="/paper-trading" element={
+          <AnimatedRoute>
+            <PaperTradingSandbox />
           </AnimatedRoute>
         } />
         <Route path="/core" element={

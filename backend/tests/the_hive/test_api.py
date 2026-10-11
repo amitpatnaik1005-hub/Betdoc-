@@ -166,7 +166,7 @@ async def test_fail_retry_then_cascade(client: AsyncClient, recorder: RecordingM
 @pytest.mark.asyncio
 async def test_learning_log_endpoint(client: AsyncClient) -> None:
     body = {
-        "bot_name": "DEVRAYA",
+        "bot_name": "ASHVATTHAMA",
         "parameter_name": "kelly_multiplier",
         "old_value": 0.25,
         "new_value": 0.2,

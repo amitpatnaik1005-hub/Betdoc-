@@ -36,7 +36,7 @@ class LegendaryBot(StrEnum):
     BHEESHMA = "BHEESHMA"  # Rules & compliance: rate limiting
     KARNA = "KARNA"  # Competitive intel: odds shopping
     ARJUNA = "ARJUNA"  # Sniper: high-frequency execution
-    DEVRAYA = "DEVRAYA"  # Visualization: UI rendering
+    ASHVATTHAMA = "ASHVATTHAMA"  # Execution router: bookmaker gateway (Parimatch), paper-mode simulation (Group 80)
 
 
 class BotStatus(StrEnum):
