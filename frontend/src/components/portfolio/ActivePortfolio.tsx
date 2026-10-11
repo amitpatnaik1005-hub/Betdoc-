@@ -5,7 +5,8 @@
  *   locks in a profit; "Hedge" opens the hedge modal.
  * - Hedge modal: a slider from Unbalanced (Free Bet: nothing lost if the bet fails, all profit on
  *   it) to Balanced (Equal Profit on every outcome), with the projected P&L per outcome.
- * - Arbitrage scanner: commission- and FX-adjusted arbitrages as they appear (new ones flash).
+ * - Arbitrage: on hold since Group 80's pivot (Coming Soon / Under Optimization): the fleet's compute goes to
+ *   Ashoka's value picks, Parimatch execution and the Paper Trading Sandbox.
  *   Execution fires Leg A first; a partial fill re-sizes the legs after it.
  */
 import { type KeyboardEvent, useEffect, useMemo, useRef, useState } from "react";
@@ -15,7 +16,6 @@ import { ApiError, apiClient } from "../../api/client";
 import { REFUSALS } from "../../lib/cfo";
 import { formatINR, formatOdds, formatTime, humanize } from "../../lib/format";
 import {
-  type ArbOpportunity,
   type HedgePlan,
   LEG_REFUSALS,
   type LegStatus,
@@ -28,6 +28,7 @@ import {
 } from "../../lib/portfolio";
 import { invalidate } from "../../lib/resource";
 import { newIdempotencyKey } from "../../store/useExecutionStore";
+import { ArbitrageComingSoon } from "./ArbitrageComingSoon";
 import { Button, CARD_VARIANTS, ConfirmButton, EmptyState, LiveDot, Panel, Pill, SPRING, SURFACE, Skeleton } from "../../ui/kit";
 
 const cx = (...parts: (string | false | null | undefined)[]): string => parts.filter(Boolean).join(" ");
@@ -412,141 +413,16 @@ const ReceiptView = ({ receipt, outcomes, book }: { receipt: MultiLegReceipt; ou
   </div>
 );
 
-// ---------------------------------------------------------------- arbitrage scanner
-const ArbCard = ({ arb, fresh }: { arb: ArbOpportunity; fresh: boolean }) => {
-  const reduce = useReducedMotion();
-  const [stake, setStake] = useState(arb.total_stake_inr);
-  const [busy, setBusy] = useState(false);
-  const [receipt, setReceipt] = useState<MultiLegReceipt | null>(null);
-  const [error, setError] = useState<ReturnType<typeof refusal> | null>(null);
-  const amount = Number(stake);
-  const valid = Number.isFinite(amount) && amount > 0 && /^\d+(\.\d{1,2})?$/.test(stake);
-  const scale = valid ? amount / n(arb.total_stake_inr) : 0;
-  const book = { home: arb.home, away: arb.away };
-
-  const execute = async () => {
-    setBusy(true);
-    setError(null);
-    try {
-      const result = await apiClient.post<MultiLegReceipt>("/omni/arbitrage/execute", {
-        idempotency_key: newIdempotencyKey(),
-        fixture_id: arb.fixture_id,
-        market: arb.market,
-        total_stake_inr: amount.toFixed(2),
-        legs: arb.legs.map((leg) => ({ selection: leg.selection, bookmaker_id: leg.bookmaker_id, odds: leg.odds })),
-      });
-      setReceipt(result);
-      invalidate("cfo");
-    } catch (err) {
-      setError(refusal(err));
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  return (
-    <motion.li
-      layout
-      initial={reduce ? { opacity: 0 } : { opacity: 0, y: 8 }}
-      animate={
-        fresh && !reduce
-          ? { opacity: 1, y: 0, backgroundColor: ["rgba(16,185,129,0.16)", "rgba(16,185,129,0)"] }
-          : { opacity: 1, y: 0 }
-      }
-      exit={{ opacity: 0 }}
-      transition={fresh ? { duration: 1.6 } : SPRING}
-      className="flex min-w-0 flex-col gap-3 rounded-2xl bg-white/70 p-4 shadow-soft ring-1 ring-stone-900/[0.03] backdrop-blur-md dark:bg-stone-800/50 dark:shadow-none dark:ring-white/[0.05]"
-    >
-      <div className="flex flex-wrap items-baseline justify-between gap-2">
-        <div className="min-w-0">
-          <p className="truncate text-sm font-semibold text-stone-900 dark:text-stone-50">{arb.home && arb.away ? `${arb.home} v ${arb.away}` : arb.fixture_id}</p>
-          <p className="truncate text-[11px] text-stone-400">
-            {arb.market}
-            {arb.commence_time && ` · ${formatTime(arb.commence_time)}`} · Σ1/odds {n(arb.booksum).toFixed(4)}
-          </p>
-        </div>
-        <span className="rounded-full bg-emerald-50 px-2.5 py-1 font-mono text-xs font-semibold text-emerald-700 dark:bg-emerald-400/10 dark:text-emerald-300">+{n(arb.margin_pct).toFixed(2)}%</span>
-      </div>
-      <ul className="flex flex-col gap-1">
-        {arb.legs.map((leg) => (
-          <li key={leg.selection} className="flex items-baseline justify-between gap-3 text-[13px]">
-            <span className="min-w-0 truncate text-stone-600 dark:text-stone-300">
-              {label(leg.selection, book)} <span className="font-mono">{formatOdds(n(leg.odds))}</span>
-              <span className="text-stone-400">
-                {" "}
-                · {humanize(leg.bookmaker_id)}
-                {n(leg.commission) > 0 && ` · true ${n(leg.true_odds).toFixed(3)}`}
-                {leg.currency !== "INR" && ` · ${leg.currency}`}
-              </span>
-            </span>
-            <span className="shrink-0 font-mono tabular-nums text-stone-800 dark:text-stone-100">{formatINR(n(leg.stake_inr) * scale)}</span>
-          </li>
-        ))}
-      </ul>
-      {receipt ? (
-        <ReceiptView receipt={receipt} outcomes={arb.legs.map((l) => l.selection)} book={book} />
-      ) : (
-        <div className="flex flex-wrap items-end justify-between gap-3">
-          <label className="flex min-w-0 flex-col gap-1">
-            <span className="text-[11px] text-stone-400">Total stake (₹)</span>
-            <input
-              inputMode="decimal"
-              value={stake}
-              onChange={(e) => setStake(e.target.value.replace(/[^\d.]/g, ""))}
-              disabled={busy}
-              aria-invalid={!valid}
-              className="w-32 rounded-xl bg-stone-50 px-3 py-1.5 font-mono text-sm tabular-nums text-stone-900 outline-none ring-1 ring-stone-900/5 focus:ring-2 focus:ring-emerald-500 dark:bg-stone-900 dark:text-stone-50 dark:ring-white/10"
-            />
-          </label>
-          <p className="text-[12px] text-stone-500 dark:text-stone-400">
-            Guaranteed <span className="font-mono font-semibold text-emerald-700 dark:text-emerald-300">≈ {formatINR(n(arb.guaranteed_profit_inr) * scale)}</span>
-          </p>
-          <ConfirmButton size="sm" variant="primary" icon="bolt" busy={busy} disabled={!valid} confirmLabel={`Fire ${arb.legs.length} legs?`} onConfirm={() => void execute()}>
-            Execute
-          </ConfirmButton>
-        </div>
-      )}
-      {error && (
-        <p className="rounded-xl bg-rose-50 px-3 py-2 text-[12px] text-rose-700 dark:bg-rose-500/10 dark:text-rose-300" role="alert">
-          <span className="font-semibold">{error.title}.</span> {error.message}
-        </p>
-      )}
-    </motion.li>
-  );
-};
-
-const ArbScanner = ({ arbs }: { arbs: ArbOpportunity[] }) => {
-  const seen = useRef<Set<string>>(new Set());
-  const [fresh, setFresh] = useState<Set<string>>(new Set());
-  useEffect(() => {
-    const appeared = arbs.map((a) => a.id).filter((id) => !seen.current.has(id));
-    for (const id of appeared) seen.current.add(id);
-    if (appeared.length === 0) return;
-    setFresh(new Set(appeared));
-    const timer = window.setTimeout(() => setFresh(new Set()), 1_800);
-    return () => window.clearTimeout(timer);
-  }, [arbs]);
-
-  return (
-    <Panel title="Arbitrage matrix scanner" icon="radar" className="lg:col-span-5" subtitle={`${arbs.length} live · after commission and FX`}>
-      {arbs.length === 0 ? (
-        <EmptyState icon="radar" title="No arbitrage right now" detail="Every pre-match market on the board is checked every second: Σ 1 / true odds < 1, with each exchange's commission taken out." />
-      ) : (
-        <ul className="flex flex-col gap-3">
-          <AnimatePresence initial={false}>
-            {arbs.map((arb) => (
-              <ArbCard key={arb.id} arb={arb} fresh={fresh.has(arb.id)} />
-            ))}
-          </AnimatePresence>
-        </ul>
-      )}
-    </Panel>
-  );
-};
+// ---------------------------------------------------------------- arbitrage (on hold, Group 80)
+const ArbScanner = () => (
+  <Panel title="Arbitrage Matrix" icon="radar" className="lg:col-span-5" subtitle="Multi-Bookmaker Engine">
+    <ArbitrageComingSoon compact />
+  </Panel>
+);
 
 // ---------------------------------------------------------------- the tab
 export const ActivePortfolio = () => {
-  const { status, portfolio, arbs, receivedAt, error, loading } = useLivePortfolio();
+  const { status, portfolio, receivedAt, error, loading } = useLivePortfolio();
   const [hedging, setHedging] = useState<string | null>(null);
   const live = hedging ? portfolio?.markets.find((m) => m.market_key === hedging) : undefined;
 
@@ -579,7 +455,7 @@ export const ActivePortfolio = () => {
         )}
       </motion.section>
 
-      <ArbScanner arbs={arbs} />
+      <ArbScanner />
 
       <AnimatePresence>{live && <HedgeModal key={live.market_key} book={live} onClose={() => setHedging(null)} />}</AnimatePresence>
     </>

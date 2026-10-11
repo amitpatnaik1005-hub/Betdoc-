@@ -4,6 +4,7 @@ import { PhantomHologramScene } from '../components/bots/PhantomHologramScene';
 import { type MatchOdds, type Side, matchOddsMarket, outcomeSide, useLiveOdds } from '../lib/api';
 import { formatAgo, formatINR, formatOdds, formatPct, humanize } from '../lib/format';
 import { runMutation, useResource } from '../lib/resource';
+import { ArbitrageComingSoon } from '../components/portfolio/ArbitrageComingSoon';
 import { CommanderHero, MOTIFS } from '../ui/hero';
 import { Async, Button, type Column, DataTable, EmptyState, Field, KeyValues, NumberInput, Page, Panel, Segmented, Pill, Select, StatusBadge, TextInput, num } from '../ui/kit';
 
@@ -12,12 +13,11 @@ import { Async, Button, type Column, DataTable, EmptyState, Field, KeyValues, Nu
 // ---------------------------------------------------------------------------
 interface Opportunity { id: string; event_name: string; market_type: string; total_implied_probability: number; guaranteed_profit_pct: number; target_total_stake: number; stakes: number[]; is_active: boolean; created_at: string }
 interface CalcLog { id: string; calc_type: string; inputs: Record<string, unknown>; outputs: Record<string, unknown>; created_at: string }
-interface Surebet { match_id: string; market_type: string; legs: { selection_id: string; bookmaker_id: string; odds: number; recommended_stake_pct: number }[]; profit_pct: number }
 interface Comparison { best_bookmaker: string; best_odds: number; mean_odds: number; edge_percentage: number; placement_instruction: string; considered_bookmakers: string[]; ignored_bookmakers: string[] }
 
 type Tool = 'arbitrage' | 'dutching' | 'matched' | 'maker' | 'coint';
 const TOOLS: { key: Tool; label: string; icon: string }[] = [
-  { key: 'arbitrage', label: 'Arbitrage', icon: 'balance' },
+  { key: 'arbitrage', label: 'Arbitrage (soon)', icon: 'hourglass_top' },
   { key: 'dutching', label: 'Dutching', icon: 'call_split' },
   { key: 'matched', label: 'Matched betting', icon: 'swap_horiz' },
   { key: 'maker', label: 'Market maker', icon: 'candlestick_chart' },
@@ -40,9 +40,9 @@ function resultRows(res: Record<string, unknown>): { label: string; value: React
 // QUANT TOOLKIT
 // ---------------------------------------------------------------------------
 const Toolkit = () => {
-  const [tool, setTool] = useState<Tool>('arbitrage');
+  const [tool, setTool] = useState<Tool>('dutching');
   const [f, setF] = useState({
-    event: 'IND v AUS', market: 'Match Odds', odds: '2.10, 2.05', commissions: '0, 2', stake: '1000', minMargin: '0',
+    odds: '2.10, 2.05', stake: '1000',
     backStake: '100', backOdds: '3.0', layOdds: '3.1', layComm: '2', mode: 'STANDARD',
     mid: '2.0', inventory: '0', gamma: '0.1', sigma: '0.2', horizon: '1', now: '0', k: '1.5',
     z: '2.3', entry: '2', exit: '0.5', stop: '3.5',
@@ -54,13 +54,14 @@ const Toolkit = () => {
   const run = async () => {
     setBusy(true);
     setResult(null);
-    const calls: Record<Tool, () => Promise<Record<string, unknown>>> = {
-      arbitrage: () => apiClient.post('/phantom/arbitrage', { event_name: f.event, market_type: f.market, odds: list(f.odds), commissions_pct: list(f.commissions), target_total_stake: num(f.stake), minimum_profit_margin_pct: num(f.minMargin) }),
+    // Group 80's pivot: the arbitrage tool is on hold (its tab shows the Coming Soon banner).
+    const calls: Record<Exclude<Tool, 'arbitrage'>, () => Promise<Record<string, unknown>>> = {
       dutching: () => apiClient.post('/phantom/dutching', { target_total_stake: num(f.stake), odds: list(f.odds) }),
       matched: () => apiClient.post('/phantom/matched-betting', { back_stake: num(f.backStake), back_odds: num(f.backOdds), lay_odds: num(f.layOdds), lay_commission_pct: num(f.layComm), mode: f.mode }),
       maker: () => apiClient.post('/phantom/market-maker', { mid_price: num(f.mid), inventory: num(f.inventory), gamma: num(f.gamma), volatility_sigma: num(f.sigma), time_horizon_t: num(f.horizon), current_time_t: num(f.now), liquidity_k: num(f.k) }),
       coint: () => apiClient.post('/phantom/cointegration', { current_z_score: num(f.z), entry_threshold: num(f.entry), exit_threshold: num(f.exit), stop_loss_threshold: num(f.stop) }),
     };
+    if (tool === 'arbitrage') return;
     const res = await runMutation(calls[tool], { invalidate: ['phantom', 'commanders'], errorTitle: 'Calculation rejected' });
     setBusy(false);
     if (res) setResult(res);
@@ -71,15 +72,15 @@ const Toolkit = () => {
       <div className="mb-6">
         <Segmented label="Tool" value={tool} onChange={(t) => { setTool(t); setResult(null); }} options={TOOLS.map((t) => ({ value: t.key, label: t.label, icon: t.icon }))} />
       </div>
+      {tool === 'arbitrage' ? (
+        <ArbitrageComingSoon detail="Cross-exchange linear programming arbitrage is under optimization. Use Paper Trading mode to test high-conviction value bets without risking real capital." />
+      ) : (
       <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
         <div className="grid grid-cols-2 content-start gap-2.5">
-          {(tool === 'arbitrage' || tool === 'dutching') && (
+          {tool === 'dutching' && (
             <>
-              {tool === 'arbitrage' && <Field label="Event" className="col-span-2"><TextInput value={f.event} onChange={set('event')} /></Field>}
               <Field label="Odds per outcome" className="col-span-2" hint="comma-separated, one per leg"><TextInput value={f.odds} onChange={set('odds')} /></Field>
-              {tool === 'arbitrage' && <Field label="Commission % per leg" className="col-span-2"><TextInput value={f.commissions} onChange={set('commissions')} /></Field>}
               <Field label="Total stake ₹"><NumberInput value={f.stake} onChange={set('stake')} /></Field>
-              {tool === 'arbitrage' && <Field label="Min margin %"><NumberInput value={f.minMargin} onChange={set('minMargin')} /></Field>}
             </>
           )}
           {tool === 'matched' && (
@@ -120,10 +121,11 @@ const Toolkit = () => {
               <KeyValues items={resultRows(result)} />
             </div>
           ) : (
-            <EmptyState icon="calculate" title="Run a calculation" detail="Avellaneda-Stoikov quoting, cointegration signals, dutching and arbitrage staking are computed server-side." />
+            <EmptyState icon="calculate" title="Run a calculation" detail="Avellaneda-Stoikov quoting, cointegration signals, dutching and matched-betting staking are computed server-side." />
           )}
         </div>
       </div>
+      )}
     </Panel>
   );
 };
@@ -192,12 +194,7 @@ const OddsRouter = ({ fixtures }: { fixtures: MatchOdds[] }) => {
 export const Phantom = () => {
   const opportunities = useResource('phantom:opportunities', () => apiClient.get<Opportunity[]>('/phantom/opportunities', { limit: 50 }), { intervalMs: 30_000 });
   const calculations = useResource('phantom:calculations', () => apiClient.get<CalcLog[]>('/phantom/calculations', { limit: 30 }), { intervalMs: 30_000 });
-  const surebets = useResource('signals:surebets', () => apiClient.get<Surebet[]>('/signals/surebets', { max_staleness_minutes: 30 }), { intervalMs: 60_000 });
   const odds = useLiveOdds();
-
-  const active = (opportunities.data ?? []).filter((o) => o.is_active);
-  const best = [...(surebets.data ?? [])].sort((a, b) => b.profit_pct - a.profit_pct)[0];
-  const found = active.length > 0 || Boolean(best);
 
   const oppColumns: Column<Opportunity>[] = [
     { key: 'event', header: 'Event', render: (o) => <span><span className="font-medium">{o.event_name}</span> <span className="text-xs text-stone-400">· {o.market_type}</span></span> },
@@ -211,37 +208,18 @@ export const Phantom = () => {
     <Page>
       <CommanderHero
         commander="GARUDA"
-        headline={found ? `GARUDA LOCKED ON. ${active.length} live arbitrage${active.length === 1 ? '' : 's'}${best ? `, best surebet ${formatPct(best.profit_pct, 2)}` : ''}.` : 'GARUDA SCANNING. No risk-free spread on fresh prices yet.'}
+        headline="GARUDA ON STANDBY. Arbitrage Matrix: Coming Soon / Advanced Multi-Bookmaker Engine Under Optimization."
         motif={MOTIFS.waves}
-        detail="Arbitrage, dutching and market-making maths on live prices. Every calculation is persisted to an auditable log."
-        scene={<PhantomHologramScene scanProgress={found ? 100 : Math.min(95, (surebets.data?.length ?? 0) * 10 + 35)} targetFound={found} targetLabel={best ? best.match_id : active[0]?.event_name} className="h-[220px]" />}
-        actions={
-          <>
-            <Button variant="primary" icon="radar" busy={surebets.loading && surebets.data !== undefined} onClick={() => void surebets.refresh()}>Scan surebets</Button>
-            <Button icon="refresh" onClick={() => { void opportunities.refresh(); void calculations.refresh(); }}>Refresh ledger</Button>
-          </>
-        }
+        detail="Cross-bookmaker arbitrage is on hold while the fleet's compute goes to Ashoka's value picks, Parimatch execution and the Paper Trading Sandbox. Dutching, matched betting, market-making and cointegration maths stay live; every calculation is persisted to an auditable log."
+        scene={<PhantomHologramScene scanProgress={35} targetFound={false} className="h-[220px]" />}
+        actions={<Button icon="refresh" onClick={() => { void opportunities.refresh(); void calculations.refresh(); }}>Refresh ledger</Button>}
       />
       <Toolkit />
       <OddsRouter fixtures={odds.data ?? []} />
-      <Panel title="Live surebets" icon="verified" className="lg:col-span-5" updatedAt={surebets.updatedAt}>
-        <Async resource={surebets} isEmpty={(r) => r.length === 0} empty={<EmptyState icon="verified" title="No surebets" detail="Cross-book prices on fresh ticks don't currently sum below 100%." />}>
-          {(rows) => (
-            <ul className="flex flex-col gap-2">
-              {rows.slice(0, 8).map((s) => (
-                <li key={`${s.match_id}-${s.market_type}`} className="rounded-xl bg-stone-50 p-3 dark:bg-white/[0.03]">
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="truncate font-mono text-xs text-stone-700 dark:text-stone-200">{s.match_id} · {s.market_type}</span>
-                    <Pill tone="good">{formatPct(s.profit_pct, 2)}</Pill>
-                  </div>
-                  <p className="mt-1 text-[11px] text-stone-500 dark:text-stone-400">{s.legs.map((l) => `${l.selection_id} ${formatOdds(l.odds)} @ ${l.bookmaker_id} (${formatPct(l.recommended_stake_pct, 0)})`).join(' · ')}</p>
-                </li>
-              ))}
-            </ul>
-          )}
-        </Async>
+      <Panel title="Arbitrage Matrix" icon="hourglass_top" className="lg:col-span-5" subtitle="Multi-Bookmaker Engine">
+        <ArbitrageComingSoon compact />
       </Panel>
-      <Panel title="Shadow execution ledger" icon="blur_on" className="lg:col-span-7" updatedAt={opportunities.updatedAt}>
+      <Panel title="Shadow execution ledger" icon="blur_on" className="lg:col-span-7" subtitle="history · the engine is on hold" updatedAt={opportunities.updatedAt}>
         <Async resource={opportunities} isEmpty={(r) => r.length === 0} empty={<EmptyState icon="blur_on" title="No arbitrage recorded" detail="Arbitrage runs that find a locked profit are persisted here." />}>
           {(rows) => <DataTable columns={oppColumns} rows={rows} rowKey={(o) => o.id} dense />}
         </Async>
