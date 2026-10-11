@@ -137,6 +137,31 @@
     - `poll_multi_sport_consensus_odds`: Runs every 60 seconds across all 9 sports.
     - `screen_cross_provider_arbitrage`: Runs every 30 seconds across all 10 omni-providers to identify live arb opportunities and positive EV lines.
 
+14. **EXHAUSTIVE RETROSPECTIVE INTEGRATION MATRIX ACROSS ALL PRIOR GROUPS (GROUPS 1 TO 78)**:
+    The multi-sport quantitative engine does NOT operate in an isolated silo. It must seamlessly interface with every prior capability established in BetDoc:
+    - **Integration with the 17 Commander Fleet**:
+      * **ASHOKA (Scout Oracle & Parlay Generator - Groups 45 & 69)**: When generating multi-sport accumulators (doubles, trebles, Heinz, Trixie), Ashoka must call `calculate_fair_odds()` across distinct sport adapters and apply the multi-sport correlation discount penalty.
+      * **GARUDA (Ingestion Fleet Orchestrator - Groups 59-60)**: Orchestrates the 100+ provider connectors, managing distributed Redis locks (`OmniRedisKeys.fleet_lock`) and rate-limit windows (`OmniRedisKeys.rate_window`).
+      * **PANINI (Universal Entity Resolution)**: Normalizes team, league, and player string aliases across all 100+ feeds (e.g., mapping "Manchester City", "Man City", and "MCFC" to canonical ID `soccer_epl_mci`).
+      * **ARYABHATA (Quantitative Modeling - Groups 54-58)**: Houses the underlying numerical solvers (Dixon-Coles bivariate optimizer, DLS exponential decay constants, Markov transition matrices).
+      * **SHIVAJI & RANI CHENNAMMA (Risk Fortress & Capital Shield)**: Monitor cross-sport portfolio risk and veto any wager that violates capital preservation rules.
+      * **SUBHASH (Automated Execution Sniper)**: Routes validated betting slips directly to **Parimatch** (`https://parimatchs1.com/en/all-live`) as the primary execution book, falling back to 1xBet or Stake for derivative props.
+    - **Integration with All 5 Stop-Loss Mechanisms (Group 77)**:
+      1. *Trailing Stop*: Continuously recalculates live win probability via sport adapters to lock in cashout profits.
+      2. *Hard Equity Floor*: Halts all new orders across all 9 sports if daily portfolio drawdown reaches the stop threshold.
+      3. *Drawdown Alert & Auto-Halt*: Enforces an absolute lock on automated execution until signed off by the admin desk.
+      4. *Volatility Expansion Kill-Switch*: Pauses live in-play betting if odds move faster than 15% within a 30-second window.
+      5. *Correlation & Cluster Limit*: Caps maximum bankroll allocation to any single event or cluster of correlated markets.
+    - **Integration with The Wire & Live Feeds (Group 78)**:
+      * Live clock, period scores, team sheets, and injury reports from ESPN Wire directly populate the `context` dictionary for all 9 sport adapters.
+      * Pitch friction, wind velocity, temperature, and evening dew factor from Open-Meteo dynamically adjust expected total lines.
+      * Breaking news catalysts (3.5 point line moves within 15 minutes) trigger high-priority recalculations in `MultiSportOddsSyncService`.
+    - **Integration with Never-Forget Mistake Memory Guard & User XP (Group 75 / FA-2)**:
+      * Bet submissions on non-core sports or under high emotional tilt conditions are cross-checked against historical user mistake memory.
+      * Disciplined positive EV multi-sport wagers award XP points to level up user trading tiers.
+    - **Integration with CFO Capital Growth & Dynamic Kelly Allocation (Group 76 / FA-4)**:
+      * Model-derived edges are scaled by sport-specific Kelly multipliers before determining the exact stake recommendation in the user's primary currency (INR on Parimatch).
+
 ---
 
 ## 🏛️ PART 1: SYSTEM ARCHITECTURE & 9-SPORT MATHEMATICAL FORMULATIONS
