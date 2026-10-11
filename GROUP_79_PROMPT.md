@@ -23,20 +23,35 @@
    - Run `git push origin feature/garuda-ingestion` to push both Group 77 and Group 78 commits to GitHub.
    - Verify `git status` has a clean working tree (or only untracked prompt files) and that Docker containers
      (`betdoc_db` on 5432 and `betdoc_redis` on 6379) are active and healthy.
-4. **OMNI-PROVIDER INTEGRATION & ALL API KEYS RESOLUTION (MANDATORY)**:
-   Do NOT rely exclusively on The Odds API. The multi-sport quantitative engine must ingest, normalize, and
-   cross-reference odds, news, weather, and game states from ALL connected providers and bookmakers in the fleet:
-   - **The Odds API** (`ODDS_API_KEY`, `ODDS_API_BASE_URL`): Multi-bookmaker global consensus quotes across 9 sports.
-   - **Polymarket** (`POLYMARKET_GAMMA_BASE_URL`): Decentralized prediction market probabilities and crowd wisdom.
-   - **Pinnacle** (`PINNACLE_API_BASE_URL`): Sharp benchmark market-maker pricing and low-vig reference lines.
-   - **Betfair Exchange** (`BETFAIR_IDENTITY_URL`): Peer-to-peer back/lay order book depth and implied true odds.
-   - **Parimatch** (`PARIMATCH_FEED_TOKEN`): Direct odds injection feed, Asian handicaps, and live in-play micro-markets.
-   - **Stake** & **1xBet** (`one_xbet_adapter`, `stake_adapter`): Retail book prices, player props, and accumulator slips.
-   - **ESPN Multi-Sport Wire** (`WIRE_ESPN_BASE_URL`): Live scoreboards, match clocks, official team sheets, and injuries.
-   - **Open-Meteo Weather API** (`WIRE_OPEN_METEO_FORECAST_URL`): Pitch friction, wind, temperature, and evening dew factor.
-   - **NewsAPI & Wire Sources** (`NEWSAPI_ORG_API_KEY`): Breaking squad rotations, injury alerts, and steam catalysts.
-   - **Encrypted Vault Credential Loading**: Dynamically decrypt stored provider API keys from `vault_provider_credentials`
-     using `VaultCrypto` and `MASTER_VAULT_KEY`, seamlessly falling back to environment settings (`config.py`).
+4. **UNIVERSAL OMNI-PROVIDER INTEGRATION & 100+ API CATALOG RESOLUTION (MANDATORY)**:
+   Do NOT rely exclusively on The Odds API or a small handful of books. The multi-sport quantitative engine must
+   ingest, normalize, and cross-reference odds, news, weather, and game states from the fleet's entire **100+ provider catalog**
+   (categorized in `D:\confidential\API Keys & TARGET URL (Read me).md`):
+   - **CATEGORY-A: Primary Capital Bookmaker & Execution Target**:
+     * **Parimatch** (`https://parimatchs1.com/en/all-live` / `PARIMATCH_FEED_TOKEN`): **Primary Capital Account** where the user's betting bankroll sits. All primary live bets, Asian handicaps, match winners, and singles must be prioritized for execution routing here.
+     * **1xBet** (`https://indian.1xbet.com/en`) & **Stake** (`https://stake.com/sports/home`): Retail execution books for accumulator slips, multi-bets, and player props.
+   - **CATEGORY-A: Sharp Reference Benchmarks & Exchange Markets**:
+     * **Pinnacle** (`PINNACLE_API_BASE_URL` / `PINNACLE_API_KEY`): Low-margin market-maker pricing; used as the ultimate sharp benchmark for true probabilities.
+     * **Betfair Exchange** (`https://www.betfair.com/exchange/plus/` / `BETFAIR_IDENTITY_URL`): Peer-to-peer back/lay order book depth and exchange implied zero-vig odds.
+     * **The Odds-API** (`ODDS_API_KEY`, `ODDS_API_BASE_URL`): Multi-bookmaker global consensus aggregator across all 9 sports.
+   - **CATEGORY-A: High-Frequency Sports Feeds & Micro-Data APIs**:
+     * **Oddspapi.io**, **Sharpapi**, **Sportsdata.io**, **The Rundown.io**, **Sports-API**, **All Sports API**, **Sportsmonks**, **SoccerAPI**, **LiveScore API**.
+     * **RapidAPI Sports Suite**: SofaScore (player ratings & heatmaps), Bet365data (cards/corners/micro-markets), CrickBuzz (ball-by-ball commentary), Cricket Live Line (sub-second ball ticks), Flashlive Sports (instant score webhooks), Sports Highlights API, and Football Prediction APIs.
+   - **CATEGORY-A: Blockchain Prediction Markets (Wisdom of Crowds)**:
+     * **Polymarket** (`https://polymarket.com/` / `POLYMARKET_GAMMA_BASE_URL`), **Kalshi** (`https://kalshi.com/`), **Manifold Markets**, **Limitless Prediction Markets**, **Predict.fun**, and **Myriad Markets**.
+   - **CATEGORY-A: Dynamic Web Scrapers & Headless Harvesters**:
+     * Playwright dynamic scraper, Hyperscraper, Scrapbee, AI Web Scraper, Zenith, and DripCrawler.
+   - **CATEGORY-B: Atmospheric, Satellite Climate & Geocoding Feeds**:
+     * **Open-Meteo Weather API** (`WIRE_OPEN_METEO_FORECAST_URL`): Pitch friction, wind, temperature, barometric pressure, and evening dew factor.
+     * Geocoding & Extreme Context APIs: Venue coordinates, ground elevation, and altitude fatigue adjustments (e.g., Denver, Mexico City).
+   - **CATEGORY-C: Macroeconomics, FX & Crypto Markets**:
+     * Real-time FX exchange rates (INR, USD, EUR, GBP, USDT) for multi-currency bet sizing on Parimatch and Stake.
+   - **CATEGORY-D: Flight Status & Travel Logistics**:
+     * Flight status & transit tracking APIs: Quantifying team travel fatigue, rest deficits, and back-to-back road trip impacts in NBA, NHL, and European away matches.
+   - **CATEGORY-E: News, Media, Social Steam & OSINT Feeds**:
+     * **NewsAPI** (`NEWSAPI_ORG_API_KEY`), real-time news data, social sentiment (Twitter/X, Reddit sharp chatter), and OSINT early injury intelligence feeds.
+   - **Encrypted Vault Credential Loading**:
+     * Dynamically decrypt stored provider API keys from `vault_provider_credentials` using `VaultCrypto` and `MASTER_VAULT_KEY`, seamlessly falling back to environment settings (`config.py`). Zero plaintext secrets must ever be committed to Git.
 5. **ZERO UNFINISHED TASKS & COMPULSORY INCLUSIONS**:
    - Complete every single sport adapter, domain resolver, settlement rule, database model, migration, schema,
      API route, background odds poller, Zustand store, and UI component.
@@ -2203,6 +2218,7 @@ class MultiSportOddsSyncService:
         """
         Retrieves and decrypts provider credentials from the secure Vault table
         falling back to application settings if not found in database.
+        Supports all Category A-E providers from the confidential 100+ catalog.
         """
         try:
             stmt = select(VaultProviderCredential).where(VaultProviderCredential.provider == provider_name)
@@ -2214,17 +2230,36 @@ class MultiSportOddsSyncService:
         except Exception as exc:
             logger.debug("Vault lookup for %s skipped or deferred: %s", provider_name, exc)
 
-        # Fallback to environment keys
+        # Fallback to environment keys across the 100+ catalog
         if provider_name == "the_odds_api":
             return {"api_key": self.odds_api_key, "base_url": self.odds_api_url}
         elif provider_name == "polymarket":
             return {"base_url": self.polymarket_url}
         elif provider_name == "pinnacle":
-            return {"base_url": self.pinnacle_url}
+            return {"base_url": self.pinnacle_url, "api_key": getattr(settings, "PINNACLE_API_KEY", None)}
         elif provider_name == "betfair":
-            return {"base_url": self.betfair_url}
+            return {"base_url": self.betfair_url, "app_key": getattr(settings, "BETFAIR_APP_KEY", None)}
         elif provider_name == "parimatch":
-            return {"token": self.parimatch_token}
+            # Primary capital bookmaker
+            return {"token": self.parimatch_token, "target_url": getattr(settings, "PARIMATCH_TARGET_URL", "https://parimatchs1.com/en/all-live")}
+        elif provider_name == "one_xbet":
+            return {"api_key": getattr(settings, "ONE_XBET_API_KEY", None), "target_url": "https://indian.1xbet.com/en"}
+        elif provider_name == "stake":
+            return {"api_key": getattr(settings, "STAKE_API_KEY", None), "target_url": "https://stake.com/sports/home"}
+        elif provider_name == "oddspapi":
+            return {"api_key": getattr(settings, "ODDSPAPI_API_KEY", None)}
+        elif provider_name == "sportsdata_io":
+            return {"api_key": getattr(settings, "SPORTSDATA_IO_KEY", None)}
+        elif provider_name == "sportsmonks":
+            return {"api_key": getattr(settings, "SPORTSMONKS_API_KEY", None)}
+        elif provider_name == "kalshi":
+            return {"base_url": "https://kalshi.com"}
+        elif provider_name == "manifold":
+            return {"base_url": "https://manifold.markets"}
+        elif provider_name == "limitless":
+            return {"api_key": getattr(settings, "LIMITLESS_API_KEY", None)}
+        elif provider_name == "rapidapi":
+            return {"master_key": getattr(settings, "RAPIDAPI_KEY", None)}
         elif provider_name == "espn":
             return {"base_url": self.espn_url}
         elif provider_name == "open_meteo":
