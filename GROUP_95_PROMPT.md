@@ -1,46 +1,67 @@
 # ====================================================================================================
 # GROUP 95 MASTER SPECIFICATION & CLAUDE CODE PRODUCTION IMPLEMENTATION BLUEPRINT
 # LIVE REAL-MONEY BETTING GATEWAY, PARIMATCH LIVE SLIP TERMINAL, REAL BANKROLL LEDGER,
-# ODDS DECAY SANITY SHIELD & ASSISTED EXECUTION DESK (COMMANDER ASHVATTHAMA & TODAR MAL)
+# ODDS DECAY SANITY SHIELD, SECTION 115BBJ 30% TDS CASH ENGINE & ASSISTED EXECUTION DESK
 # ====================================================================================================
 # Developed for Amit Ashok Kumar Patnaik | BetDoc Quantitative Sports Trading Fleet
 # Target Environment: d:\BetDoc on branch `feature/garuda-ingestion` and `main`
 #
 # [CLAUDE EFFORT SETTING: HIGH / ULTRACODE]
+# [LOOP VALIDATION: 1000x AUDITED / 0% LOOPHOLES / ZERO STUBS]
 # ====================================================================================================
 
 ## 🎯 MANDATORY OPERATIONAL DIRECTIVES FOR CLAUDE CODE:
+
 1. **EFFORT MUST BE SET TO HIGH / ULTRACODE**:
-   Channel deep architectural reasoning into building the live real-money execution bridge.
-   Deliver production-grade, drop-in Python domain models, FastAPI routes, React components,
-   and automated tests with zero placeholders, zero ellipsis, and 0% loopholes.
-2. **ZERO TOKEN WASTE & PURPOSEFUL DEPTH**:
-   Do not generate conversational fluff or speculative stubs. Every line of code written must be
-   fully wired, strongly typed, AST-valid, and covered by automated tests.
+   Channel deep quantitative engineering, financial accounting rigor, and defensive software architecture.
+   Deliver production-ready, drop-in Python domain models, database migrations, FastAPI routes, React components,
+   and automated tests with zero placeholders, zero ellipsis (`...`), zero `pass` stubs, and 0% loopholes.
+
+2. **ZERO TOKEN WASTE & PURPOSEFUL ARCHITECTURAL DEPTH**:
+   Do not generate conversational fluff, speculative outlines, or incomplete summaries.
+   Every line of code written must be strongly typed, AST-valid, fully wired into the backend router and frontend SPA,
+   and backed by comprehensive automated test assertions.
+
 3. **PRESERVE ALL STRATEGIC PIVOTS & CORE ADDITIONS (GROUPS 79 & 80)**:
-   - **Arbitrage Module Paused**: Maintain `"Arbitrage Matrix: Coming Soon / Advanced Multi-Bookmaker Engine Under Optimization"`
-     in all UI surfaces (`ActivePortfolio.tsx`, `Phantom.tsx`) to conserve remaining compute credits.
-   - **Paper Trading Sandbox Preserved**: The virtual sandbox (₹1,00,000 INR dummy capital) remains active.
-     The user can toggle seamlessly between `[PAPER TRADING]` and `[REAL MONEY LIVE DESK]`.
-   - **Multi-Currency & Section 115BBJ 30% TDS (Commander TODAR MAL)**: Real money winnings are automatically
-     tracked in Indian Rupees (`₹ INR`), with the 30% flat Indian TDS ledger recording gross vs net cash.
-   - **17 Named Commanders**: All 17 historical commanders must be referenced in their authoritative roles.
-4. **PRIMARY EXECUTION TARGET: PARIMATCH (INR)**:
+   - **Arbitrage Module Strictly Paused**: Maintain `"Arbitrage Matrix: Coming Soon / Advanced Multi-Bookmaker Engine Under Optimization"`
+     in all UI surfaces (`ActivePortfolio.tsx`, `Phantom.tsx`, `ArbitrageComingSoon.tsx`) to conserve remaining compute credits.
+   - **Paper Trading Sandbox Preserved**: The virtual sandbox (default ₹1,00,000 INR dummy capital) remains 100% active.
+     The user must be able to toggle seamlessly between `[🟡 PAPER TRADING (₹1,00,000 VIRTUAL)]` and `[🟢 REAL MONEY LIVE DESK (₹ REAL CASH)]`.
+     Virtual and Real cash pools must remain strictly isolated with ZERO cross-contamination.
+   - **Multi-Currency & Section 115BBJ 30% TDS (Commander TODAR MAL)**: Real money transactions, balances, and P&L
+     must default to Indian Rupees (`₹ INR`). Real net winnings must automatically trigger the 30% flat Indian TDS deduction ledger.
+   - **17 Named Historical Commanders**: All 17 commanders must be represented in their authoritative roles.
+
+4. **PRIMARY EXECUTION TARGET: PARIMATCH (INR) & 1XBET**:
    - Primary target: **Parimatch** (`https://parimatchs1.com/en/all-live` in INR).
    - Secondary target: **1xBet** (`https://1xbet.com`).
-   - Every live bet ticket must generate an authenticated/direct event deep-link, exact market name,
-     target decimal odds, and recommended Kelly stake in `₹ INR`.
-5. **PRE-PLACEMENT ODDS DECAY & SLIPPAGE SHIELD (COMMANDER SHIVAJI & ASHVATTHAMA)**:
-   - Before confirming placement, the system re-validates the live market odds against the minimum
-     acceptable price ($Odds_{min} = \frac{1}{\text{True Prob}} \times (1 + \text{Min Edge})$).
-   - If market odds have decayed below $Odds_{min}$, the terminal displays a high-priority warning:
-     `"EDGE DECAYED: Market odds dropped from 2.10 to 1.85. Minimum required odds: 2.02. DO NOT PLACE."`
-6. **DEVELOPER CREDIT**:
-   The developer name `"Amit Ashok Kumar Patnaik"` MUST be embedded in all schemas, API headers,
-   receipt metadata, and UI headers.
-7. **ALL TESTS MUST PASS & FINAL PUSH TO GITHUB**:
+   - Every live ticket generated by Ashvatthama must include:
+     * Direct live event deep-link URL (targeting `parimatchs1.com/en/all-live`).
+     * Exact standardized market name (Match Odds, Over/Under, Asian Handicap, etc.).
+     * Target decimal odds and minimum profitable floor ($Odds_{floor}$).
+     * Recommended fractional Kelly stake in `₹ INR`.
+     * One-click formatted clipboard copy payload for instant pasting into external bet slips.
+
+5. **PRE-PLACEMENT ODDS DECAY & SLIPPAGE SANITY SHIELD (COMMANDER SHIVAJI & ASHVATTHAMA)**:
+   - Prior to bet confirmation, the system dynamically calculates the minimum profitable price:
+     $$Odds_{floor} = \frac{1}{\text{True Probability}} \times (1 + \text{Min Edge})$$
+   - If market odds decay below $Odds_{floor}$, the terminal surfaces an amber/red warning:
+     `"⚠️ EDGE DECAYED: Live odds (1.92) dropped below the minimum profitable floor (2.02). Expected Value is negative (-3.8%)."`
+   - If user attempts to confirm with sub-floor odds, an explicit override acknowledgment is required.
+
+6. **STOP-LOSS CIRCUIT BREAKER ENFORCEMENT (COMMANDER SHIVAJI)**:
+   - Enforce hardware-grade stop-loss rules:
+     * 15% Daily Drawdown Limit: If realized losses in the current 24h window reach 15% of starting bankroll, halt all real-money betting until 00:00 IST.
+     * 3 Consecutive Loss Cool-down: 3 consecutive settled losses trigger a 30-minute cooling period before new real tickets can be placed.
+     * Max Single Bet Stake: No single wager may exceed 5% of available cash balance regardless of Kelly recommendation.
+
+7. **DEVELOPER CREDIT**:
+   The developer name `"Amit Ashok Kumar Patnaik"` MUST be embedded in all schemas, API headers (`X-Engineered-For`),
+   receipt metadata, tax certificates, and UI headers.
+
+8. **ALL TESTS MUST PASS & FINAL PUSH TO GITHUB**:
    - Write comprehensive tests in `backend/tests/test_real_money_execution_gateway.py`.
-   - Run tests with `pytest` and frontend build with `npm run build` (0 errors).
+   - Run tests with `pytest` (100% pass) and frontend build with `npm run build` (0 errors).
    - Commit and push all changes directly to git on branch `feature/garuda-ingestion` and `main`.
 
 ---
@@ -77,41 +98,44 @@
                  ┌──────────────────────────────────────────────────┐
                  │          REAL BANKROLL LEDGER (TODAR MAL)        │
                  │   Deducts ₹ Stake from Real Cash Balance         │
-                 │   Monitors Live Match via WebSocket              │
+                 │   Monitors Live Match via WebSocket / Celery     │
                  │   Auto-Settles Net Returns + 30% TDS Ledger      │
                  └──────────────────────────────────────────────────┘
 ```
 
 ---
 
-## 🎖️ PART 2: THE 17-COMMANDER ROSTER & OPERATIONAL ASSIGNMENTS
+## 🎖️ PART 2: THE 17-COMMANDER FLEET ROSTER & OPERATIONAL ASSIGNMENTS
+
+Every commander plays an active, non-placeholder role in Group 95:
 
 1. **ASHVATTHAMA (The Execution Sniper & Parimatch Terminal Commander)**:
    - Primary commander of Group 95.
-   - Formats execution orders for Parimatch live feeds, verifies market lines, and handles execution slips.
+   - Builds Parimatch-ready live execution tickets, computes deep-links, monitors line drift, and formats 1-click clipboard payloads.
 2. **TODAR MAL (The Imperial Accountant & Real Bankroll Ledger)**:
-   - Maintains the Real Cash Vault (`real_bankroll_balance`, `real_cash_transactions`, `real_tax_ledger`).
-   - Deducts Section 115BBJ 30% TDS from gross winnings.
+   - Primary co-commander of Group 95.
+   - Manages the Real Cash Vault (`real_bankrolls`, `real_cash_transactions`, `real_bet_tickets`).
+   - Implements Section 115BBJ 30% flat Indian TDS withholding on net winnings.
 3. **KAUTILYA (The Prime Minister & Chief Strategist)**:
    - Evaluates the 9-Pillar vetting filter before promoting any signal to the Real Money Desk.
 4. **KUMBHA (The Royal Treasurer & Position Sizer)**:
-   - Strictly governs fractional Kelly staking (0.20–0.50) based on live real bankroll.
+   - Strictly governs fractional Kelly staking (0.20–0.50) based on actual available live cash.
 5. **SHIVAJI (The Sovereign Shield & Stop-Loss Guardian)**:
-   - Halts all real-money betting instantly if 15% daily drawdown, 3 consecutive losses, or session limit is reached.
+   - Enforces the 15% daily drawdown circuit breaker and consecutive loss cool-down periods.
 6. **ASHOKA (The Oracle & Supreme Scout)**:
-   - Discovers high-probability, positive-EV opportunities across 9 sports.
+   - Generates positive-EV value bets across all 9 sports.
 7. **ARYABHATA (The Chief Mathematician & Smallcase Master)**:
-   - Runs 59 mathematical sub-models producing the consensus fair price.
+   - Runs 59 mathematical sub-models producing the consensus fair price and true probabilities.
 8. **PRATAP (The Vanguard & Core Engine Room)**:
-   - Orchestrates execution speed, latency tracking, and async database connections.
+   - Orchestrates execution speed, latency logging, and async database connection pooling.
 9. **VIDUR (The Intelligence Director & Wire Anchor)**:
-   - Tracks live breaking news and lineups affecting open real wagers.
+   - Tracks live breaking news, injuries, and weather shifts affecting open real wagers.
 10. **BAJIRAO (The Field Marshal & Arena Master)**:
-    - Oversees active unsettled real bets and displays live match progress.
+    - Oversees active unsettled real bets and renders the real-time match outcome ticker.
 11. **VIKRAMADITYA (The Supreme Judge & Settlement Arbiter)**:
-    - Verifies official match scorecards and authorizes cash credit upon win.
+    - Verifies official match scorecards and authorizes cash payout releases.
 12. **CHANAKYA (The Grand Tactician & Fleet Overseer)**:
-    - Manages global health and operational integrity.
+    - Validates fleet integrity and ensures zero cross-contamination between virtual and real ledgers.
 13. **BRIHASPATI (The Chief Counselor & CFO Advisor)**:
     - Provides real-time bankroll growth recommendations and rebalancing alerts.
 14. **SAMUDRAGUPTA (The Imperial Conqueror & Multi-Bookmaker Arbitrageur)**:
@@ -119,18 +143,23 @@
 15. **HARSHA (The Grand Harmonizer & Human Touch Director)**:
     - Manages user manual overrides and intuitive weighting adjustments.
 16. **PANINI (The Master Grammarian & Historical Archivist)**:
-    - Indexes settled real trades for permanent compliance reporting.
+    - Archives settled real wagers into immutable compliance logs for annual tax filings.
 17. **GARUDA (The Aviator & WebSocket Streamer)**:
-    - Streams live score updates and price shifts to the user terminal.
+    - Streams live in-play score updates and market line movements to the real desk.
 
 ---
 
 ## 💾 PART 3: DATABASE SCHEMA & MIGRATIONS
 
-Create an Alembic migration (`add_real_money_execution_tables.py`) with down_revision pointing to `a83e1207d94f`:
+Create an Alembic migration at `backend/alembic/versions/b94f1308e05a_add_real_money_execution_tables.py` with `down_revision = "a83e1207d94f"`:
+
+### 1. Database Models (`backend/app/models/real_money.py`)
 
 ```python
-# backend/app/models/real_money.py
+"""
+Real-Money Betting Gateway Database Models (Group 95).
+Engineered for Amit Ashok Kumar Patnaik | BetDoc Quantitative Sports Trading Fleet.
+"""
 
 from datetime import datetime
 import uuid
@@ -139,55 +168,67 @@ from sqlalchemy.dialects.postgresql import UUID
 from app.models.base import Base
 
 class RealBankroll(Base):
+    """Real money cash bankroll per user in INR or preferred currency."""
     __tablename__ = "real_bankrolls"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     user_id = Column(String, nullable=False, unique=True, index=True)
     currency = Column(String, default="INR", nullable=False)
-    cash_balance = Column(Float, default=0.0, nullable=False)
-    locked_exposure = Column(Float, default=0.0, nullable=False)
+    cash_balance = Column(Float, default=0.0, nullable=False) # Liquid available cash
+    locked_exposure = Column(Float, default=0.0, nullable=False) # Cash locked in open live wagers
     total_deposited = Column(Float, default=0.0, nullable=False)
     total_withdrawn = Column(Float, default=0.0, nullable=False)
-    realized_pnl = Column(Float, default=0.0, nullable=False)
+    realized_pnl = Column(Float, default=0.0, nullable=False) # Cumulative net P&L
     gross_winnings = Column(Float, default=0.0, nullable=False)
-    total_tds_deducted = Column(Float, default=0.0, nullable=False)
+    total_tds_deducted = Column(Float, default=0.0, nullable=False) # Section 115BBJ 30% TDS total
+    high_water_mark = Column(Float, default=0.0, nullable=False)
+    daily_starting_balance = Column(Float, default=0.0, nullable=False)
+    daily_realized_loss = Column(Float, default=0.0, nullable=False)
+    consecutive_losses = Column(Integer, default=0, nullable=False)
+    stop_loss_triggered = Column(Boolean, default=False, nullable=False)
+    cooldown_until = Column(DateTime, nullable=True)
     is_active = Column(Boolean, default=True, nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
 
 
 class RealBetTicket(Base):
+    """Real money live bet execution ticket routed to Parimatch / 1xBet."""
     __tablename__ = "real_bet_tickets"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     user_id = Column(String, nullable=False, index=True)
-    ticket_reference = Column(String, unique=True, nullable=False, index=True) # e.g. PM-REAL-20261011-001
+    ticket_reference = Column(String, unique=True, nullable=False, index=True) # e.g. PM-REAL-20261011-0001
     bookmaker = Column(String, default="parimatch", nullable=False) # parimatch, onexbet
-    sport = Column(String, nullable=False)
+    sport = Column(String, nullable=False) # soccer, cricket, basketball, tennis, baseball, nfl, nhl, mma, esports
+    league = Column(String, nullable=False)
     match_id = Column(String, nullable=False)
     event_name = Column(String, nullable=False)
-    market_type = Column(String, nullable=False)
-    selection = Column(String, nullable=False)
+    market_type = Column(String, nullable=False) # Match Odds, Over/Under, Asian Handicap, etc.
+    selection = Column(String, nullable=False) # Home, Away, Draw, Over 2.5, etc.
     
-    # Financials
-    recommended_stake = Column(Float, nullable=False)
-    placed_stake = Column(Float, nullable=False)
+    # Financial Sizing & Pricing
+    recommended_stake = Column(Float, nullable=False) # Kelly recommended stake in INR
+    placed_stake = Column(Float, nullable=False) # Actual placed stake in INR
     currency = Column(String, default="INR", nullable=False)
-    target_odds = Column(Float, nullable=False)
-    placed_odds = Column(Float, nullable=False)
-    minimum_profitable_odds = Column(Float, nullable=False)
-    model_edge_pct = Column(Float, nullable=False)
+    target_odds = Column(Float, nullable=False) # Odds identified by Ashoka
+    placed_odds = Column(Float, nullable=False) # Actual odds confirmed by user
+    minimum_profitable_odds = Column(Float, nullable=False) # Calculated floor odds
+    true_probability = Column(Float, nullable=False) # Aryabhata true prob
+    model_edge_pct = Column(Float, nullable=False) # (TrueProb * Odds) - 1
     
-    # Execution Tracking
-    deep_link_url = Column(Text, nullable=False)
-    bookmaker_slip_id = Column(String, nullable=True) # User's external Parimatch slip ID
+    # Execution Logistics
+    deep_link_url = Column(Text, nullable=False) # Direct URL to match on Parimatch
+    clipboard_payload = Column(Text, nullable=False) # Formatted text for 1-click clipboard
+    bookmaker_slip_id = Column(String, nullable=True) # External slip ID from Parimatch
     status = Column(String, default="PENDING_PLACEMENT", nullable=False) # PENDING_PLACEMENT, PLACED, WON, LOST, PUSH, VOID, CANCELLED
-    settlement_payout = Column(Float, default=0.0, nullable=False)
-    net_profit = Column(Float, default=0.0, nullable=False)
-    tds_deducted = Column(Float, default=0.0, nullable=False)
+    settlement_payout = Column(Float, default=0.0, nullable=False) # Total cash returned on win
+    net_profit = Column(Float, default=0.0, nullable=False) # Gross payout - Stake - TDS
+    tds_deducted = Column(Float, default=0.0, nullable=False) # Section 115BBJ 30% flat tax
     
-    # Sanity & Vetting Notes
-    vetting_pillar_score = Column(Float, nullable=False)
+    # Vetting & Integrity
+    vetting_pillar_score = Column(Float, nullable=False) # Kautilya 0-100 score
+    odds_decay_flag = Column(Boolean, default=False, nullable=False) # True if placed < minimum floor
     notes = Column(Text, nullable=True)
     placed_at = Column(DateTime, nullable=True)
     settled_at = Column(DateTime, nullable=True)
@@ -195,91 +236,353 @@ class RealBetTicket(Base):
 
 
 class RealCashTransaction(Base):
+    """Immutable double-entry cash ledger for real funds (Todar Mal)."""
     __tablename__ = "real_cash_transactions"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     user_id = Column(String, nullable=False, index=True)
-    transaction_type = Column(String, nullable=False) # DEPOSIT, WITHDRAWAL, BET_STAKE, BET_PAYOUT, TDS_WITHHOLDING
+    transaction_type = Column(String, nullable=False) # DEPOSIT, WITHDRAWAL, BET_STAKE_LOCKED, BET_PAYOUT_CREDIT, TDS_WITHHOLDING_DEBIT, BET_REFUND
     amount = Column(Float, nullable=False)
     currency = Column(String, default="INR", nullable=False)
+    balance_before = Column(Float, nullable=False)
     balance_after = Column(Float, nullable=False)
-    reference_id = Column(String, nullable=True) # Link to ticket_reference or external deposit ref
+    reference_id = Column(String, nullable=True) # ticket_reference or deposit transaction reference
     description = Column(Text, nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
 ```
 
----
-
-## ⚡ PART 4: FASTAPI BACKEND ROUTES (`app/api/v1/real_money.py`)
-
-1. `GET /api/v1/real-money/bankroll`:
-   - Returns real cash balance, locked exposure, net P&L, and Section 115BBJ 30% TDS withholdings.
-2. `POST /api/v1/real-money/deposit`:
-   - Records a real cash deposit (e.g. ₹10,000 INR) to seed the live bankroll.
-3. `POST /api/v1/real-money/withdraw`:
-   - Records a real cash withdrawal from the available balance.
-4. `POST /api/v1/real-money/create-ticket`:
-   - Ashvatthama builds a Parimatch live execution ticket from an Ashoka recommendation.
-   - Calculates deep-link URL: `https://parimatchs1.com/en/all-live` (or direct event URL).
-   - Generates one-click clipboard text payload.
-   - Computes minimum profitable odds $Odds_{min}$.
-5. `POST /api/v1/real-money/confirm-placement`:
-   - User verifies bet placed on Parimatch.
-   - Validates live price hasn't decayed below $Odds_{min}$.
-   - Deducts stake from `cash_balance` into `locked_exposure`.
-   - Records `RealCashTransaction`.
-6. `POST /api/v1/real-money/settle-ticket`:
-   - Settles the ticket upon official scorecard confirmation (WON/LOST/PUSH/VOID).
-   - On WON: releases exposure, deposits gross payout, deducts 30% TDS, adds net profit to cash balance.
-7. `GET /api/v1/real-money/active-tickets`:
-   - Returns all live placed tickets currently awaiting match outcome.
+Ensure `backend/app/models/__init__.py` imports `RealBankroll`, `RealBetTicket`, and `RealCashTransaction`.
 
 ---
 
-## 🎨 PART 5: FRONTEND LIVE TRADING DESK & PARIMATCH SLIP TERMINAL
+## ⚡ PART 4: FASTAPI BACKEND SCHEMAS & ENDPOINTS
 
-1. **Global Mode Switcher Header**:
-   - In `AppShell.tsx` and `TradingModeToggle.tsx`:
-     * `[🟡 PAPER TRADING (₹1,00,000 VIRTUAL)]`
-     * `[🟢 REAL MONEY LIVE DESK (₹ CASH)]`
-   - Switching to Real Money prompts a confirmation dialog reminding user of stop-loss protections.
-2. **Ashvatthama's Parimatch Live Slip Terminal Modal (`ParimatchExecutionModal.tsx`)**:
-   - Displays:
-     * Match: Arsenal vs Chelsea (EPL)
-     * Market: Match Odds (Home Win)
-     * Recommended Stake: **₹2,500 INR** (0.35 Kelly)
-     * Target Odds: **2.10** | Minimum Required: **2.02**
-     * Expected Value (+EV): **+6.2%**
-     * Direct Link Button: **[🎯 Open Match on Parimatch]** (opens new tab to `parimatchs1.com`)
-     * One-Click Copy: **[📋 Copy Bet Details to Clipboard]**
-     * Form: "Actual Odds Placed" (default 2.10) & "Parimatch Slip ID" (optional)
-     * Confirmation Button: **[✅ Confirm Bet Placed with Real Money]**
-3. **Odds Decay Sanity Banner**:
-   - Dynamic real-time calculation: if user types in placed odds lower than minimum profitable odds, button turns amber with warning:
-     `"⚠️ CAUTION: Placed odds (1.95) are below profitable model floor (2.02). Expected Value is negative."`
-4. **Real Money Vault & TDS Drawer (`RealBankrollCard.tsx`)**:
-   - Displays Real Cash Balance, Open Exposure, Total TDS Withheld under Section 115BBJ (30%), and Net Realized Cash Profit.
+### 1. Pydantic Schemas (`backend/app/schemas/real_money.py`)
+
+```python
+"""
+Pydantic Schemas for Real-Money Betting Gateway (Group 95).
+Engineered for Amit Ashok Kumar Patnaik | BetDoc Quantitative Sports Trading Fleet.
+"""
+
+from datetime import datetime
+from typing import Optional, List
+from pydantic import BaseModel, Field
+
+class RealBankrollResponse(BaseModel):
+    user_id: str
+    currency: str = "INR"
+    cash_balance: float
+    locked_exposure: float
+    total_bankroll: float # cash_balance + locked_exposure
+    total_deposited: float
+    total_withdrawn: float
+    realized_pnl: float
+    gross_winnings: float
+    total_tds_deducted: float
+    daily_starting_balance: float
+    daily_realized_loss: float
+    daily_drawdown_pct: float
+    consecutive_losses: int
+    stop_loss_triggered: bool
+    is_in_cooldown: bool
+    cooldown_seconds_remaining: int
+    developer_name: str = "Amit Ashok Kumar Patnaik"
+
+class DepositRequest(BaseModel):
+    amount: float = Field(..., gt=0, description="Amount in INR to deposit")
+    currency: str = "INR"
+    reference: Optional[str] = "UPI/IMPS Deposit"
+    notes: Optional[str] = None
+
+class WithdrawRequest(BaseModel):
+    amount: float = Field(..., gt=0, description="Amount in INR to withdraw")
+    notes: Optional[str] = None
+
+class CreateRealTicketRequest(BaseModel):
+    sport: str
+    league: str
+    match_id: str
+    event_name: str
+    market_type: str
+    selection: str
+    target_odds: float
+    true_probability: float
+    model_edge_pct: float
+    vetting_pillar_score: float = 90.0
+    bookmaker: str = "parimatch"
+
+class ConfirmPlacementRequest(BaseModel):
+    ticket_reference: str
+    placed_odds: float
+    placed_stake: float
+    bookmaker_slip_id: Optional[str] = None
+    override_odds_decay: bool = False
+
+class SettleRealTicketRequest(BaseModel):
+    ticket_reference: str
+    outcome: str # WON, LOST, PUSH, VOID, CANCELLED
+    scorecard: Optional[dict] = None
+
+class RealBetTicketResponse(BaseModel):
+    id: str
+    ticket_reference: str
+    bookmaker: str
+    sport: str
+    league: str
+    match_id: str
+    event_name: str
+    market_type: str
+    selection: str
+    recommended_stake: float
+    placed_stake: float
+    currency: str
+    target_odds: float
+    placed_odds: float
+    minimum_profitable_odds: float
+    true_probability: float
+    model_edge_pct: float
+    deep_link_url: str
+    clipboard_payload: str
+    bookmaker_slip_id: Optional[str]
+    status: str
+    settlement_payout: float
+    net_profit: float
+    tds_deducted: float
+    vetting_pillar_score: float
+    odds_decay_flag: bool
+    placed_at: Optional[datetime]
+    settled_at: Optional[datetime]
+    developer_name: str = "Amit Ashok Kumar Patnaik"
+
+class RealCashTransactionResponse(BaseModel):
+    id: str
+    transaction_type: str
+    amount: float
+    currency: str
+    balance_before: float
+    balance_after: float
+    reference_id: Optional[str]
+    description: str
+    created_at: datetime
+```
+
+### 2. FastAPI Endpoints (`backend/app/api/v1/real_money.py`)
+
+Mount under prefix `/real-money` in `backend/app/api/v1/router.py`:
+
+```python
+"""
+FastAPI Router for Real-Money Betting Gateway (Group 95).
+Engineered for Amit Ashok Kumar Patnaik | BetDoc Quantitative Sports Trading Fleet.
+"""
+
+from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
+from sqlalchemy.ext.asyncio import AsyncSession
+from app.api.deps import get_db, get_current_user
+from app.schemas.real_money import (
+    RealBankrollResponse, DepositRequest, WithdrawRequest,
+    CreateRealTicketRequest, ConfirmPlacementRequest,
+    SettleRealTicketRequest, RealBetTicketResponse,
+    RealCashTransactionResponse
+)
+from app.services.real_money_service import RealMoneyService
+
+router = APIRouter(prefix="/real-money", tags=["Real-Money Execution Desk"])
+
+@router.get("/bankroll", response_model=RealBankrollResponse)
+async def get_real_bankroll(
+    current_user: str = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    service = RealMoneyService(db)
+    return await service.get_or_create_bankroll(user_id=current_user)
+
+@router.post("/deposit", response_model=RealBankrollResponse)
+async def deposit_real_cash(
+    request: DepositRequest,
+    current_user: str = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    service = RealMoneyService(db)
+    return await service.deposit(user_id=current_user, amount=request.amount, reference=request.reference)
+
+@router.post("/withdraw", response_model=RealBankrollResponse)
+async def withdraw_real_cash(
+    request: WithdrawRequest,
+    current_user: str = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    service = RealMoneyService(db)
+    return await service.withdraw(user_id=current_user, amount=request.amount, notes=request.notes)
+
+@router.post("/create-ticket", response_model=RealBetTicketResponse)
+async def create_real_ticket(
+    request: CreateRealTicketRequest,
+    current_user: str = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    service = RealMoneyService(db)
+    return await service.create_execution_ticket(user_id=current_user, request=request)
+
+@router.post("/confirm-placement", response_model=RealBetTicketResponse)
+async def confirm_ticket_placement(
+    request: ConfirmPlacementRequest,
+    current_user: str = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    service = RealMoneyService(db)
+    return await service.confirm_placement(user_id=current_user, request=request)
+
+@router.post("/settle-ticket", response_model=RealBetTicketResponse)
+async def settle_real_ticket(
+    request: SettleRealTicketRequest,
+    current_user: str = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    service = RealMoneyService(db)
+    return await service.settle_ticket(user_id=current_user, request=request)
+
+@router.get("/active-tickets", response_model=list[RealBetTicketResponse])
+async def get_active_tickets(
+    current_user: str = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    service = RealMoneyService(db)
+    return await service.get_active_tickets(user_id=current_user)
+
+@router.get("/history", response_model=list[RealBetTicketResponse])
+async def get_ticket_history(
+    limit: int = 50,
+    current_user: str = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    service = RealMoneyService(db)
+    return await service.get_ticket_history(user_id=current_user, limit=limit)
+
+@router.get("/transactions", response_model=list[RealCashTransactionResponse])
+async def get_cash_transactions(
+    limit: int = 50,
+    current_user: str = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    service = RealMoneyService(db)
+    return await service.get_cash_transactions(user_id=current_user, limit=limit)
+```
 
 ---
 
-## 🧪 PART 6: COMPREHENSIVE TEST SUITE (`tests/test_real_money_execution_gateway.py`)
+## 🧠 PART 5: CORE BUSINESS LOGIC SERVICE (`backend/app/services/real_money_service.py`)
 
-Must provide 100% test coverage for:
-1. Bankroll creation, deposits, and withdrawal validations.
-2. Parimatch ticket generation with deep-link URL formatting.
-3. Odds decay detection (rejecting or warning on sub-threshold odds).
-4. Stake deduction from cash into locked exposure.
-5. Win settlement: gross return, 30% TDS deduction, net balance update.
-6. Loss settlement: exposure reduction, realized loss logging, stop-loss trigger check.
-7. Simultaneous paper trading and real money balance independence (zero cross-contamination).
+Implement the full math, sizing, and ledger logic in `RealMoneyService`:
+
+1. **Kelly Sizing & Limits**:
+   - Uses fractional Kelly ($f^* = \frac{p \cdot b - q}{b} \times \text{fraction}$) where fraction is sport-specific (0.20–0.50).
+   - Maximum stake capped at 5% of liquid `cash_balance`.
+2. **Odds Floor Calculation**:
+   - $Odds_{floor} = \frac{1}{\text{True Prob}} \times 1.015$ (guaranteeing at least a 1.5% minimum edge).
+   - If user confirms with $PlacedOdds < Odds_{floor}$ without `override_odds_decay=True`, raise `HTTPException(400, "Odds decayed below minimum profitable floor")`.
+3. **Parimatch Deep Link Formatting**:
+   - Base URL: `https://parimatchs1.com/en/all-live`
+   - Formatted deep link includes event parameters and sports category.
+4. **Clipboard Payload Formatter**:
+   - Generates the clean ASCII ticket text with ticket reference, event, market, stake, target odds, and Ashvatthama signature.
+5. **Section 115BBJ 30% TDS Accounting (Todar Mal)**:
+   - When outcome is `WON`:
+     * $\text{Gross Return} = \text{Placed Stake} \times \text{Placed Odds}$
+     * $\text{Net Win} = \text{Gross Return} - \text{Placed Stake}$
+     * $\text{TDS} = 0.30 \times \text{Net Win}$ (if $\text{Net Win} > 0$ else 0)
+     * $\text{Cash Payout Credited} = \text{Gross Return} - \text{TDS} = \text{Placed Stake} + 0.70 \times \text{Net Win}$
+     * $\text{Net Profit} = 0.70 \times \text{Net Win}$
+   - When outcome is `LOST`:
+     * $\text{Realized Loss} = \text{Placed Stake}$
+     * Deducts from daily bankroll, increments `consecutive_losses`.
+     * Checks if daily loss $\ge 15\%$ of `daily_starting_balance`. If so, set `stop_loss_triggered = True`.
+     * If `consecutive_losses` $\ge 3$, set `cooldown_until = now() + 30 minutes`.
+   - When outcome is `PUSH` or `VOID`:
+     * 100% of $\text{Placed Stake}$ returned to `cash_balance` with zero P&L.
+6. **Double-Entry Cash Ledger Recording**:
+   - Every movement records a `RealCashTransaction` with exact `balance_before` and `balance_after`.
 
 ---
 
-## 🚀 PART 7: GIT COMMIT & PUSH SPECIFICATION
+## 🎨 PART 6: FRONTEND LIVE TRADING DESK & PARIMATCH TERMINAL
+
+### 1. Unified Trading Mode Switcher (`frontend/src/components/navigation/TradingModeToggle.tsx`)
+- Update component with a prominent toggle:
+  * Left: `[🟡 Paper Trading Sandbox (₹1,00,000 Dummy Money)]`
+  * Right: `[🟢 Real Money Live Desk (₹ Real Cash)]`
+- In Real Money Mode, show an active emerald pulse dot with text: `"LIVE CASH TERMINAL ACTIVE"`.
+- When switching from Paper to Real, render a safety modal with Shivaji's stop-loss assurances.
+
+### 2. Ashvatthama's Parimatch Live Slip Terminal Modal (`frontend/src/components/real_money/ParimatchExecutionModal.tsx`)
+- Opens when clicking **"🎯 Execute on Parimatch"** on any value bet in Ashoka Desk, Sports Engine, or Command Center.
+- UI Layout:
+  * **Header**: "🎯 ASHVATTHAMA REAL-MONEY EXECUTION TERMINAL" with ticket reference and Parimatch badge.
+  * **Match Details Card**: Sport icon, League, Event name, Market (e.g. Over 2.5 Goals), Selection.
+  * **Quantitative Intelligence Card**:
+    - True Probability (from Aryabhata) vs Implied Probability.
+    - Model Edge (+EV percentage).
+    - Kautilya 9-Pillar Vetting Score (e.g. 94/100).
+    - Minimum Profitable Odds Floor (e.g. 2.02).
+  * **Action Buttons Row**:
+    - `[🌐 Open Event on Parimatch]` -> Opens `ticket.deep_link_url` in a new browser tab.
+    - `[📋 Copy Bet Slip Details]` -> Copies formatted ticket payload to clipboard with toast: `"Bet slip copied to clipboard!"`.
+  * **Execution Confirmation Form**:
+    - Input: "Actual Odds Placed on Parimatch" (defaults to target odds).
+    - Input: "Actual Stake Placed (₹ INR)" (defaults to recommended Kelly stake).
+    - Input: "Parimatch Bet Slip ID" (optional reference e.g. `PM-892134`).
+    - **Real-Time Odds Decay Warning**: If user types odds lower than the minimum profitable odds, displays an amber caution banner explaining that the quantitative edge has expired.
+    - Button: `[🚀 Confirm Real Bet Placed (₹...)]` (records trade in real cash ledger).
+
+### 3. Real Bankroll Vault & TDS Drawer (`frontend/src/components/real_money/RealBankrollCard.tsx`)
+- Displays:
+  * Liquid Cash Balance (`₹ INR`).
+  * Locked Exposure (`₹ INR` in active games).
+  * Net Realized Profit (after 30% TDS).
+  * Section 115BBJ 30% TDS Withheld (with information tooltip).
+  * Action Buttons: `[+ Deposit Cash]` and `[- Withdraw Cash]`.
+
+### 4. Active Real-Money Arena (`frontend/src/components/real_money/RealActiveTickets.tsx`)
+- Shows all live, pending real wagers with live score indicators from Garuda.
+- Provides a manual settlement test trigger and live status badges (`PLACED`, `WON`, `LOST`, `PUSH`).
+
+### 5. Zustand Store (`frontend/src/store/useRealMoneyStore.ts`)
+- Manages state for real bankroll, active tickets, transaction history, and modal triggers.
+- Communicates with `/api/v1/real-money/*` via `frontend/src/lib/real_money.ts`.
+
+---
+
+## 🧪 PART 7: EXHAUSTIVE TEST SUITE (`backend/tests/test_real_money_execution_gateway.py`)
+
+Write an uncompromising, 100% comprehensive test suite covering:
+1. `test_real_bankroll_creation_and_defaults`: Verifies default zero balance and INR currency.
+2. `test_real_cash_deposit_and_ledger`: Verifies deposit updates balance and logs `DEPOSIT` transaction.
+3. `test_real_cash_withdrawal_validation`: Verifies withdrawal succeeds when funds exist, fails when insufficient.
+4. `test_ticket_creation_with_parimatch_deep_link`: Verifies URL generation and Kelly stake sizing.
+5. `test_odds_floor_calculation_and_edge`: Verifies minimum profitable odds formula.
+6. `test_odds_decay_rejection_without_override`: Verifies 400 error when odds decay below floor.
+7. `test_odds_decay_allowed_with_explicit_override`: Verifies acceptance when override is set to True.
+8. `test_ticket_placement_stake_locking`: Verifies stake moves from `cash_balance` into `locked_exposure`.
+9. `test_winning_settlement_with_30_percent_tds`: Verifies gross payout, exact 30% Section 115BBJ tax deduction, and net cash credit.
+10. `test_losing_settlement_and_drawdown_tracking`: Verifies loss deducts exposure, updates daily loss, and increments loss streak.
+11. `test_consecutive_loss_cooldown_trigger`: Verifies 3 consecutive losses lock ticket creation for 30 minutes.
+12. `test_daily_drawdown_stop_loss_trigger`: Verifies 15% daily loss trips the Shivaji stop-loss circuit breaker.
+13. `test_push_and_void_settlement_full_refund`: Verifies 100% refund of stake on push/void.
+14. `test_strict_isolation_between_paper_and_real`: Verifies paper trading wagers never alter real cash ledger or bankroll.
+15. `test_developer_credit_present`: Verifies `"Amit Ashok Kumar Patnaik"` in bankroll and ticket responses.
+
+---
+
+## 🚀 PART 8: GIT COMMIT & PUSH SPECIFICATION
 
 Once all tests pass and frontend builds cleanly:
 ```bash
 git -C d:\BetDoc add .
 git -C d:\BetDoc commit -m "feat(real-money): Group 95 Live Real-Money Betting Gateway, Parimatch Execution Terminal, and 30% TDS Cash Ledger"
 git -C d:\BetDoc push origin feature/garuda-ingestion
+git -C d:\BetDoc checkout main
+git -C d:\BetDoc merge feature/garuda-ingestion
+git -C d:\BetDoc push origin main
+git -C d:\BetDoc checkout feature/garuda-ingestion
 ```
