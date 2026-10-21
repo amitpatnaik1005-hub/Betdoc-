@@ -420,6 +420,8 @@ class InningsDistribution:
     expected_sixes: float
     expected_balls: float
     format: str = "t20"
+    #: Expected runs (extras included) scored in each phase from the start ball: powerplay / middle / death (Group 102)
+    phase_runs: dict[str, float] = field(default_factory=dict)
 
     @property
     def mean(self) -> float:
@@ -442,23 +444,28 @@ def simulate_limited_innings(cond: InningsConditions, overs: int, *, start_ball:
     sixes = 0.0
     balls = 0.0
     powerplay: IntPMF | None = None
+    extras_mean = float(np.arange(len(ext)) @ ext)  # each wide / no-ball is one run
+    phase_runs: dict[str, float] = {}
     for matrix, first, count in schedule:
         g = _gf(matrix[:, :6], powers[RUN_VALUES]) * e_z
         wk = matrix[:, COL_WICKET:COL_WICKET + 1] * e_z
         six_col = matrix[:, COL_SIX]
+        runs_per_ball = matrix[:, :6] @ RUN_VALUES + extras_mean  # expected runs of one delivery, per wickets-down row
+        phase = phase_of_over(cond.fmt, first // 6, overs)
         for ball in range(first, first + count):
             if ball == POWERPLAY_BALLS and start_ball == 0:
                 powerplay = _pmf_from_spectrum(state.sum(axis=0), n, runs)
             alive = state[:10, 0].real
             sixes += float(alive @ six_col)
             balls += float(alive.sum())
+            phase_runs[phase] = phase_runs.get(phase, 0.0) + float(alive @ runs_per_ball)
             prev = state[:10].copy()
             np.multiply(prev, g, out=state[:10])
             state[1:] += prev * wk
     total = _pmf_from_spectrum(state.sum(axis=0), n, runs)
     if powerplay is None and start_ball == 0:
         powerplay = total  # an innings of six overs or fewer
-    return InningsDistribution(total, powerplay, sixes, balls, cond.fmt)
+    return InningsDistribution(total, powerplay, sixes, balls, cond.fmt, phase_runs)
 
 
 def simulate_test_innings(cond: InningsConditions, *, wickets: int = 0, runs: int = 0) -> InningsDistribution:

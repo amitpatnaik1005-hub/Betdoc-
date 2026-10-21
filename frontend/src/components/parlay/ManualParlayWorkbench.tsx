@@ -21,6 +21,8 @@ import {
 import { invalidate } from "../../lib/resource";
 import { toast } from "../../store/useToastStore";
 import { Async, Button, EmptyState, Field, Meter, NumberInput, Panel, Pill, Select, TextInput } from "../../ui/kit";
+import { boardTargets } from "../../lib/prediction";
+import { ScoreBackedLegs } from "../prediction/ScoreBackedLegs";
 
 interface SlipLeg {
   leg_id: string;
@@ -68,7 +70,7 @@ const Radar = ({ rows, color }: { rows: PillarRow[]; color: string }) => {
   );
 };
 
-const MatchCard = ({ card, book, onPick }: { card: FixtureCard; book: string | null; onPick: (leg: SlipLeg) => void }) => {
+const MatchCard = ({ card, book, onPick, onScores }: { card: FixtureCard; book: string | null; onPick: (leg: SlipLeg) => void; onScores: (() => void) | null }) => {
   const [open, setOpen] = useState(false);
   const shown = open ? card.markets : card.markets.slice(0, 1);
   const best = card.markets.flatMap((m) => m.selections.map((s) => ({ m, s }))).filter((x) => x.s.ev !== null).sort((a, b) => (b.s.ev ?? 0) - (a.s.ev ?? 0))[0];
@@ -90,7 +92,16 @@ const MatchCard = ({ card, book, onPick }: { card: FixtureCard; book: string | n
             {card.league ?? card.sport ?? card.sport_key} · {card.in_play ? `in play · ${card.minutes_since_kickoff}′ since kickoff` : card.kickoff ? formatDateTime(card.kickoff) : "—"}
           </p>
         </div>
-        {card.in_play && <span className="rounded-full px-2 py-0.5 text-[10px] font-bold" style={{ background: "var(--wb-primary)", color: "var(--wb-on-primary)" }}>LIVE</span>}
+        <div className="flex shrink-0 items-center gap-1.5">
+          {onScores && (
+            <button type="button" onClick={onScores} title="Score prediction: the scorelines this board implies, and the legs each one backs"
+                    className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold"
+                    style={{ border: "1px solid var(--wb-primary)", color: "var(--wb-primary)" }}>
+              <span className="material-symbols-outlined text-[13px]" aria-hidden="true">scoreboard</span>Scores
+            </button>
+          )}
+          {card.in_play && <span className="rounded-full px-2 py-0.5 text-[10px] font-bold" style={{ background: "var(--wb-primary)", color: "var(--wb-on-primary)" }}>LIVE</span>}
+        </div>
       </div>
       {shown.map((m) => {
         const margin = book ? m.margins.by_book[book] : m.margins.best_price;
@@ -209,8 +220,11 @@ export const ManualParlayWorkbench = () => {
   const [busy, setBusy] = useState<"inspect" | "submit" | null>(null);
   const [placed, setPlaced] = useState({ stake: "", odds: "", code: "" });
   const [over, setOver] = useState(false);
+  const [scoresId, setScoresId] = useState<string | null>(null);
   const theme = BOOKMAKER_THEMES[skin];
   const board = useBoard(sport);
+  // the live card (the board refreshes): its latest prices back the score view
+  const scoresFor = board.data?.fixtures.find((f) => f.fixture_id === scoresId) ?? null;
   const accounts = useAccounts();
   const shields = useShields();
   const stream = useShieldStream();
@@ -304,13 +318,22 @@ export const ManualParlayWorkbench = () => {
                 <EmptyState icon="sports" title={sport ? `No ${sport} fixture priced right now` : "No fixture priced right now"} detail="Cards appear as the feeds price fixtures (pre-match, and in play for three hours after kickoff)." />
               ) : (
                 <ul className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
-                  {b.fixtures.slice(0, 30).map((card) => <MatchCard key={card.fixture_id} card={card} book={theme.book} onPick={add} />)}
+                  {b.fixtures.slice(0, 30).map((card) => (
+                    <MatchCard key={card.fixture_id} card={card} book={theme.book} onPick={add} onScores={boardTargets(card) ? () => setScoresId(card.fixture_id) : null} />
+                  ))}
                 </ul>
               )}
               {!b.steam_readable && <p className="text-[11px]" style={{ color: theme.muted }}>Sharp steam is unreadable right now: no card shows it.</p>}
             </div>
           )}
         </Async>
+
+        {scoresFor && (
+          <section aria-label="Score prediction" className="rounded-2xl p-3" style={{ border: "1px solid color-mix(in srgb, var(--wb-primary) 35%, transparent)" }}>
+            <ScoreBackedLegs card={scoresFor} book={theme.book} onClose={() => setScoresId(null)}
+                             onAdd={(market, s) => { add(toSlipLeg(scoresFor, market, s)); toast.success("Added to the slip", s.label); }} />
+          </section>
+        )}
 
         <section
           onDragOver={(e) => { e.preventDefault(); setOver(true); }}

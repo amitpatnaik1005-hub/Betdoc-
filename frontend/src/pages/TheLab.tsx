@@ -4,6 +4,7 @@ import { apiClient } from '../api/client';
 import { TheLabScene } from '../components/bots/TheLabScene';
 import { CompetitiveIntelLivePanel } from '../components/lab/CompetitiveIntelLivePanel';
 import { QuantToolkitPanel } from '../components/lab/QuantToolkitPanel';
+import { ScorePredictionPanel } from '../components/prediction/ScorePredictionPanel';
 import { formatAgo, formatDateTime, formatOdds, formatPct, formatRatioPct } from '../lib/format';
 import { runMutation, useResource } from '../lib/resource';
 import { type Selection, useExecutionStore } from '../store/useExecutionStore';
@@ -382,14 +383,15 @@ export const TheLab = () => {
       <ComponentGuideBanner
         className="lg:col-span-12"
         moduleName="The Lab"
-        purpose="PANINI's research bench: price a match with the model ensemble, compare it with the live market, and run the quant calculators. Nothing here places a bet."
+        purpose="PANINI's research bench: project a score, price a match with the model ensemble, compare it with the live market, and run the quant calculators. Nothing here places a bet."
         steps={[
-          "Price a match in the Model sandbox (Poisson, Dixon-Coles and Elo blended)",
+          "Project a score in BetDoc Score Prediction (football scorelines, cricket innings), or price a match in the Model sandbox",
           "Compare with KARNA's live board: Parimatch and 1xBet against the margin-free consensus",
           "Size or hedge an idea in the Quant toolkit (dutching, matched betting and more)",
         ]}
         kpiCodes={["EV", "OVERROUND"]}
       />
+      <ScorePredictionPanel />
       <CompetitiveIntelLivePanel />
       <ModelSandbox />
       <SourceHealth health={health} />

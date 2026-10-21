@@ -628,6 +628,11 @@ class Settings(BaseSettings):
     PRE_MATCH_TIER3_MAX_AGE_SECONDS: float = Field(default=60.0, gt=0)
     PRE_MATCH_FORCE_REFRESH_COOLDOWN_SECONDS: float = Field(default=60.0, ge=0)  # a sport fetched this recently is served, not re-bought
     PRE_MATCH_REDIS_PREFIX: str = "betdoc:pre_match"  # <prefix>:sport_polled hash: sport key -> last fetch (epoch seconds)
+
+    # ---- BETDOC SCORE PREDICTION (Group 102, point b.16): presentation only; every number comes from the sport engines ----
+    PREDICTION_HEATMAP_GOALS: int = Field(default=5, ge=3, le=9)  # the football heatmap's 0..N goals a side
+    PREDICTION_TOP_SCORELINES: int = Field(default=3, ge=1, le=10)
+    PREDICTION_INTERVAL_COVERAGE: float = Field(default=0.80, gt=0.5, lt=1.0)  # central interval of a projected total (0.80: p10-p90)
     # FA-4: the CFO's fractional Kelly per sport (model parameter uncertainty); overrides app.domain.sports.twin_bridge's table
     SPORTS_KELLY_MULTIPLIERS: dict[str, float] = Field(default_factory=lambda: {
         "soccer": 0.35, "cricket": 0.25, "basketball": 0.40, "tennis": 0.30, "baseball": 0.35, "american_football": 0.50,
