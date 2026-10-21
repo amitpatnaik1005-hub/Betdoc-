@@ -6,7 +6,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.deps import get_db
+from app.api.deps import CurrentAdmin, get_db
 from app.core.config import Settings, get_settings
 from app.core.config import settings as app_settings
 from app.domain.control_panel.errors import ControlPanelDomainError
@@ -20,11 +20,15 @@ from app.schemas.control_panel import (
     EmergencyDashboardResponse,
     EmergencyResumeRequest,
     EmergencyTriggerRequest,
+    ProviderBucketResetRequest,
+    QuotaGuardDashboardResponse,
+    QuotaShieldModeUpdateRequest,
     SettingsRead,
     SettingsUpdate,
 )
 from app.services.aryabhata_pipeline import publish_risk_limits
 from app.services.emergency_kill_switch_service import EmergencyKillSwitchService
+from app.services.quota_guard_service import QuotaGuardError, QuotaGuardService
 from app.services.risk_guard import kill_switch_engaged, set_kill_switch
 from app.services.sentinel_bus import emit_alert
 from app.services.sentinel_watch import kill_switch_alert
@@ -128,3 +132,42 @@ async def toggle_bookmaker_lock(payload: BookmakerLockRequest, request: Request,
 @router.post("/auto-drawdown-check", response_model=AutoDrawdownCheckResponse)
 async def evaluate_auto_drawdown(payload: AutoDrawdownCheckRequest, request: Request, db: DbSession, service: Emergency, settings: AppSettings) -> AutoDrawdownCheckResponse:
     return await service.evaluate_and_enforce_auto_drawdown(db, getattr(request.app.state, "redis", None), settings, payload)
+
+
+# ---------------------------------------------------------------- Group 92: API rate-limit intelligence & quota guard (BHEESHMA)
+_quota_guard = QuotaGuardService()
+
+
+def get_quota_guard_service() -> QuotaGuardService:
+    return _quota_guard
+
+
+QuotaGuard = Annotated[QuotaGuardService, Depends(get_quota_guard_service)]
+
+
+@router.get("/quota-guard", response_model=QuotaGuardDashboardResponse)
+async def get_quota_guard_dashboard(request: Request, db: DbSession, service: QuotaGuard, settings: AppSettings) -> QuotaGuardDashboardResponse:
+    """Token buckets, measured provider quota, breakers and the cache shield's effect on every source's cadence."""
+    return await service.dashboard(db, getattr(request.app.state, "redis", None), settings)
+
+
+@router.post("/quota-guard/mode", response_model=QuotaGuardDashboardResponse)
+async def update_quota_guard_mode(
+    payload: QuotaShieldModeUpdateRequest, request: Request, db: DbSession, service: QuotaGuard, settings: AppSettings, admin: CurrentAdmin
+) -> QuotaGuardDashboardResponse:
+    """Set the cache shield mode the fleet beat applies (admin: it changes how often metered providers are polled)."""
+    try:
+        return await service.set_shield_mode(db, getattr(request.app.state, "redis", None), settings, payload, actor=admin.username)
+    except QuotaGuardError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=exc.message) from exc
+
+
+@router.post("/quota-guard/reset-bucket", response_model=QuotaGuardDashboardResponse)
+async def reset_provider_quota_bucket(
+    payload: ProviderBucketResetRequest, request: Request, db: DbSession, service: QuotaGuard, settings: AppSettings, admin: CurrentAdmin
+) -> QuotaGuardDashboardResponse:
+    """Close a fleet source's breaker, zero its failure streak and refill its token bucket (admin)."""
+    try:
+        return await service.reset_provider_bucket(db, getattr(request.app.state, "redis", None), settings, payload, actor=admin.username)
+    except QuotaGuardError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=exc.message) from exc

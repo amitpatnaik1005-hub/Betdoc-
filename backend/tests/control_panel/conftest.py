@@ -19,6 +19,7 @@ from app.models.bookmakers import BookmakerConfigModel
 from app.models.cfo_vault import AuditLog, BankrollAccount
 from app.models.control_panel import SystemSettingsModel
 from app.models.emergency_kill_switch import EmergencyKillSwitchAuditModel, EmergencyKillSwitchStateModel
+from app.models.omni_vault import OmniFleetSource, OmniProviderConfig
 from app.models.paper_trading import CurrencyExchangeRate
 from app.models.real_money import RealBankroll
 
@@ -32,6 +33,9 @@ CONTROL_PANEL_TABLES = [
     BankrollAccount.__table__,
     RealBankroll.__table__,
     CurrencyExchangeRate.__table__,
+    # Group 92: the quota guard reads the fleet sources and the Omni router providers
+    OmniFleetSource.__table__,
+    OmniProviderConfig.__table__,
 ]
 
 app = FastAPI(title="BetDoc Control Panel Test App")

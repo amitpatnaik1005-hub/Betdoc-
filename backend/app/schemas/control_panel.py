@@ -196,3 +196,81 @@ class AutoDrawdownCheckResponse(ControlPanelSchema):
     measured: bool  # every input came from the ledgers (none supplied by hand)
     verdict_summary: str
     state: EmergencyStateRead
+
+
+# ---------------------------------------------------------------- Group 92: API rate-limit intelligence & quota guard (BHEESHMA)
+QuotaGuardStateLiteral = Literal["HEALTHY", "WARNING_CACHE_SHIELD", "CRITICAL_LOCKED", "UNMETERED"]
+PollingModeLiteral = Literal["LIVE_FULL", "CACHE_SHIELD", "RESERVE_FAILOVER", "BREAKER_HOLD", "NOT_POLLING"]
+ShieldModeLiteral = Literal["AUTO", "FORCE_CACHE_SHIELD", "LIVE_UNRESTRICTED"]
+
+
+class ProviderQuotaTelemetryRead(ControlPanelSchema):
+    source_id: str
+    display_name: str
+    kind: Literal["fleet", "router"]  # fleet ingestion source (token bucket) or Omni router provider (per-minute window)
+    cost: str | None = None  # fleet only: metered | free
+    category: str | None = None  # router only: the Omni category code (A-H)
+    is_enabled: bool
+    schedule_state: str
+    breaker_state: Literal["closed", "open", "half_open"]
+    breaker_remaining_seconds: float | None = None
+    requests_per_minute: float
+    burst_capacity: int  # bucket capacity (fleet) or requests per window (router)
+    tokens_available: float | None = None  # None: not readable (Redis unreachable)
+    refill_per_second: float
+    bucket_utilization_pct: float | None = None
+    is_throttled: bool
+    quota_remaining: float | None = None
+    quota_used: float | None = None
+    quota_limit: float | None = None
+    remaining_pct: float | None = None
+    used_pct: float | None = None
+    guard_state: QuotaGuardStateLiteral
+    polling_mode: PollingModeLiteral
+    shield_engaged: bool
+    base_interval_seconds: float | None = None
+    effective_interval_seconds: float | None = None
+    consecutive_failures: int = 0
+    last_latency_ms: int | None = None
+    verdict_summary: str
+
+
+class ShieldModeStateRead(ControlPanelSchema):
+    mode: ShieldModeLiteral
+    set_by: str | None = None
+    set_at: datetime | None = None
+    reason: str | None = None
+
+
+class QuotaGuardDashboardResponse(ControlPanelSchema):
+    global_rpm_limit: int
+    redis_limiter_enforcing: bool
+    shield: ShieldModeStateRead
+    cache_shield_active: bool  # at least one metered source is being polled on the shielded cadence now
+    warn_fraction_pct: float
+    reserve_fraction_pct: float
+    shield_interval_multiplier: float
+    total_sources: int
+    healthy_sources: int
+    warning_sources: int
+    critical_sources: int
+    unmetered_sources: int
+    throttled_sources: int
+    shielded_sources: int
+    overall_quota_health_pct: float  # sources not CRITICAL_LOCKED, of all shown
+    excluded_sources: list[str]  # retired feeds present in the registry but hidden here
+    architect: str
+    providers: list[ProviderQuotaTelemetryRead]
+
+
+class QuotaShieldModeUpdateRequest(ControlPanelSchema):
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+    shield_mode: ShieldModeLiteral
+    reason: str = Field(default="Operator changed the quota cache shield from the Control Panel.", min_length=3, max_length=512)
+
+
+class ProviderBucketResetRequest(ControlPanelSchema):
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+    source_id: str = Field(min_length=1, max_length=64)

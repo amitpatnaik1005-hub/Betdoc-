@@ -588,6 +588,14 @@ class Settings(BaseSettings):
     BACKUP_SCHEDULE_ENABLED: bool = True  # the beat's automated snapshot (and retention pass)
     BACKUP_SCHEDULE_HOURS: int = Field(default=6, ge=1, le=168)
     BACKUP_MAX_ROWS_PER_TABLE: int = Field(default=50_000, ge=100, le=500_000)  # a table over this is cut and the snapshot marked incomplete
+    # ---- Group 92: API rate-limit intelligence & quota guard (BHEESHMA) -----
+    # A metered fleet source at or under this quota fraction is shielded (AUTO mode): the beat polls it every
+    # interval x QUOTA_GUARD_SHIELD_INTERVAL_MULTIPLIER and the desk serves the stored odds in between. Under
+    # OMNI_FLEET_QUOTA_RESERVE the existing reserve takes over (no polling, failover) whatever the shield mode.
+    QUOTA_GUARD_WARN_FRACTION: float = Field(default=0.20, gt=0.0, lt=1.0)
+    QUOTA_GUARD_SHIELD_INTERVAL_MULTIPLIER: float = Field(default=4.0, ge=1.0, le=100.0)
+    QUOTA_GUARD_SHIELD_MODE_KEY: str = "betdoc:quota_guard:shield_mode"  # Redis hash: mode (AUTO | FORCE_CACHE_SHIELD | LIVE_UNRESTRICTED), set_by, set_at, reason
+    QUOTA_GUARD_EXCLUDED_SOURCES: list[str] = Field(default_factory=lambda: ["phantom", "garuda", "arjuna", "coingecko"])  # retired feeds, hidden from the guard (listed as excluded)
     # the contrarian edge score (0-100): 50 + clamp(divergence x w) + clamp(EV x w) + RLM bonus - trap penalty + tight-margin bonus
     COMPETITIVE_EDGE_WEIGHTS: dict[str, float] = Field(default_factory=lambda: {
         "base": 50.0, "divergence_weight": 0.75, "divergence_min": -25.0, "divergence_max": 25.0, "ev_weight": 1.8, "ev_min": -20.0, "ev_max": 25.0,
@@ -772,6 +780,14 @@ class Settings(BaseSettings):
     def validate_async_driver(cls, v: SecretStr) -> SecretStr:
         if not v.get_secret_value().startswith(_ASYNC_DB_PREFIXES):
             raise ValueError("DATABASE_URL must use an async driver: postgresql+asyncpg:// (or sqlite+aiosqlite:// in tests)")
+        return v
+
+    @field_validator("QUOTA_GUARD_WARN_FRACTION")
+    @classmethod
+    def validate_quota_warn_above_reserve(cls, v: float, info) -> float:  # noqa: ANN001 - pydantic ValidationInfo
+        reserve = info.data.get("OMNI_FLEET_QUOTA_RESERVE")
+        if reserve is not None and v <= reserve:
+            raise ValueError("QUOTA_GUARD_WARN_FRACTION must be above OMNI_FLEET_QUOTA_RESERVE, or the shield could never engage before the reserve")
         return v
 
     @field_validator("SECRET_KEY")

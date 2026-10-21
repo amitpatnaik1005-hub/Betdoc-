@@ -18,6 +18,9 @@ Self-healing:
 * **Quota-aware failover** (``app.services.omni_router``): a metered source under
   ``OMNI_FLEET_QUOTA_RESERVE`` hands its market groups to the next source by priority; a free
   probe rechecks it and it takes them back after the reset.
+* **Quota cache shield** (Group 92, Control Panel): above the reserve, a metered source at or under
+  ``QUOTA_GUARD_WARN_FRACTION`` (or every metered source, when the operator forces the shield) is
+  polled every interval x ``QUOTA_GUARD_SHIELD_INTERVAL_MULTIPLIER``; the stored odds serve between polls.
 * **Redis outage**: locks, buckets and breakers fall back to in-process state, results go to the
   local spool (``app.services.omni_spool``) and flush on recovery; API-process runs still reach
   their own sockets. Workers never crash for want of Redis.
@@ -56,6 +59,7 @@ from app.core.live_odds import decode_ticks, live_odds_keys, publish_board_ticks
 from app.core.omni_keys import OmniRedisKeys
 from app.core.provider_secrets import provider_secret
 from app.core.security_vault import VaultCrypto, VaultDecryptionError
+from app.domain.control_panel.quota_guard_math import ShieldMode, parse_shield_mode, shield_engaged, shielded_interval
 from app.models.canonical import CanonicalEntity
 from app.models.omni_vault import OmniFleetSource
 from app.schemas.market import MarketTick
@@ -145,6 +149,31 @@ class SourceState:
 
 def fleet_keys(settings: Settings) -> OmniRedisKeys:
     return OmniRedisKeys(settings.omni_redis_prefix)
+
+
+def _bucket_prefix(settings: Settings) -> str:
+    return f"{settings.omni_redis_prefix}:fleet"
+
+
+def fleet_bucket_key(settings: Settings, source_id: str) -> str:
+    """The Redis hash (tokens, ts) of a source's token bucket."""
+    return TokenBucket(None, _bucket_prefix(settings)).key(source_id)
+
+
+async def read_shield_mode(redis: Redis | None, settings: Settings) -> ShieldMode:
+    """The operator's quota cache shield mode (Group 92); AUTO when unset or Redis is unreachable."""
+    if redis is None:
+        return "AUTO"
+    try:
+        return parse_shield_mode(await redis.hget(settings.QUOTA_GUARD_SHIELD_MODE_KEY, "mode"))
+    except (RedisError, OSError):
+        return "AUTO"
+
+
+def tick_interval(descriptor: SourceDescriptor, quota_fraction: float | None, mode: ShieldMode, settings: Settings) -> float:
+    """The cadence the beat applies: the source's interval, stretched while the quota cache shield is engaged."""
+    engaged = shield_engaged(cost=descriptor.cost, quota_fraction=quota_fraction, mode=mode, warn_fraction=settings.QUOTA_GUARD_WARN_FRACTION)
+    return shielded_interval(descriptor.interval_seconds, engaged, settings.QUOTA_GUARD_SHIELD_INTERVAL_MULTIPLIER)
 
 
 def is_due(last_attempt: float | None, interval: float, state: str | None, now: float) -> bool:
@@ -289,11 +318,17 @@ async def _trip_breaker(deps: FleetDeps, source_id: str, failures: int) -> float
     return cooldown
 
 
-async def _close_breaker(deps: FleetDeps, source_id: str) -> None:
+async def close_breaker(redis: Redis | None, settings: Settings, source_id: str) -> None:
     _local_breakers.pop(source_id, None)
-    keys = fleet_keys(deps.settings)
+    if redis is None:
+        return
+    keys = fleet_keys(settings)
     with contextlib.suppress(RedisError, OSError):
-        await deps.redis.delete(keys.breaker_open(source_id), keys.breaker_half_open(source_id))
+        await redis.delete(keys.breaker_open(source_id), keys.breaker_half_open(source_id))
+
+
+async def _close_breaker(deps: FleetDeps, source_id: str) -> None:
+    await close_breaker(deps.redis, deps.settings, source_id)
 
 
 async def reset_breaker(deps: FleetDeps, source_id: str) -> None:
@@ -582,7 +617,7 @@ async def _claim(deps: FleetDeps, key: str, seconds: float) -> bool:
 
 # ---------------------------------------------------------------- one run
 def build_ingestor(descriptor: SourceDescriptor, deps: FleetDeps, api_key: str | None) -> BaseDataIngestor:
-    bucket = TokenBucket(deps.redis, f"{deps.settings.omni_redis_prefix}:fleet", deps.settings.OMNI_FLEET_THROTTLE_MAX_WAIT_SECONDS, deps.sleep)
+    bucket = TokenBucket(deps.redis, _bucket_prefix(deps.settings), deps.settings.OMNI_FLEET_THROTTLE_MAX_WAIT_SECONDS, deps.sleep)
     kwargs: dict[str, Any] = {"api_key": api_key, "sleep": deps.sleep, "limiter": bucket.limiter(descriptor.source_id, descriptor.rate_limit)}
     if descriptor.spec is not None:
         return UniversalDataIngestor(descriptor.source_id, descriptor.spec, deps.http, deps.settings, **kwargs)
@@ -754,6 +789,7 @@ async def fleet_tick(deps: FleetDeps, dispatch: Dispatch) -> dict[str, Any]:
     await vault_fleet_config.refresh(deps.redis, deps.settings, deps.session_factory)  # sports activated in the Vault join the plan
     registry, _, states, plan, groups, _ = await fleet_plan(deps)
     keys = fleet_keys(deps.settings)
+    shield_mode = await read_shield_mode(deps.redis, deps.settings)
     now = time.time()
     dispatched: list[str] = []
     for sid, entry in plan.items():
@@ -768,12 +804,13 @@ async def fleet_tick(deps: FleetDeps, dispatch: Dispatch) -> dict[str, Any]:
             continue
         if not entry.native_scope:
             continue
-        if not is_due(_float(state.metrics.get("last_attempt_at")), descriptor.interval_seconds, None, now):
+        interval = tick_interval(descriptor, state.quota_fraction, shield_mode, deps.settings)  # Group 92: the quota cache shield
+        if not is_due(_float(state.metrics.get("last_attempt_at")), interval, None, now):
             continue
         # The claim stops a run that is queued but not started from being queued again
-        if not await _claim(deps, keys.fleet_claim(sid), descriptor.interval_seconds):
+        if not await _claim(deps, keys.fleet_claim(sid), interval):
             continue
-        await dispatch(sid, entry.native_scope, "ingest", descriptor.interval_seconds)
+        await dispatch(sid, entry.native_scope, "ingest", interval)
         dispatched.append(sid)
     failovers = sorted(g for g, s in groups.items() if s.failover)
     return {"dispatched": dispatched, "failover_groups": failovers, "uncovered": sorted(g for g, s in groups.items() if s.uncovered)}

@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import asyncio
 import math
+import time
 from datetime import UTC, datetime, timedelta
 
 import pytest
@@ -314,6 +315,37 @@ async def test_reserve_is_rechecked_with_a_free_probe(make_deps, redis, stub: Pr
     assert (await run_source("odds_api", deps, probe=True)).reason == "probe"
     assert stub.requests[-1].url.path.endswith("/sports")
     assert float(await redis.hget(keys.fleet_metrics("odds_api"), "quota_fraction")) == 1.0
+
+
+async def test_the_quota_cache_shield_stretches_only_a_metered_cadence(make_deps, redis) -> None:
+    """Group 92: the Control Panel's shield mode is read by the beat, not just displayed."""
+    deps = make_deps(ODDS_API_KEY=SecretStr("k" * 32))
+    keys = OmniRedisKeys(deps.settings.omni_redis_prefix)
+    registry, *_ = await omni_fleet.fleet_plan(deps)
+    base = registry["odds_api"].interval_seconds
+    stretched = base * deps.settings.QUOTA_GUARD_SHIELD_INTERVAL_MULTIPLIER
+    calls: list[tuple[str, str, float]] = []
+
+    async def record(sid: str, scope: list[str], action: str, interval: float) -> None:  # noqa: ARG001
+        calls.append((sid, action, interval))
+
+    async def tick(*, quota: str, mode: str | None, last_attempt_ago: float) -> list[tuple[str, str, float]]:
+        calls.clear()
+        omni_fleet._local_claims.clear()
+        await redis.delete(keys.fleet_claim("odds_api"), keys.fleet_claim("polymarket"), deps.settings.QUOTA_GUARD_SHIELD_MODE_KEY)
+        if mode is not None:
+            await redis.hset(deps.settings.QUOTA_GUARD_SHIELD_MODE_KEY, mapping={"mode": mode})
+        await redis.hset(keys.fleet_metrics("odds_api"), mapping={"quota_fraction": quota, "last_attempt_at": time.time() - last_attempt_ago})
+        await fleet_tick(deps, record)
+        return [c for c in calls if c[0] == "odds_api" and c[1] == "ingest"]
+
+    due_at_base = base + 5  # due on the normal cadence, not on the shielded one
+    assert await tick(quota="0.5", mode=None, last_attempt_ago=due_at_base) == [("odds_api", "ingest", base)]
+    assert await tick(quota="0.1", mode=None, last_attempt_ago=due_at_base) == []  # AUTO: at or under the warn fraction
+    assert await tick(quota="0.5", mode="FORCE_CACHE_SHIELD", last_attempt_ago=due_at_base) == []
+    assert any(c[0] == "polymarket" and c[1] == "ingest" for c in calls)  # a free source is never held back
+    assert await tick(quota="0.1", mode="LIVE_UNRESTRICTED", last_attempt_ago=due_at_base) == [("odds_api", "ingest", base)]
+    assert await tick(quota="0.1", mode=None, last_attempt_ago=stretched + 5) == [("odds_api", "ingest", stretched)]
 
 
 # =============================================================== Redis outage
