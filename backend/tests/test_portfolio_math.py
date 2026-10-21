@@ -1,7 +1,7 @@
-"""Group 64: the arbitrage and hedging maths, proved by hand.
+"""Group 64: the hedging maths, proved by hand (Group 96 retired arbitrage and its scanner).
 
 Every figure here is exact ``Decimal`` arithmetic worked out on paper first: commission on net
-winnings (Betfair 5% against Pinnacle 0%), FX haircuts on foreign payouts, arbitrage staking, the
+winnings (Betfair 5% against Pinnacle 0%), FX haircuts on foreign payouts, the
 balanced (equal profit) and free-bet (zero loss) hedges, the slider between them, and partial-fill
 re-sizing. Then the live portfolio built from Redis-shaped books, and the FX and commission tables.
 """
@@ -24,24 +24,20 @@ from app.domain.math.arbitrage_calc import (
     Offer,
     best_offers,
     book_profits,
-    booksum,
     break_even_odds,
     commission_adjusted_odds,
-    find_arbitrage,
     from_inr,
     hedge_after_fills,
     hedge_book,
     inr_odds,
-    is_arbitrage,
     leg_cost_inr,
     raw_odds_for,
     rescale_after_fill,
-    stake_arbitrage,
     to_inr,
 )
 from app.services.aryabhata_engine import BookLine
 from app.services.fx_rates import FxRate, FxRates, FxUnavailableError
-from app.services.portfolio_manager import MarketMeta, PricingContext, evaluate_book, portfolio_payload, scan_arbitrage
+from app.services.portfolio_manager import MarketMeta, PricingContext, evaluate_book, portfolio_payload
 from app.services.portfolio_positions import OpenBet
 from app.services.portfolio_manager import market_offers
 from app.services.venue_costs import TermsTable, bookmaker_terms, default_currency
@@ -80,17 +76,13 @@ def test_raw_odds_for_inverts_the_commission_and_rounds_up() -> None:
     assert commission_adjusted_odds(floor - D("0.0001"), BETFAIR) < D("1.9")
 
 
-def test_commission_turns_a_raw_arbitrage_into_none() -> None:
-    """Betfair 2.04 HOME + Pinnacle 2.00 AWAY: raw 1/2.04 + 1/2.00 = 0.990196 looks like a 0.98% arb.
-    After Betfair's 5%: 1/1.988 + 1/2.00 = 1.003018. No arbitrage. The same price at Pinnacle keeps it."""
-    raw = booksum([D("2.04"), D("2.00")])
-    assert raw < 1 and raw.quantize(D("0.000001")) == D("0.990196")
+def test_commission_comes_off_before_any_price_is_compared() -> None:
+    """Betfair 2.04 HOME + Pinnacle 2.00 AWAY: raw 1/2.04 + 1/2.00 = 0.990196, but after Betfair's 5%
+    the rupee odds are 1.988 and 2.00: 1/1.988 + 1/2.00 = 1.003018. Hedges are priced on the latter."""
     at_betfair = [offer("HOME", "betfair_ex_uk", "2.04", BETFAIR), offer("AWAY", "pinnacle", "2.00")]
-    assert not is_arbitrage(at_betfair)
-    assert booksum([o.rupee_odds() for o in at_betfair]).quantize(D("0.000001")) == D("1.003018")
-    assert find_arbitrage(at_betfair, ["HOME", "AWAY"], 10_000) is None
-    at_pinnacle = [offer("HOME", "pinnacle", "2.04"), offer("AWAY", "pinnacle2", "2.00")]
-    assert is_arbitrage(at_pinnacle)
+    assert [o.rupee_odds() for o in at_betfair] == [D("1.98800"), D("2.00")]
+    assert sum(1 / o.rupee_odds() for o in at_betfair).quantize(D("0.000001")) == D("1.003018")
+    assert sum(1 / o.raw_odds for o in at_betfair).quantize(D("0.000001")) == D("0.990196")
 
 
 # ================================================================ FX
@@ -114,37 +106,11 @@ def test_fx_quote_refuses_a_bad_rate() -> None:
         FxQuote("USD", D("84"), D("1"))
 
 
-def test_an_arbitrage_across_currencies_counts_the_haircut() -> None:
-    """INR book 2.10 vs a GBP book 2.10: 1/2.10 + 1/(2.10 * 0.98) = 0.962099 (a 2% haircut)."""
-    gbp = FxQuote("GBP", D("105"), D("0.02"))
-    arb = find_arbitrage([offer("HOME", "inr_book", "2.10"), offer("AWAY", "uk_book", "2.10", PINNACLE, gbp)], ["HOME", "AWAY"], 10_000)
-    assert arb is not None
-    assert arb.booksum.quantize(D("0.000001")) == D("0.962099")
-    gbp_leg = next(leg for leg in arb.legs if leg.offer.currency == "GBP")
-    assert gbp_leg.stake_inr == to_inr(gbp_leg.stake_ccy, gbp)  # the rupee stake is exactly what the pounds cost
-    for leg in arb.legs:
-        assert leg.payout_inr - arb.total_stake_inr >= arb.guaranteed_profit_inr  # every outcome at least the guarantee
 
 
-# ================================================================ arbitrage
-def test_arbitrage_stakes_pay_the_same_on_every_outcome() -> None:
-    """3-way: 1/2.70 + 1/3.80 + 1/3.40 = 0.370370 + 0.263158 + 0.294118 = 0.927646, ₹10,000 staked returns ₹10,000 / B either way."""
-    offers = [offer("HOME", "a", "2.70"), offer("DRAW", "b", "3.80"), offer("AWAY", "c", "3.40")]
-    arb = find_arbitrage(offers, ["HOME", "DRAW", "AWAY"], "10000")
-    assert arb is not None
-    assert arb.booksum.quantize(D("0.0000001")) == D("0.9276459")
-    payouts = [leg.payout_inr for leg in arb.legs]
-    assert max(payouts) - min(payouts) <= D("0.05")  # level to within the paisa rounding
-    assert arb.guaranteed_profit_inr == min(payouts) - arb.total_stake_inr
-    assert arb.guaranteed_profit_inr > 0 and arb.total_stake_inr <= D("10000")
-    assert all(leg.stake_inr == leg.stake_inr.quantize(D("0.01")) for leg in arb.legs)
+# ================================================================ best prices
 
 
-def test_an_uncovered_outcome_is_never_an_arbitrage() -> None:
-    """HOME 3.00 + AWAY 3.00 sums to 0.667, but nothing covers the DRAW: every leg loses on it."""
-    offers = [offer("HOME", "a", "3.00"), offer("AWAY", "b", "3.00")]
-    assert find_arbitrage(offers, ["HOME", "DRAW", "AWAY"], 1000) is None
-    assert find_arbitrage(offers, ["HOME", "AWAY"], 1000) is not None
 
 
 def test_best_offer_is_chosen_after_commission() -> None:
@@ -153,16 +119,6 @@ def test_best_offer_is_chosen_after_commission() -> None:
     assert best["HOME"].provider == "pinnacle"
 
 
-def test_rounding_never_leaves_a_negative_guarantee() -> None:
-    rng = random.Random(64)
-    for _ in range(400):
-        odds = [D(str(round(rng.uniform(1.05, 9.0), 2))) for _ in range(rng.choice((2, 3)))]
-        commissions = [rng.choice((PINNACLE, BETFAIR, D("0.02"))) for _ in odds]
-        offers = [Offer(f"O{i}", f"b{i}", o, c) for i, (o, c) in enumerate(zip(odds, commissions, strict=True))]
-        arb = stake_arbitrage(offers, D(str(rng.randint(5, 50_000))))
-        if arb is not None:
-            assert arb.guaranteed_profit_inr > 0
-            assert all(leg.payout_inr - arb.total_stake_inr >= arb.guaranteed_profit_inr for leg in arb.legs)
 
 
 # ================================================================ partial fills
@@ -395,25 +351,6 @@ def test_portfolio_payload_totals_and_ordering() -> None:
     assert payload["totals"]["profitable_hedges"] == 1
 
 
-def test_scanner_finds_commission_adjusted_arbs_pre_match_only() -> None:
-    metas = {
-        "fx-1|Match Odds": MarketMeta("fx-1", "Match Odds", "Arsenal", "Leeds", NOW + timedelta(hours=2), {"HOME", "AWAY"}),
-        "fx-2|Match Odds": MarketMeta("fx-2", "Match Odds", "Spurs", "Fulham", NOW + timedelta(hours=2), {"HOME", "AWAY"}),
-        "fx-3|Match Odds": MarketMeta("fx-3", "Match Odds", "Chelsea", "Wolves", NOW - timedelta(minutes=5), {"HOME", "AWAY"}),
-    }
-    books = {
-        # Real arb: Pinnacle 2.10 + Smarkets 2.10 at 2% (2.078): 0.476 + 0.481 = 0.957
-        "fx-1|Match Odds": [book("pinnacle", {"HOME": "2.10", "AWAY": "1.80"}), book("smarkets", {"HOME": "1.70", "AWAY": "2.10"})],
-        # Raw arb that Betfair's 5% erases: 2.04 + 2.00
-        "fx-2|Match Odds": [book("pinnacle", {"HOME": "1.90", "AWAY": "2.00"}), book("betfair_ex_uk", {"HOME": "2.04", "AWAY": "1.80"})],
-        # In play: never scanned
-        "fx-3|Match Odds": [book("pinnacle", {"HOME": "2.50", "AWAY": "1.80"}), book("smarkets", {"HOME": "1.70", "AWAY": "2.50"})],
-    }
-    arbs = scan_arbitrage(metas, books, ctx(), get_settings())  # (the scanner reads terms from the context)
-    assert [a["fixture_id"] for a in arbs] == ["fx-1"]
-    legs = {leg["selection"]: leg for leg in arbs[0]["legs"]}
-    assert legs["AWAY"]["bookmaker_id"] == "smarkets" and legs["AWAY"]["true_odds"] == "2.0780"
-    assert D(arbs[0]["guaranteed_profit_inr"]) > 0
 
 
 # ================================================================ currencies and executable prices
@@ -448,16 +385,12 @@ def test_prediction_market_prices_round_down_to_what_an_order_can_carry() -> Non
 
 
 def test_a_foreign_stake_costs_whole_paise_and_pays_from_the_exact_amount() -> None:
-    """£0.17 at ₹117.60 is ₹19.992: the ledger reserves ₹20.00 (never under-reserved), and the
-    payout is computed from the ₹19.992 the pounds are actually worth."""
+    """£0.17 at ₹117.60 is ₹19.992: the ledger reserves ₹20.00 (never under-reserved), while what the
+    pounds are worth (and so pay) stays the exact ₹19.992."""
     gbp = FxQuote("GBP", D("117.60"), D("0.005"))
     assert leg_cost_inr(D("0.17"), gbp) == D("20.00")
+    assert to_inr(D("0.17"), gbp) == D("19.9920")
     assert leg_cost_inr(D("250.00"), None) == D("250.00")
-    arb = stake_arbitrage([offer("HOME", "uk_book", "2.30", PINNACLE, gbp), offer("AWAY", "pinnacle", "2.10")], "5000")
-    assert arb is not None
-    uk = next(leg for leg in arb.legs if leg.offer.currency == "GBP")
-    assert uk.stake_inr == leg_cost_inr(uk.stake_ccy, gbp) and uk.stake_inr == uk.stake_inr.quantize(D("0.01"))
-    assert uk.payout_inr == (uk.stake_ccy * D("117.60") * D("2.30") * D("0.995")).quantize(D("0.01"), rounding="ROUND_DOWN")
 
 
 def test_a_balanced_book_needs_no_dust_hedge() -> None:

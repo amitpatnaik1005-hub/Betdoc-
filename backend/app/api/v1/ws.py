@@ -139,8 +139,8 @@ async def signals_stream(websocket: WebSocket, user: WsUser) -> None:
 
 @router.websocket("/portfolio")
 async def portfolio_stream(websocket: WebSocket, user: WsUser) -> None:
-    """The Active Portfolio, live: this user's books marked to the live books 5x a second, and the
-    arbitrage scan whenever it changes. The socket heartbeats its user into the publisher's watch set."""
+    """The Active Portfolio, live: this user's books marked to the live books 5x a second. The socket
+    heartbeats its user into the publisher's watch set."""
     redis = getattr(websocket.app.state, "redis", None)
     if redis is None:
         await websocket.close(code=status.WS_1011_INTERNAL_ERROR, reason="Live stream unavailable")
@@ -148,9 +148,9 @@ async def portfolio_stream(websocket: WebSocket, user: WsUser) -> None:
     keys = PortfolioKeys(settings)
     pubsub = redis.pubsub(ignore_subscribe_messages=True)
     try:
-        await pubsub.subscribe(keys.channel(user.id), keys.arbitrage)
+        await pubsub.subscribe(keys.channel(user.id))
         await watch(redis, settings, user.id)
-        first = [await redis.get(keys.last(user.id)), await redis.get(keys.arbitrage_last)]
+        first = [await redis.get(keys.last(user.id))]
     except Exception:  # noqa: BLE001 - Redis down: refuse the socket, the client falls back to polling
         await websocket.close(code=status.WS_1011_INTERNAL_ERROR, reason="Live stream unavailable")
         return

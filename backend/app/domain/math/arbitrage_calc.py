@@ -1,4 +1,5 @@
-"""Commission- and FX-adjusted arbitrage and hedging maths, in ``Decimal`` throughout.
+"""Commission- and FX-adjusted hedging maths, in ``Decimal`` throughout (Group 96 retired arbitrage;
+the module keeps its name because the error type and every import path depend on it).
 
 Every price is reduced to what one rupee staked actually returns, in rupees:
 
@@ -10,8 +11,6 @@ Every price is reduced to what one rupee staked actually returns, in rupees:
 
 With those rupee odds ``E_i``:
 
-* Arbitrage: a market is one when ``sum(1 / E_i) < 1``; staking ``T * (1 / E_i) / B`` on each
-  outcome returns ``T / B`` whichever wins.
 * Hedging a book of open bets (``P_k`` = what the book makes if outcome ``k`` wins): keep the
   upside on one outcome (the anchor ``a``) and hedge every other outcome ``k`` in ``S`` so that it
   ends at a target ``T``: ``h_k = (T + H - P_k) / E_k`` with ``H = (T * b - c) / (1 - b)``,
@@ -202,89 +201,7 @@ def best_offers(offers: Sequence[Offer]) -> dict[str, Offer]:
     return {selection: pair[1] for selection, pair in best.items()}
 
 
-# ---------------------------------------------------------------- arbitrage
-@dataclass(frozen=True, slots=True)
-class ArbLeg:
-    offer: Offer
-    rupee_odds: Decimal
-    stake_inr: Decimal
-    stake_ccy: Decimal  # in the leg's own currency, rounded down to the stake unit
-    payout_inr: Decimal  # what this leg returns, in rupees, if its outcome wins (from the exact stake)
-
-
-@dataclass(frozen=True, slots=True)
-class Arbitrage:
-    selections: tuple[str, ...]
-    legs: tuple[ArbLeg, ...]
-    booksum: Decimal  # sum(1 / rupee odds): < 1 is an arbitrage
-    total_stake_inr: Decimal
-    guaranteed_profit_inr: Decimal  # the worst outcome's profit after rounding every stake down
-    roi: Decimal  # guaranteed profit / total stake
-
-    @property
-    def margin(self) -> Decimal:
-        return ONE - self.booksum
-
-
-@_exact
-def booksum(rupee_odds: Sequence[Decimal]) -> Decimal:
-    if len(rupee_odds) < 2 or any(o <= ONE for o in rupee_odds):
-        raise ArbitrageMathError("a market needs two or more outcomes priced above 1")
-    return sum((ONE / o for o in rupee_odds), ZERO)
-
-
-@_exact
-def is_arbitrage(offers: Sequence[Offer]) -> bool:
-    """``Sum(1 / True_Odds) < 1`` over one offer per outcome, every price commission- and FX-adjusted."""
-    return booksum([offer.rupee_odds() for offer in offers]) < ONE
-
-
-@_exact
-def stake_arbitrage(chosen: Sequence[Offer], total_stake_inr: object) -> Arbitrage | None:
-    """Size an arbitrage over exactly these offers (one per outcome). ``None`` when it isn't one,
-    or when rounding each stake down to its unit leaves no guaranteed profit."""
-    total = to_decimal(total_stake_inr, "total_stake_inr")
-    if total <= ZERO:
-        raise ArbitrageMathError("total stake must be positive")
-    if len({offer.selection for offer in chosen}) != len(chosen):
-        raise ArbitrageMathError("one offer per outcome")
-    odds = [offer.rupee_odds() for offer in chosen]
-    book = booksum(odds)
-    if book >= ONE:
-        return None
-    legs: list[ArbLeg] = []
-    for offer, rupee in zip(chosen, odds, strict=True):
-        stake_ccy = from_inr(total * (ONE / rupee) / book, offer.fx)
-        payout = (to_inr(stake_ccy, offer.fx) * rupee).quantize(PAISA, rounding=ROUND_DOWN)
-        legs.append(ArbLeg(offer, rupee, leg_cost_inr(stake_ccy, offer.fx), stake_ccy, payout))
-    staked = sum((leg.stake_inr for leg in legs), ZERO)
-    if staked <= ZERO or any(leg.stake_ccy <= ZERO for leg in legs):
-        return None
-    guaranteed = min(leg.payout_inr for leg in legs) - staked
-    if guaranteed <= ZERO:
-        return None  # rounding (or a tiny bank) ate the margin
-    return Arbitrage(
-        tuple(offer.selection for offer in chosen),
-        tuple(legs),
-        book,
-        staked,
-        guaranteed,
-        (guaranteed / staked).quantize(ODDS_QUANTUM, rounding=ROUND_DOWN),
-    )
-
-
-@_exact
-def find_arbitrage(offers: Sequence[Offer], outcomes: Sequence[str], total_stake_inr: object) -> Arbitrage | None:
-    """The best commission/FX-adjusted price for every outcome; an arbitrage only if all of
-    ``outcomes`` are covered and ``sum(1 / E) < 1``."""
-    if len(outcomes) < 2 or len(set(outcomes)) != len(outcomes):
-        return None
-    best = best_offers(offers)
-    if set(outcomes) - set(best):
-        return None  # an uncovered outcome loses every leg: never an arbitrage
-    return stake_arbitrage([best[o] for o in outcomes], total_stake_inr)
-
-
+# ---------------------------------------------------------------- multi-leg fills
 @_exact
 def rescale_after_fill(planned: Mapping[str, Decimal], filled_selection: str, filled_stake: object) -> dict[str, Decimal]:
     """Partial fill on one leg: scale every other leg by ``filled / planned`` (rounded down), so

@@ -64,19 +64,6 @@ class LineShopResult(BaseModel):
     ev_pct: float
 
 
-class ArbitrageOpportunity(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    match_id: str
-    selection_id: str
-    back_bookmaker: str
-    back_odds: float
-    lay_bookmaker: str
-    lay_odds: float
-    exchange_commission_pct: float         # fraction, 0.02 = 2%
-    net_profit_pct: float                  # percent of back stake
-
-
 class SurebetLeg(BaseModel):
     model_config = ConfigDict(extra="forbid")
 

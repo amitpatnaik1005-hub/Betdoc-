@@ -9,6 +9,7 @@ import importlib.util
 import math
 import uuid
 from collections.abc import AsyncIterator
+from datetime import UTC, datetime
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
@@ -51,6 +52,7 @@ def test_garuda_is_retired() -> None:
 @pytest.mark.parametrize(("method", "path"), [
     ("GET", "/api/v1/phantom/opportunities"), ("POST", "/api/v1/phantom/arbitrage"), ("POST", "/api/v1/phantom/dutching"),
     ("GET", "/api/v1/omni/arbitrage"), ("POST", "/api/v1/omni/arbitrage/execute"), ("GET", "/api/v1/portfolio/arbitrage"),
+    ("GET", "/api/v1/signals/arbitrage"),
 ])
 async def test_arbitrage_and_phantom_routes_are_gone(method: str, path: str) -> None:
     app = FastAPI()
@@ -59,8 +61,31 @@ async def test_arbitrage_and_phantom_routes_are_gone(method: str, path: str) -> 
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://t") as client:
         assert (await client.request(method, path, json={})).status_code == 404
     paths = set(app.openapi()["paths"])
-    assert not any(p.startswith(("/api/v1/phantom", "/api/v1/omni/arbitrage")) for p in paths)
+    assert not any(p.startswith(("/api/v1/phantom", "/api/v1/omni/arbitrage", "/api/v1/signals/arbitrage")) for p in paths)
     assert "/api/v1/lab/quant-toolkit/dutching" in paths and "/api/v1/omni/portfolio" in paths  # the app really is mounted
+
+
+def test_market_signals_keep_line_shopping_without_back_lay_arbitrage() -> None:
+    """The back/lay scan had no caller left; best-price line shopping (the +EV view) and the surebet feed stay."""
+    import app.domain.market_signals as signals
+    import app.schemas.market_signals as signal_schemas
+
+    app = FastAPI()
+    app.include_router(api_router)
+    paths = set(app.openapi()["paths"])
+    assert {"/api/v1/signals/best-price", "/api/v1/signals/surebets", "/api/v1/signals/steam-moves"} <= paths
+    assert not hasattr(signals, "find_back_lay_arbitrage") and not hasattr(signals, "back_lay_profit_fraction")
+    assert not hasattr(signal_schemas, "ArbitrageOpportunity")
+    now = datetime(2026, 1, 1, 12, tzinfo=UTC)
+    ticks = [
+        signal_schemas.OddsTick(match_id="m1", market_type="DRAW_NO_BET", selection_id=sel, bookmaker_id=book, decimal_odds=odds,
+                                odds_type=signal_schemas.OddsType.BACK, is_sharp=sharp, timestamp=now)
+        for book, sharp, sel, odds in [("pinnacle", True, "HOME", 1.95), ("pinnacle", True, "AWAY", 1.95), ("soft", False, "HOME", 2.20)]
+    ]
+    best = signals.find_best_price(ticks, "HOME", 10, as_of=now)
+    # Pinnacle's 1.95 / 1.95 de-vigs to a fair 2.00 each way, so 2.20 is 2.20 / 2.00 - 1 = +10%
+    assert best is not None and best.best_back_bookmaker == "soft" and best.true_odds_consensus == pytest.approx(2.0)
+    assert best.ev_pct == pytest.approx(10.0)
 
 
 def test_board_screening_emits_value_lines_only() -> None:

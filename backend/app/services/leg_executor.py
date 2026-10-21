@@ -7,7 +7,7 @@ order of the legs and what each fill means for the next one: legging risk.
 
 1. Pre-flight, before anything fires: the live price of every leg (refused if a book now offers
    less than the user saw), that the legs cover every outcome of the market, the bankroll, and every
-   risk guard for every leg (exposure checked against the whole arbitrage, velocity per leg). A leg
+   risk guard for every leg (exposure checked against the whole plan, velocity per leg). A leg
    that would be blocked is found here, not after Leg A is already live.
 2. Leg A fires first (the exchange leg: the one a thin market partly fills).
 3. Its receipt says what actually matched. A fill below the request (₹10,000 asked, ₹4,000 matched)
@@ -16,10 +16,9 @@ order of the legs and what each fill means for the next one: legging risk.
    price held), so the outcomes stay level.
 4. Leg A fails (rejected, blocked, unconfirmed): nothing else fires. An unconfirmed leg stops the
    sequence too: hedging a bet that may not exist would open a naked one.
-5. Each leg's ``min_acceptable_odds`` is the price at which its outcome stops covering every stake
-   placed and to be placed (after the remaining legs re-size), so a slipped fill can never turn the
-   arbitrage into a loss. Hedge legs use the same idea against their target, and never go past the
-   user's slippage limit.
+5. Each hedge leg's ``min_acceptable_odds`` is the price below which its outcome would end under the
+   hedge's floor (the target, capped at ₹0) after every stake still to come, and never a price past
+   the user's slippage limit.
 
 A plan that stops part-way is ``LEGGED``: the receipt carries the book's real profit per outcome
 and the Active Portfolio offers the cover at the next best prices.
@@ -396,8 +395,6 @@ class LegExecutor:
             profits = {o: base[o] + profits[o] for o in outcomes}
         profits = {o: p.quantize(PAISA, rounding=ROUND_DOWN) for o, p in profits.items()}
         worst, best = min(profits.values()), max(profits.values())
-        if status == "COMPLETE" and strategy == "arbitrage" and worst < ZERO:
-            status = "LEGGED"  # every leg placed, but a later leg's partial fill left one outcome short
         messages = {
             "COMPLETE": "Every leg placed" + (" (partial fills re-sized the legs after them)" if any(l.status == "PARTIAL" for l in legs) else ""),
             "LEGGED": "Part of the plan is open: the book is not fully covered. The Active Portfolio shows the cover",

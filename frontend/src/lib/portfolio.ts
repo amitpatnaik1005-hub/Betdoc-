@@ -52,7 +52,7 @@ export interface BookBet {
   odds: string;
   status: string;
   unconfirmed: boolean;
-  strategy: "arbitrage" | "hedge" | null;
+  strategy: "arbitrage" | "hedge" | null; // "arbitrage": a leg placed before Group 96 retired it
   group_id: string | null;
   currency: string;
 }
@@ -117,7 +117,7 @@ export interface LegReceipt {
 
 export interface MultiLegReceipt {
   group_id: string;
-  strategy: "arbitrage" | "hedge";
+  strategy: "hedge";
   status: "COMPLETE" | "LEGGED" | "ABORTED";
   message: string;
   legs: LegReceipt[];
@@ -129,8 +129,6 @@ export interface MultiLegReceipt {
 }
 
 export const LEG_REFUSALS: Record<string, string> = {
-  ARB_INCOMPLETE: "Doesn't cover every outcome",
-  NO_ARBITRAGE: "No longer an arbitrage after commission and FX",
   PRICE_MOVED: "A price moved",
   PRICE_UNAVAILABLE: "A book stopped quoting",
   MARKET_IN_PLAY: "Market is in play",

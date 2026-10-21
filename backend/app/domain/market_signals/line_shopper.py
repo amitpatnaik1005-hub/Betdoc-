@@ -6,7 +6,6 @@ from datetime import datetime, timedelta, timezone
 from app.domain.market_signals.vig_calculator import remove_vig_power_method
 from app.schemas.market_signals import (
     MAX_FUTURE_SKEW,
-    ArbitrageOpportunity,
     LineShopResult,
     MarketSurebet,
     OddsTick,
@@ -127,55 +126,6 @@ def find_best_price(
         best_back_bookmaker=best.bookmaker_id,
         true_odds_consensus=round(float(true_odds), 6),
         ev_pct=round(float(ev_pct), 4),
-    )
-
-
-def back_lay_profit_fraction(back_odds: float, lay_odds: float, commission_pct: float) -> float | None:
-    """Per 1 unit backed: L = O_back / (O_lay - c); profit = (O_back - L*(O_lay-1) - 1)."""
-    denominator = lay_odds - commission_pct
-    if lay_odds <= 1.0 or back_odds <= 1.0 or denominator <= 0.0:
-        return None
-    lay_stake = back_odds / denominator
-    profit = back_odds - lay_stake * (lay_odds - 1.0) - 1.0
-    return profit if math.isfinite(profit) else None
-
-
-def find_back_lay_arbitrage(
-    market_ticks: list[OddsTick],
-    selection_id: str,
-    commission_pct: float,
-    max_staleness_minutes: int,
-    as_of: datetime | None = None,
-) -> ArbitrageOpportunity | None:
-    if not 0.0 <= commission_pct < 1.0:
-        raise ValueError("commission_pct must be a fraction in [0, 1)")
-    now = _as_of(as_of)
-    backs = [t for t in _latest_fresh(market_ticks, OddsType.BACK, now, max_staleness_minutes)
-             if t.selection_id == selection_id]
-    lays = [t for t in _latest_fresh(market_ticks, OddsType.LAY, now, max_staleness_minutes)
-            if t.selection_id == selection_id]
-
-    best: tuple[float, OddsTick, OddsTick] | None = None
-    for b in backs:
-        for lay in lays:
-            if b.bookmaker_id == lay.bookmaker_id or _market_key(b) != _market_key(lay):
-                continue
-            profit = back_lay_profit_fraction(b.decimal_odds, lay.decimal_odds, commission_pct)
-            if profit is not None and profit > 0.0 and (best is None or profit > best[0]):
-                best = (profit, b, lay)
-
-    if best is None:
-        return None
-    profit, b, lay = best
-    return ArbitrageOpportunity(
-        match_id=b.match_id,
-        selection_id=selection_id,
-        back_bookmaker=b.bookmaker_id,
-        back_odds=float(b.decimal_odds),
-        lay_bookmaker=lay.bookmaker_id,
-        lay_odds=float(lay.decimal_odds),
-        exchange_commission_pct=float(commission_pct),
-        net_profit_pct=round(profit * 100.0, 4),
     )
 
 
