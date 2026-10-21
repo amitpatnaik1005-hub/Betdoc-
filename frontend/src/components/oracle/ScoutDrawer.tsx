@@ -1,8 +1,10 @@
-import { useState, useRef, useEffect, useId, type ReactElement } from 'react';
-import { useLocation } from 'react-router-dom';
+import { useState, useRef, useEffect, useId, type ReactElement, type ReactNode } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
 import { apiClient } from '../../api/client';
-import { useScoutStore } from '../../store/useScoutStore';
+import { useScoutDockStore } from '../../store/useScoutDockStore';
+import { type ScoutAction, type ScoutSource, useScoutStore } from '../../store/useScoutStore';
+import { useUIStore } from '../../store/useUIStore';
 import { useExecutionStore } from '../../store/useExecutionStore';
 import { useCommanderStore } from '../../store/useCommanderStore';
 import { BRAND, SURFACE } from '../../ui/brand';
@@ -14,7 +16,7 @@ const SCOUT_PROMPT = [
   BRAND.ring,
 ].join(' ');
 
-const OracleMark = ({ thinking, size = 22 }: { readonly thinking: boolean; readonly size?: number }): ReactElement => {
+export const OracleMark = ({ thinking, size = 22 }: { readonly thinking: boolean; readonly size?: number }): ReactElement => {
   const reduceMotion = useReducedMotion();
   const gradientId = useId();
 
@@ -67,11 +69,24 @@ const OracleMark = ({ thinking, size = 22 }: { readonly thinking: boolean; reado
 interface ScoutChatResponse {
   response_text: string;
   history_id: string;
+  actions?: ScoutAction[];
+  source?: ScoutSource;
 }
+
+const SOURCE_LABEL: Record<ScoutSource, string> = { ollama: 'local model', quant_nlg: 'rule engine', guardrail: 'BetDoc only' };
+const SOURCE_HINT: Record<ScoutSource, string> = {
+  ollama: "Written by BetDoc's local language model, from your live book",
+  quant_nlg: "Written by BetDoc's rule engine from your live book (the local model is off or not running)",
+  guardrail: 'Scout Oracle answers BetDoc questions only',
+};
+/** An in-app path only (the server already refuses anything else; checked again before navigating). */
+const isInAppRoute = (route: string): boolean => /^\/([a-z0-9-][a-z0-9/-]*)?$/.test(route);
 
 const newId = (): string => (typeof crypto.randomUUID === 'function' ? crypto.randomUUID() : String(Date.now() + Math.random()));
 
-export const ScoutDrawer = () => {
+/** The Scout Oracle conversation. `toolbar` sits at the right of its header (the dock's width controls). */
+export const ScoutDrawer = ({ toolbar }: { readonly toolbar?: ReactNode } = {}) => {
+  const navigate = useNavigate();
   const messages = useScoutStore((s) => s.messages);
   const append = useScoutStore((s) => s.append);
   const { pathname } = useLocation();
@@ -109,7 +124,8 @@ export const ScoutDrawer = () => {
       // The backend grounds the briefing in the caller's own book (exposure, P&L, stake sizing).
       const pageContext = `${section} ${betslipContext}`.trim().slice(0, 120);
       const res = await apiClient.post<ScoutChatResponse>('/oracle-scout/chat', { page_context: pageContext, user_message: submitted });
-      append({ id: res.history_id, role: 'scout', content: res.response_text, context: contextLabel });
+      append({ id: res.history_id, role: 'scout', content: res.response_text, context: contextLabel, actions: res.actions ?? [], source: res.source });
+      if (useUIStore.getState().isRightCollapsed) useScoutDockStore.getState().incrementUnread();  // answered after the dock closed
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'The Scout could not answer right now.');
     } finally {
@@ -132,19 +148,22 @@ export const ScoutDrawer = () => {
             <h2 className={`text-[15px] font-semibold leading-none tracking-tight ${SURFACE.primary}`}>Scout Oracle</h2>
             <p className={`mt-1 truncate text-[11px] font-medium ${SURFACE.secondary}`}>{contextLabel}</p>
           </div>
-          <AnimatePresence>
-            {thinking && (
-              <motion.span
-                initial={{ opacity: 0, x: -6 }}
-                animate={{ opacity: 1, x: 0 }}
-                exit={{ opacity: 0, x: -6 }}
-                className={`ml-auto inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[10.5px] font-medium ring-1 ring-inset ring-indigo-500/30 text-indigo-700 dark:text-indigo-300`}
-              >
-                <span className="size-1.5 animate-breathe rounded-full bg-indigo-500" aria-hidden="true" />
-                Reasoning
-              </motion.span>
-            )}
-          </AnimatePresence>
+          <div className="ml-auto flex shrink-0 items-center gap-2">
+            <AnimatePresence>
+              {thinking && (
+                <motion.span
+                  initial={{ opacity: 0, x: -6 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  exit={{ opacity: 0, x: -6 }}
+                  className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[10.5px] font-medium ring-1 ring-inset ring-indigo-500/30 text-indigo-700 dark:text-indigo-300`}
+                >
+                  <span className="size-1.5 animate-breathe rounded-full bg-indigo-500" aria-hidden="true" />
+                  Reasoning
+                </motion.span>
+              )}
+            </AnimatePresence>
+            {toolbar}
+          </div>
         </div>
       </header>
 
@@ -156,7 +175,7 @@ export const ScoutDrawer = () => {
             </span>
             <p className={`mt-4 text-[13px] font-semibold tracking-tight ${SURFACE.secondary}`}>Ask the Scout</p>
             <p className={`mt-1 text-[11.5px] leading-relaxed ${SURFACE.muted}`}>
-              Briefings quote your live book: exposure, today's P&L and stake sizing. Load a bet in the terminal to ask about its price.
+              Ask about a match, a price, a slip or your stake. Answers quote your live book (bankroll, exposure, today's P&L). BetDoc questions only.
             </p>
           </div>
         )}
@@ -176,10 +195,27 @@ export const ScoutDrawer = () => {
                 {message.role !== 'user' && (
                   <>
                     <span aria-hidden="true" className={`pointer-events-none absolute inset-y-3 left-0 w-[2px] rounded-full ${BRAND.gradient}`} />
-                    <p className={`mb-1.5 pl-2 ${SURFACE.eyebrow}`}>Scout</p>
+                    <p className={`mb-1.5 pl-2 ${SURFACE.eyebrow}`} title={message.source ? SOURCE_HINT[message.source] : undefined}>
+                      Scout{message.source ? ` · ${SOURCE_LABEL[message.source]}` : ''}
+                    </p>
                   </>
                 )}
-                <span className={message.role !== 'user' ? 'block pl-2' : undefined}>{message.content}</span>
+                <span className={message.role !== 'user' ? 'block whitespace-pre-wrap pl-2' : undefined}>{message.content}</span>
+                {message.role !== 'user' && (message.actions?.length ?? 0) > 0 && (
+                  <div className="mt-2.5 flex flex-wrap gap-1.5 pl-2">
+                    {message.actions!.filter((a) => isInAppRoute(a.route)).map((action) => (
+                      <button
+                        key={`${action.type}:${action.route}`}
+                        type="button"
+                        onClick={() => navigate(action.route)}
+                        className="inline-flex items-center gap-1 rounded-lg bg-indigo-50/70 px-2 py-1 text-[11px] font-medium text-indigo-700 ring-1 ring-inset ring-indigo-500/20 transition-colors hover:bg-indigo-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500/50 dark:bg-indigo-500/10 dark:text-indigo-300 dark:ring-indigo-400/20 dark:hover:bg-indigo-500/20"
+                      >
+                        <span className="material-symbols-outlined text-[13px]" aria-hidden="true">arrow_outward</span>
+                        {action.label}
+                      </button>
+                    ))}
+                  </div>
+                )}
               </div>
             </motion.div>
           ))}
@@ -250,7 +286,7 @@ export const ScoutDrawer = () => {
             id="scout-draft"
             type="text"
             autoComplete="off"
-            placeholder="Ask about stakes, prices or this market..."
+            placeholder="Ask about a match, a price, a slip or your stake..."
             value={draft}
             onChange={(event) => setDraft(event.target.value)}
             className={`w-full min-w-0 border-0 bg-transparent p-0 text-[13px] tracking-tight placeholder:text-stone-400 focus:outline-none focus:ring-0 dark:placeholder:text-stone-600 ${SURFACE.primary}`}
@@ -277,7 +313,7 @@ export const ScoutDrawer = () => {
         </form>
 
         <p className={`mt-3 text-center text-[10px] leading-relaxed tracking-tight ${SURFACE.muted}`}>
-          Rule-based briefings on your live book · paper exchange only
+          BetDoc's local model when it is running, else its rule engine · your live book, never invented figures
         </p>
       </div>
     </div>

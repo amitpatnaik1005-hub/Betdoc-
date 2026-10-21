@@ -1,18 +1,25 @@
-"""OracleScoutManager: context-aware briefings grounded in the user's live book, plus chronological history."""
+"""OracleScoutManager: context-aware briefings grounded in the user's live book, plus chronological history.
+
+Group 100: each question goes, in order, to BetDoc's domain guardrail (a polite refusal for anything outside BetDoc),
+the local language model when it is running (``app.services.llm``), else the rule engine below, which needs nothing
+but the live book. Every answer carries action cards for the pages it concerns and says which of the three wrote it.
+"""
 
 import asyncio
 import logging
 import re
-from dataclasses import dataclass
-from typing import Literal
+from dataclasses import asdict, dataclass
+from typing import Any, Literal
 from uuid import UUID
 
 from sqlalchemy import select
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import Settings, get_settings
 from app.domain.oracle_scout.errors import ScoutDomainError
 from app.models.oracle_scout import OracleScoutHistoryModel
+from app.services.llm.ollama_client import REFUSAL, OllamaScoutClient, actions_for, is_off_topic
 
 logger = logging.getLogger("betdoc.ashoka")
 
@@ -24,6 +31,7 @@ DEFAULT_LATENCY_S = 0.0
 TOPIC_PREVIEW_LENGTH = 80
 
 ScoutZone = Literal["vault", "arena", "default"]
+ScoutSource = Literal["guardrail", "ollama", "quant_nlg"]
 
 
 def normalize_page_context(page_context: str | None) -> str | None:
@@ -65,15 +73,29 @@ class ScoutFacts:
 
 
 _ODDS_PATTERN = re.compile(r"(?<![\d.])(\d{1,3}\.\d{1,3})(?![\d.])")
+# A market line, not a price: "over 2.5", "-1.5", "+0.75", "2.5 goals"
+_LINE_BEFORE = re.compile(r"(\b(over|under|o|u|handicap|ah|line|total)|[+-])\s*$", re.IGNORECASE)
+_LINE_AFTER = re.compile(r"^\s*(goals?|runs?|points?|pts|corners?|cards?|wickets?|sets?|games?|maps?|innings)\b", re.IGNORECASE)
 
 
 def _money(value: float) -> str:
-    return f"{'-' if value < 0 else ''}INR {abs(value):,.2f}"
+    return f"{'-' if value < 0 else ''}₹{abs(value):,.2f}"
+
+
+def _quoted_odds(message: str) -> list[float]:
+    """Decimal prices in the question (up to three), skipping market lines such as "over 2.5 goals"."""
+    out: list[float] = []
+    for m in _ODDS_PATTERN.finditer(message):
+        value = float(m.group(1))
+        if not 1.0 < value < 1000.0 or _LINE_BEFORE.search(message[: m.start()]) or _LINE_AFTER.search(message[m.end():]):
+            continue
+        out.append(value)
+    return out[:3]
 
 
 def _odds_maths(message: str) -> str:
     """Implied probabilities for any decimal odds quoted in the question (e.g. "is 2.10 value?")."""
-    quotes = [float(m) for m in _ODDS_PATTERN.findall(message) if 1.0 < float(m) < 1000.0][:3]
+    quotes = _quoted_odds(message)
     if not quotes:
         return ""
     parts = [f"{q:.2f} implies {100.0 / q:.1f}%" for q in quotes]
@@ -122,10 +144,20 @@ def compose_response(zone: ScoutZone, message: str, facts: ScoutFacts | None = N
 
 
 class OracleScoutManager:
-    def __init__(self, *, latency_s: float = DEFAULT_LATENCY_S) -> None:
+    def __init__(self, *, latency_s: float = DEFAULT_LATENCY_S, settings: Settings | None = None, llm: OllamaScoutClient | None = None) -> None:
         if latency_s < 0:
             raise ValueError("latency_s must be non-negative.")
         self._latency_s = latency_s
+        self._llm = llm if llm is not None else OllamaScoutClient(settings or get_settings())
+
+    async def _answer(self, message: str, context: str | None, facts: ScoutFacts | None) -> tuple[str, list[dict[str, Any]], ScoutSource]:
+        if is_off_topic(message):
+            return REFUSAL, [], "guardrail"
+        actions = actions_for(message)
+        reply = await self._llm.answer(message, context, asdict(facts) if facts is not None else None)
+        if reply:
+            return reply, actions, "ollama"
+        return compose_response(resolve_zone(context), message, facts), actions, "quant_nlg"
 
     async def chat(
         self,
@@ -134,7 +166,8 @@ class OracleScoutManager:
         page_context: str | None,
         user_id: UUID | None,
         facts: ScoutFacts | None = None,
-    ) -> OracleScoutHistoryModel:
+    ) -> tuple[OracleScoutHistoryModel, list[dict[str, Any]], ScoutSource]:
+        """Answer, persist the exchange, and return (history entry, action cards, which engine answered)."""
         message = (user_message or "").strip()
         if not message:
             raise ScoutDomainError("user_message must not be blank.")
@@ -146,7 +179,7 @@ class OracleScoutManager:
             raise ScoutDomainError(f"page_context must be at most {MAX_PAGE_CONTEXT_LENGTH} characters.")
 
         zone = resolve_zone(context)
-        response_text = compose_response(zone, message, facts)
+        response_text, actions, source = await self._answer(message, context, facts)
 
         if self._latency_s:
             await asyncio.sleep(self._latency_s)  # test hook: simulate a slow responder
@@ -167,12 +200,13 @@ class OracleScoutManager:
         await db.refresh(entry)  # loads the server-side created_at
 
         logger.info(
-            "ASHOKA: answered a %s-zone question (%d chars) for %s.",
+            "ASHOKA: answered a %s-zone question (%d chars) for %s via %s.",
             zone,
             len(message),
             user_id or "anonymous",
+            source,
         )
-        return entry
+        return entry, actions, source
 
     async def get_history(
         self,

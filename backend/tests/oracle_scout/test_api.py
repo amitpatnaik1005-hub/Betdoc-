@@ -24,7 +24,7 @@ async def test_chat_returns_context_aware_response(client, page_context, expecte
     )
     assert response.status_code == 200
     body = response.json()
-    assert set(body) == {"response_text", "history_id"}
+    assert set(body) == {"response_text", "history_id", "actions", "source"} and body["source"] == "quant_nlg"
     assert expected_phrase in body["response_text"]
     UUID(body["history_id"])
 

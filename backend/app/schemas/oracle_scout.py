@@ -1,6 +1,7 @@
 """Pydantic V2 contracts for the Scout Oracle (ASHOKA)."""
 
 from datetime import datetime
+from typing import Literal
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -20,9 +21,21 @@ class ScoutChatRequest(ScoutSchema):
     user_id: UUID | None = None
 
 
+class ScoutAction(ScoutSchema):
+    """A clickable card under an answer (Group 100): it opens a BetDoc page."""
+
+    type: Literal["LOAD_PARLAY", "NAVIGATE", "OPEN_CONSULTANT", "VIEW_PREDICTION"]
+    label: str
+    route: str = Field(pattern=r"^/([a-z0-9-][a-z0-9/-]*)?$")  # an in-app path, never a URL or a //host
+
+
 class ScoutChatResponse(ScoutSchema):
     response_text: str
     history_id: UUID
+    # Group 100, additive: the cards, and which engine answered (the guardrail's refusal, the local model, or the
+    # rule engine on the live book)
+    actions: list[ScoutAction] = Field(default_factory=list)
+    source: Literal["guardrail", "ollama", "quant_nlg"] = "quant_nlg"
 
 
 class ScoutHistoryRead(ScoutSchema):

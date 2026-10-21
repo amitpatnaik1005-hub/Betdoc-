@@ -28,21 +28,21 @@ async def _count(session) -> int:
 
 @pytest.mark.parametrize("page_context", ["/vault", "/VAULT/deposits", "  The-Vault  "])
 async def test_vault_context_mentions_bankroll(manager, db_session, page_context):
-    entry = await manager.chat(db_session, "How much should I stake?", page_context, None)
+    entry, _, _ = await manager.chat(db_session, "How much should I stake?", page_context, None)
     assert "bankroll management" in entry.oracle_response
     assert "risk" in entry.oracle_response
 
 
 @pytest.mark.parametrize("page_context", ["/arena", "/Arena/live/match-42"])
 async def test_arena_context_mentions_live_odds(manager, db_session, page_context):
-    entry = await manager.chat(db_session, "Is the line moving?", page_context, None)
+    entry, _, _ = await manager.chat(db_session, "Is the line moving?", page_context, None)
     assert "live odds" in entry.oracle_response
     assert "in-play tracking" in entry.oracle_response
 
 
 @pytest.mark.parametrize("page_context", ["/dashboard", "/lab", None, "", "   "])
 async def test_default_context_mentions_sharp_betting(manager, db_session, page_context):
-    entry = await manager.chat(db_session, "Any tips?", page_context, None)
+    entry, _, _ = await manager.chat(db_session, "Any tips?", page_context, None)
     assert "sharp betting" in entry.oracle_response
     assert "bankroll management" not in entry.oracle_response
     assert "live odds" not in entry.oracle_response
@@ -63,7 +63,7 @@ async def test_normalize_page_context_handles_none_and_blank():
 
 async def test_chat_persists_and_refreshes_server_defaults(manager, db_session):
     user_id = uuid4()
-    entry = await manager.chat(db_session, "  What is value betting?  ", "/Arena", user_id)
+    entry, _, _ = await manager.chat(db_session, "  What is value betting?  ", "/Arena", user_id)
     entry_id, stored_user, stored_context, stored_message, created_at = (
         entry.id,
         entry.user_id,
@@ -86,7 +86,7 @@ async def test_chat_persists_and_refreshes_server_defaults(manager, db_session):
 
 
 async def test_chat_with_null_context_is_saved_as_null(manager, db_session):
-    entry = await manager.chat(db_session, "Hello Scout", None, None)
+    entry, _, _ = await manager.chat(db_session, "Hello Scout", None, None)
     assert entry.page_context is None
     assert entry.user_id is None
     assert await _count(db_session) == 1
@@ -167,7 +167,7 @@ def test_briefings_quote_the_live_book_and_odds_maths():
     facts = ScoutFacts(bankroll=10_000.0, exposure=500.0, daily_pnl=-120.0, open_positions=2, win_rate_pct=55.0, stop_loss_status="ARMED")
     vault = compose_response("vault", "how much should I stake?", facts)
     assert "bankroll management" in vault  # the guidance stays...
-    assert "INR 100.00 to INR 200.00" in vault and "(5.0%)" in vault  # ...and quotes the user's own numbers
+    assert "₹100.00 to ₹200.00" in vault and "(5.0%)" in vault  # ...and quotes the user's own numbers
     arena = compose_response("arena", "is 2.50 value here?", facts)
     assert "2.50 implies 40.0%" in arena and "2 open positions" in arena
     assert "Your book" not in compose_response("default", "hello")  # anonymous callers get no figures

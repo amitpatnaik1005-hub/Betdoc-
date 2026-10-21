@@ -675,6 +675,16 @@ class Settings(BaseSettings):
     CELERY_BROKER_URL: SecretStr | None = None  # defaults to REDIS_URL
     RATE_LIMIT_GLOBAL_RPM: int = Field(default=600, gt=0)
     ARCHIVE_BACKUP_DIR: str | None = None  # where scripts/backup.sh writes *.sql.gz
+    # ---- Group 100: Scout Oracle's local language model (Ollama) ---------------
+    # Off, unreachable or slow: the Scout answers from its rule engine on the live book instead (never an error).
+    SCOUT_LLM_ENABLED: bool = True
+    SCOUT_LLM_BASE_URL: str = "http://localhost:11434"  # http://ollama:11434 inside docker compose
+    SCOUT_LLM_MODEL: str = "qwen2.5:7b-instruct"  # qwen2.5:3b-instruct on a smaller machine
+    SCOUT_LLM_TIMEOUT_SECONDS: float = Field(default=20.0, gt=0, le=120)  # one answer, including a cold model load
+    SCOUT_LLM_PROBE_TIMEOUT_SECONDS: float = Field(default=1.5, gt=0, le=10)
+    SCOUT_LLM_RETRY_AFTER_SECONDS: float = Field(default=30.0, ge=0)  # after a failed probe, skip the model this long
+    SCOUT_LLM_TEMPERATURE: float = Field(default=0.2, ge=0, le=1)
+    SCOUT_LLM_MAX_TOKENS: int = Field(default=600, ge=64, le=4096)
     HIVE_SUPERVISOR_INTERVAL_SECONDS: float = Field(default=30.0, ge=0)  # 0 disables commander heartbeats
     # ---- Group 90: commander telemetry -------------------------------------
     HIVE_SUPERVISOR_PROBE_TIMEOUT_SECONDS: float = Field(default=5.0, gt=0, le=30.0)  # one subsystem probe; over it the commander is FATAL

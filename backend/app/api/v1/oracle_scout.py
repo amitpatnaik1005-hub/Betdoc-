@@ -63,7 +63,7 @@ async def scout_chat(payload: ScoutChatRequest, request: Request, db: DbSession,
     # Authenticated callers always chat as themselves; a payload user_id can't impersonate anyone.
     caller = _bearer_user_id(request)
     try:
-        entry = await manager.chat(
+        entry, actions, source = await manager.chat(
             db,
             user_message=payload.user_message,
             page_context=payload.page_context,
@@ -73,7 +73,7 @@ async def scout_chat(payload: ScoutChatRequest, request: Request, db: DbSession,
     except ScoutDomainError as exc:
         logger.warning("ASHOKA: chat rejected: %s", exc.message)
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=exc.message) from exc
-    return ScoutChatResponse(response_text=entry.oracle_response, history_id=entry.id)
+    return ScoutChatResponse(response_text=entry.oracle_response, history_id=entry.id, actions=actions, source=source)
 
 
 @router.get("/history", response_model=list[ScoutHistoryRead])

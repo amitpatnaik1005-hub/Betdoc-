@@ -16,6 +16,7 @@ from sqlalchemy.pool import StaticPool
 from app.api.deps import get_db
 from app.api.v1.oracle_scout import router as oracle_scout_router
 from app.domain.oracle_scout.manager import OracleScoutManager
+from app.services.llm.ollama_client import OllamaScoutClient
 from app.models import Base
 from app.models.oracle_scout import OracleScoutHistoryModel
 
@@ -60,6 +61,16 @@ async def session_factory(engine: AsyncEngine) -> async_sessionmaker[AsyncSessio
 async def db_session(session_factory: async_sessionmaker[AsyncSession]) -> AsyncIterator[AsyncSession]:
     async with session_factory() as session:
         yield session
+
+
+@pytest.fixture(autouse=True)
+def _no_local_model(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Group 100: these tests pin the rule engine; a local Ollama that happens to be running must not answer."""
+
+    async def silent(self: OllamaScoutClient, *_: object, **__: object) -> None:
+        return None
+
+    monkeypatch.setattr(OllamaScoutClient, "answer", silent)
 
 
 @pytest.fixture

@@ -12,7 +12,8 @@ import {
 
 import { BRAND, AnimatedGlyph, type GlyphMotion, BetdocLogo as BrandLogo } from './ui/brand';
 import { useUIStore } from './store/useUIStore';
-import { ScoutDrawer as EmbeddedScout } from './components/oracle/ScoutDrawer';
+import { ScoutOracleFlexiDock } from './components/oracle/ScoutOracleFlexiDock';
+import { toggleScoutDock } from './store/useScoutDockStore';
 import LoginForm from './components/LoginForm';
 import { RouteErrorBoundary } from './components/RouteErrorBoundary';
 import { Toaster } from './components/Toaster';
@@ -567,74 +568,6 @@ const Sidebar = ({ theme, onToggleTheme }: { theme: string; onToggleTheme: () =>
   );
 };
 
-const ExecutionPanel = () => {
-  const { isRightCollapsed, toggleRight, isCompact } = useUIStore();
-
-  if (isCompact) {
-    // Phones: a floating trigger, and a full-screen sheet when open.
-    return (
-      <AnimatePresence initial={false}>
-        {isRightCollapsed ? (
-          <motion.button
-            key="slip-fab"
-            type="button"
-            onClick={toggleRight}
-            initial={{ scale: 0.8, opacity: 0 }}
-            animate={{ scale: 1, opacity: 1 }}
-            exit={{ scale: 0.8, opacity: 0 }}
-            whileTap={{ scale: 0.95 }}
-            className="fixed bottom-5 right-5 z-30 inline-flex items-center gap-2 rounded-full bg-[var(--accent)] px-5 py-3.5 text-sm font-semibold text-[var(--accent-ink)] shadow-soft-lg"
-          >
-            <span className="material-symbols-outlined text-xl">chat</span>
-            Scout Oracle
-          </motion.button>
-        ) : (
-          <motion.aside
-            key="slip-sheet"
-            role="dialog"
-            aria-label="Scout Oracle panel"
-            initial={{ y: '100%' }}
-            animate={{ y: 0 }}
-            exit={{ y: '100%' }}
-            transition={SPRING}
-            className="fixed inset-0 z-50 flex flex-col bg-[#FBFAF7] dark:bg-stone-900"
-          >
-            <div className="flex shrink-0 items-center justify-between px-5 pb-2 pt-4">
-              <span className="font-display text-base font-semibold text-stone-900 dark:text-stone-100">Scout Oracle</span>
-              <button onClick={toggleRight} title="Close panel" className="grid size-10 place-items-center rounded-full bg-stone-900/[0.04] text-stone-500 transition-transform duration-300 active:scale-95 dark:bg-white/[0.06]"><span className="material-symbols-outlined text-xl">close</span></button>
-            </div>
-            <div className="flex min-h-0 flex-1 flex-col"><EmbeddedScout /></div>
-          </motion.aside>
-        )}
-      </AnimatePresence>
-    );
-  }
-
-  return (
-    <motion.aside
-      layout
-      animate={{ width: isRightCollapsed ? 80 : 380 }}
-      transition={SPRING}
-      className="z-20 flex h-screen shrink-0 flex-col overflow-hidden bg-[#FBFAF7] shadow-[-1px_0_0_rgba(41,37,36,0.04)] dark:bg-stone-900/60 dark:shadow-[-1px_0_0_rgba(255,255,255,0.03)]"
-    >
-      {isRightCollapsed ? (
-        <div className="flex flex-col items-center gap-4 pt-6">
-          <button onClick={toggleRight} title="Expand panel" className="flex h-10 w-10 items-center justify-center rounded-2xl text-stone-400 transition-[background-color,transform] duration-300 hover:bg-stone-900/[0.04] active:scale-95 dark:hover:bg-white/[0.05]"><span className="material-symbols-outlined text-xl">chevron_left</span></button>
-          <button onClick={toggleRight} title="Open Scout Oracle" className="flex h-10 w-10 items-center justify-center rounded-2xl text-stone-400 transition-[background-color,transform] duration-300 hover:bg-stone-900/[0.04] active:scale-95 dark:hover:bg-white/[0.05]"><span className="material-symbols-outlined text-xl">chat</span></button>
-        </div>
-      ) : (
-        <motion.div className="flex flex-col h-full w-[380px]" initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.2 }}>
-          <div className="flex shrink-0 items-center justify-between px-5 pb-1 pt-5">
-            <span className="font-display text-[15px] font-semibold text-stone-900 dark:text-stone-100">Scout Oracle</span>
-            <button onClick={toggleRight} title="Collapse panel" className="flex h-8 w-8 items-center justify-center rounded-full text-stone-400 transition-[background-color,transform] duration-300 hover:bg-stone-900/[0.04] active:scale-95 dark:hover:bg-white/[0.05]"><span className="material-symbols-outlined text-base">chevron_right</span></button>
-          </div>
-          <div className="flex min-h-0 flex-1 flex-col"><EmbeddedScout /></div>
-        </motion.div>
-      )}
-    </motion.aside>
-  );
-};
-
 const HaltBanner = () => {
   const halted = useSystemStore((s) => s.halted);
   const [busy, setBusy] = useState(false);
@@ -712,12 +645,11 @@ const SessionEffects = () => {
 
 const usePaletteCommands = (): PaletteCommand[] => {
   const nav = useNavigateCommands(NAV_ITEMS);
-  const toggleRight = useUIStore((s) => s.toggleRight);
   const halted = useSystemStore((s) => s.halted);
   return useMemo(
     () => [
       ...nav,
-      { id: 'act:scout', label: 'Toggle Scout Oracle', icon: 'chat', group: 'Actions', run: toggleRight },
+      { id: 'act:scout', label: 'Toggle Scout Oracle (Ctrl+J)', icon: 'chat', group: 'Actions', run: toggleScoutDock },
       {
         id: 'act:refresh',
         label: 'Refresh every section',
@@ -732,7 +664,7 @@ const usePaletteCommands = (): PaletteCommand[] => {
         ? { id: 'act:resume', label: 'Resume trading', icon: 'play_circle', group: 'Actions', hint: '₹500 daily exposure', run: () => void resumeTrading(500) }
         : { id: 'act:halt', label: 'Emergency stop: halt all trading', icon: 'front_hand', group: 'Actions', run: () => void emergencyStop() },
     ],
-    [nav, toggleRight, halted],
+    [nav, halted],
   );
 };
 
@@ -740,6 +672,18 @@ const AppShell = () => {
   const { theme, toggle } = useTheme();
   const { pathname } = useLocation();
   const commands = usePaletteCommands();
+
+  // Group 100: Ctrl+J (Cmd+J on a Mac) opens or collapses the Scout Oracle from anywhere
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && !e.altKey && !e.shiftKey && e.key.toLowerCase() === 'j') {
+        e.preventDefault();
+        toggleScoutDock();
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
 
   return (
     <div className="flex h-screen w-full overflow-hidden bg-[#F8F6F0] text-stone-800 dark:bg-stone-950 dark:text-stone-200">
@@ -760,7 +704,7 @@ const AppShell = () => {
           </RouteErrorBoundary>
         </div>
       </motion.main>
-      <ExecutionPanel />
+      <ScoutOracleFlexiDock />
       <CommandPalette commands={commands} />
       <Toaster />
     </div>
