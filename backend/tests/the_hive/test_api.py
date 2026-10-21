@@ -114,7 +114,7 @@ async def test_claim_complete_flow(client: AsyncClient, recorder: RecordingManag
     assert claimed.json()["id"] == task_id
     assert claimed.json()["assignee_name"] == "SHIVAJI"
 
-    empty = await client.post("/hive/tasks/claim", json={"bot_name": "GARUDA"})
+    empty = await client.post("/hive/tasks/claim", json={"bot_name": "DRONA"})
     assert empty.status_code == 204
 
     intruder = await client.patch(f"/hive/tasks/{task_id}/complete", json={"bot_name": "CHANAKYA"})

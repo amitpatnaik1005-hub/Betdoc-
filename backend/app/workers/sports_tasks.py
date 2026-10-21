@@ -2,8 +2,9 @@
 
 * ``sports.poll_multi_sport_consensus_odds`` (every ``SPORTS_ODDS_POLL_SECONDS``, 60 s): the boards of all nine sports'
   active feed keys, each key paced by ``SPORTS_FEED_MIN_INTERVAL_SECONDS`` and the quota floor.
-* ``sports.screen_cross_provider_arbitrage`` (every ``SPORTS_ARB_SCREEN_SECONDS``, 30 s): cross-venue arbitrage and
-  value lines over the stored boards, across every venue quoted.
+* ``sports.screen_cross_provider_arbitrage`` (every ``SPORTS_ARB_SCREEN_SECONDS``, 30 s): +EV value lines over the
+  stored boards, across every venue quoted. The name is historical (Group 96 retired arbitrage); kept so running
+  beats and workers need no change.
 
 A Redis lock keeps one run of each at a time; a run the beat could not start in time expires unrun.
 """
@@ -33,7 +34,7 @@ async def _run(name: str) -> dict[str, Any]:
             now = datetime.now(UTC)
             if name == "poll":
                 return await service.poll_consensus(sessions, redis, now)
-            return await service.screen_arbitrage(redis, now)
+            return await service.screen_value_lines(redis, now)
         finally:
             await redis.delete(lock)
 

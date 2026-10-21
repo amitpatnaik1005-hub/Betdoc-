@@ -188,7 +188,7 @@ const Bookmakers = () => {
     invalidate: ['bookmakers'], success: `${b.name} ${b.is_active ? 'disabled' : 'enabled'}`,
   });
   return (
-    <Panel title="Bookmaker routing" icon="alt_route" className="lg:col-span-6" updatedAt={books.updatedAt} subtitle="used by the Phantom odds router">
+    <Panel title="Bookmaker routing" icon="alt_route" className="lg:col-span-6" updatedAt={books.updatedAt} subtitle="used by The Lab's odds router">
       <div className="flex flex-col gap-4">
         <Async resource={books} isEmpty={(r) => r.length === 0} empty={<EmptyState icon="alt_route" title="No bookmakers configured" detail="With none configured, routing considers every quoting book." />}>
           {(rows) => (

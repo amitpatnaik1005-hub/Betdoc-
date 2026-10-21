@@ -683,11 +683,9 @@ def test_normalisation_maps_venues_inside_the_fa3_budget() -> None:
     assert sum(event.consensus.values()) == pytest.approx(1.0)
     assert event.sharp is not None and event.sharp["book"] == "pinnacle"
     assert event.normalization_ms < get_settings().SPORTS_NORMALIZATION_BUDGET_MS
-    edges = screen_event(event.as_dict(), min_edge=0.02, min_arbitrage=0.015)
-    kinds = {e["kind"] for e in edges}
-    assert "value" in kinds  # 1xBet's 2.25 on Arsenal against Pinnacle's fair price
-    arb = [e for e in edges if e["kind"] == "arbitrage"]
-    assert arb and arb[0]["booksum"] < 1 and sum(leg["stake_share"] for leg in arb[0]["legs"]) == pytest.approx(1.0, abs=1e-4)
+    edges = screen_event(event.as_dict(), min_edge=0.02)
+    # 1xBet's 2.25 on Arsenal against Pinnacle's fair price; the boards still book under 1, but Group 96 retired arbitrage
+    assert {e["kind"] for e in edges} == {"value"}
     assert normalize_event({**ODDS_EVENT, "bookmakers": []}, "soccer_epl") is None
 
 
@@ -1115,11 +1113,11 @@ async def test_poll_and_screen_cycle(api: dict[str, Any]) -> None:
     again = await service.poll_consensus(sessions, redis, now, transport=httpx.MockTransport(handler))
     assert again["fetched"] == [] and again["skipped"] == report["feed_keys"]  # paced by SPORTS_FEED_MIN_INTERVAL_SECONDS
 
-    screened = await service.screen_arbitrage(redis, now)
-    assert screened["value_lines"] >= 1 and screened["arbitrages"] >= 1
+    screened = await service.screen_value_lines(redis, now)
+    assert screened["value_lines"] >= 1 and "arbitrages" not in screened
     resp = await api["client"].get("/api/v1/sports/edges", params={"sport_key": "soccer"})
     assert resp.status_code == 200 and resp.json()["available"] is True
-    assert {e["kind"] for e in resp.json()["edges"]} == {"value", "arbitrage"}
+    assert {e["kind"] for e in resp.json()["edges"]} == {"value"}  # Group 96: value lines only
     assert (await api["client"].get("/api/v1/sports/edges", params={"sport_key": "basketball"})).json()["edges"] == []
 
     await redis.flushdb()

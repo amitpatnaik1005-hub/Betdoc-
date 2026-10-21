@@ -1,4 +1,4 @@
-"""Group 64: legging risk. Multi-leg arbitrages and hedges through the CFO ledger and the Omni-Sniper.
+"""Group 64: legging risk. Multi-leg hedges (Group 96 retired arbitrage) through the CFO ledger and the Omni-Sniper.
 
 The brief's proof is the first live-path test: Leg A asks for ₹10,000 at Betfair, the bookmaker's
 API answers that only ₹4,000 matched, and Leg B (Pinnacle) goes out at ₹4,000, re-sized *before*
@@ -43,7 +43,7 @@ from app.models.hive_bots import TradingBot
 from app.models.control_panel import SystemSettingsModel
 from app.models.execution import EntityMapping, ExecutionVenue
 from app.schemas.cfo_vault import ExecuteTradeRequest
-from app.schemas.portfolio import ArbitrageExecuteRequest, ArbitrageLegRequest, HedgeExecuteRequest
+from app.schemas.portfolio import HedgeExecuteRequest
 from app.services import portfolio_positions
 from app.services.bookmaker_gateway import BookmakerOrder, BookmakerOutcome, BookmakerResult
 from app.services.cfo_execution import TradeExecutor
@@ -168,22 +168,6 @@ async def put_book(redis: Redis, settings: Settings, bookmaker: str, prices: dic
     await redis.hset(f"{settings.ARYABHATA_PREFIX}:books:{fixture}|Match Odds", f"odds_api|{bookmaker}", value)
 
 
-async def arb_books(redis: Redis, settings: Settings) -> None:
-    """Betfair HOME 2.20 (5%: true 2.14) against Pinnacle AWAY 2.14 (0%): 2 / 2.14 = 0.934579.
-    ₹20,000 splits exactly ₹10,000 / ₹10,000."""
-    await put_book(redis, settings, "betfair_ex_uk", {"HOME": "2.20", "AWAY": "1.70"})
-    await put_book(redis, settings, "pinnacle", {"HOME": "1.95", "AWAY": "2.14"})
-
-
-def arb_request(key: uuid.UUID | None = None, home: str = "2.20", away: str = "2.14", total: str = "20000.00") -> ArbitrageExecuteRequest:
-    return ArbitrageExecuteRequest(
-        idempotency_key=key or uuid.uuid4(),
-        fixture_id=FIXTURE,
-        total_stake_inr=D(total),
-        legs=[ArbitrageLegRequest(selection="HOME", bookmaker_id="betfair_ex_uk", odds=D(home)), ArbitrageLegRequest(selection="AWAY", bookmaker_id="pinnacle", odds=D(away))],
-    )
-
-
 class Scripted:
     """A ``BookmakerGateway`` that records every order and answers per selection from a script."""
 
@@ -236,92 +220,6 @@ async def bank(sessions: async_sessionmaker[AsyncSession], user_id: uuid.UUID) -
 
 # ================================================================ the brief's proof, on the live path
 @pytest.mark.asyncio
-async def test_partial_fill_response_scales_leg_b_down_before_it_fires(
-    sessions: async_sessionmaker[AsyncSession], redis: Redis, settings: Settings, user_id: uuid.UUID
-) -> None:
-    """Leg A (Betfair, the exchange leg, fires first) asks ₹10,000. The bookmaker's API answers
-    ``matched_stake: 4000.00``. Leg B (Pinnacle) must go out at ₹4,000, not ₹10,000."""
-    vault = VaultCrypto(Fernet.generate_key().decode())
-    async with sessions() as session:
-        for venue_id in ("betfair_ex_uk", "pinnacle"):
-            session.add(
-                ExecutionVenue(
-                    id=venue_id, display_name=venue_id, adapter="generic_json", base_url=f"https://{venue_id}.example/api", auth_type="static_bearer",
-                    place_path="/bets", status_path="/bets", bets_per_second=D("50"), burst=50, routes=[], selection_codes={"HOME": "1", "AWAY": "2"},
-                    encrypted_credentials=vault.encrypt_key(json.dumps({"api_key": f"key-{venue_id}-0001"})), is_enabled=True, is_sandbox=False,
-                )
-            )
-        await session.flush()
-        for venue_id in ("betfair_ex_uk", "pinnacle"):
-            session.add(EntityMapping(venue_id=venue_id, kind="fixture", canonical_key=FIXTURE, remote_id=f"EV-{venue_id}", source="manual", detail={}))
-        await session.commit()
-
-    calls: list[dict[str, Any]] = []
-
-    def bookmaker(request: httpx.Request) -> httpx.Response:
-        body = json.loads(request.content)
-        calls.append({"host": request.url.host, **body})
-        if request.url.host.startswith("betfair"):
-            return httpx.Response(200, json={"remote_bet_id": "BF-1001", "status": "OPEN", "matched_odds": "2.20", "matched_stake": "4000.00"})
-        return httpx.Response(200, json={"remote_bet_id": "PN-2002", "status": "OPEN", "matched_odds": body["odds"]})
-
-    await arb_books(redis, settings)
-    live = settings.model_copy(update={"CFO_EXECUTION_MODE": "live"})
-    gateway = SniperGateway(sessions, redis, live, vault, httpx.AsyncClient(transport=httpx.MockTransport(bookmaker)))
-    receipt = await legs_for(sessions, redis, live, gateway).execute_arbitrage(user_id, arb_request())
-
-    assert [(c["host"], c["stake"]) for c in calls] == [("betfair_ex_uk.example", "10000.00"), ("pinnacle.example", "4000.00")]
-    assert calls[0]["time_in_force"] == "IOC"  # the unmatched ₹6,000 lapses at the exchange, it never sits in the book
-    assert receipt.status == "COMPLETE"
-    a, b = receipt.legs
-    assert (a.status, a.planned_stake_inr, a.filled_stake_inr) == ("PARTIAL", D("10000.00"), D("4000.00"))
-    assert (b.status, b.planned_stake_inr, b.requested_stake_inr, b.filled_stake_inr) == ("FILLED", D("10000.00"), D("4000.00"), D("4000.00"))
-    # Both outcomes still pay the same: 4,000 * 2.14 - 8,000 = ₹560
-    assert receipt.outcome_profits == {"HOME": D("560.00"), "AWAY": D("560.00")}
-
-    ledger = {row.selection: row for row in await rows(sessions)}
-    assert (ledger["HOME"].stake_inr, ledger["HOME"].requested_stake_inr, ledger["HOME"].remote_bet_id) == (D("4000.00"), D("10000.00"), "BF-1001")
-    assert ledger["HOME"].strategy == ledger["AWAY"].strategy == "arbitrage" and ledger["HOME"].group_id == ledger["AWAY"].group_id
-    # 4,000 * 1.20 * 0.95: the matched stake settles, not the asked one, net of Betfair's 5% (= 4,000 * 2.14 - 4,000)
-    assert ledger["HOME"].potential_pnl == D("4560.00")
-    assert await bank(sessions, user_id) == (BANK - D("8000.00"), D("8000.00"))  # the unmatched ₹6,000 is back
-
-
-@pytest.mark.asyncio
-async def test_the_price_floors_keep_every_outcome_whole(sessions: async_sessionmaker[AsyncSession], redis: Redis, settings: Settings, user_id: uuid.UUID) -> None:
-    """Leg A's floor: its outcome must cover the legs after it once they re-size to its payout:
-    1 / (1 - 1/2.14) = 1.877193 true, 1.9234 raw at 5%. Leg B's: (4,000 + 4,000) / 4,000 = 2.00."""
-    await arb_books(redis, settings)
-    book = Scripted(HOME=fills("4000.00"))
-    await legs_for(sessions, redis, settings, book).execute_arbitrage(user_id, arb_request())
-    a, b = book.orders
-    assert a.min_acceptable_odds == raw_odds_for(1 / (1 - 1 / D("2.14")), D("0.05")) == D("1.9234")
-    assert commission_adjusted_odds(a.min_acceptable_odds, D("0.05")) >= 1 / (1 - 1 / D("2.14"))
-    assert b.min_acceptable_odds == D("2.0000") and b.stake_inr == D("4000.00")
-
-
-@pytest.mark.parametrize(
-    ("leg_a", "reason"),
-    [(rejects(), "BOOKMAKER_HTTP_500"), (rejects("NOT_MATCHED"), "NOT_MATCHED"), (rejects("SLIPPAGE_REJECTED"), "SLIPPAGE_REJECTED")],
-)
-@pytest.mark.asyncio
-async def test_leg_a_failing_never_fires_leg_b(
-    sessions: async_sessionmaker[AsyncSession], redis: Redis, settings: Settings, user_id: uuid.UUID, leg_a: Any, reason: str
-) -> None:
-    await arb_books(redis, settings)
-    book = Scripted(HOME=leg_a)
-    request = arb_request()
-    receipt = await legs_for(sessions, redis, settings, book).execute_arbitrage(user_id, request)
-    assert [o.selection for o in book.orders] == ["HOME"]  # Leg B never left
-    assert receipt.status == "ABORTED" and receipt.legs[0].reason == reason
-    assert receipt.legs[1].status == "ABORTED" and receipt.legs[1].reason == "ARBITRAGE_LEG_ABORTED"
-    assert await rows(sessions) == [] and await bank(sessions, user_id) == (BANK, D("0.00"))
-    async with sessions() as session:
-        aborted = await session.scalar(select(AuditLog).where(AuditLog.reason == "ARBITRAGE_LEG_ABORTED"))
-    assert aborted is not None and aborted.idempotency_key == leg_key(request.idempotency_key, "AWAY")
-
-
-@pytest.mark.asyncio
 async def test_a_zero_match_response_is_a_rejection(sessions: async_sessionmaker[AsyncSession], redis: Redis, settings: Settings, user_id: uuid.UUID) -> None:
     """``matched_stake: 0`` from an immediate-or-cancel order: nothing exists, so Leg A rolls back
     (adapter level: the generic JSON adapter classifies it before the ledger sees it)."""
@@ -347,51 +245,6 @@ async def test_a_zero_match_response_is_a_rejection(sessions: async_sessionmaker
     assert (lapsed.outcome, lapsed.reason) == (BookmakerOutcome.REJECTED, "NOT_MATCHED")
     assert (over.outcome, over.reason) == (BookmakerOutcome.UNKNOWN, "FILL_EXCEEDS_REQUEST")  # more matched than reserved: a person checks it
     assert (partial.outcome, partial.reason, partial.filled_stake) == (BookmakerOutcome.ACCEPTED, "PARTIAL_FILL", D("2500.50"))
-
-
-@pytest.mark.asyncio
-async def test_an_unconfirmed_leg_a_stops_the_sequence(sessions: async_sessionmaker[AsyncSession], redis: Redis, settings: Settings, user_id: uuid.UUID) -> None:
-    await arb_books(redis, settings)
-    book = Scripted(HOME=unknown())
-    receipt = await legs_for(sessions, redis, settings, book).execute_arbitrage(user_id, arb_request())
-    assert [o.selection for o in book.orders] == ["HOME"]
-    assert receipt.status == "LEGGED" and receipt.legs[0].status == "UNCONFIRMED" and receipt.legs[1].status == "ABORTED"
-    (entry,) = await rows(sessions)
-    assert entry.reconcile_required and entry.stake_inr == D("10000.00")  # the stake stays in exposure until resolved
-
-
-@pytest.mark.asyncio
-async def test_leg_b_failing_after_leg_a_is_reported_as_legged(sessions: async_sessionmaker[AsyncSession], redis: Redis, settings: Settings, user_id: uuid.UUID) -> None:
-    await arb_books(redis, settings)
-    receipt = await legs_for(sessions, redis, settings, Scripted(AWAY=rejects())).execute_arbitrage(user_id, arb_request())
-    assert receipt.status == "LEGGED" and [leg.status for leg in receipt.legs] == ["FILLED", "FAILED"]
-    # Leg A alone: HOME pays 10,000 * 2.14 - 10,000 = ₹11,400, AWAY loses the ₹10,000
-    assert receipt.outcome_profits == {"HOME": D("11400.00"), "AWAY": D("-10000.00")} and receipt.worst_case == D("-10000.00")
-
-
-@pytest.mark.asyncio
-async def test_a_foreign_currency_leg_is_staked_in_its_own_currency(sessions: async_sessionmaker[AsyncSession], redis: Redis, settings: Settings, user_id: uuid.UUID) -> None:
-    """unibet_uk settles in GBP (test rate ₹110.00, 0.5% haircut on the way home): HOME 2.30 there is
-    2.2885 in rupee terms; AWAY 2.10 at Pinnacle. 1/2.2885 + 1/2.10 = 0.913161. The GBP leg goes
-    out in pounds, the ledger reserves its cost in whole paise and keeps the pound stake."""
-    await FxRates(redis, settings).publish("GBP", D("110.00"), "test")
-    await put_book(redis, settings, "unibet_uk", {"HOME": "2.30", "AWAY": "1.60"})
-    await put_book(redis, settings, "pinnacle", {"HOME": "1.95", "AWAY": "2.10"})
-    book = Scripted()
-    request = ArbitrageExecuteRequest(
-        idempotency_key=uuid.uuid4(), fixture_id=FIXTURE, total_stake_inr=D("5000.00"),
-        legs=[ArbitrageLegRequest(selection="HOME", bookmaker_id="unibet_uk", odds=D("2.30")), ArbitrageLegRequest(selection="AWAY", bookmaker_id="pinnacle", odds=D("2.10"))],
-    )
-    receipt = await legs_for(sessions, redis, settings, book).execute_arbitrage(user_id, request)
-    assert receipt.status == "COMPLETE" and receipt.worst_case > 0
-    uk = next(o for o in book.orders if o.selection == "HOME")
-    assert uk.currency == "GBP" and uk.stake is not None and uk.stake == uk.stake.quantize(D("0.01"))
-    assert uk.stake_inr == (uk.stake * D("110")).quantize(D("0.01"), rounding="ROUND_UP")
-    row = next(r for r in await rows(sessions) if r.selection == "HOME")
-    assert (row.currency, row.stake_ccy, row.stake_inr) == ("GBP", uk.stake, uk.stake_inr)
-    # The HOME outcome pays from the pounds' exact value, through the haircut
-    paid = uk.stake * D("110") * D("2.30") * D("0.995")
-    assert receipt.outcome_profits["HOME"] == (paid - receipt.total_staked_inr).quantize(D("0.01"), rounding="ROUND_DOWN")
 
 
 @pytest.mark.asyncio
@@ -436,55 +289,6 @@ async def test_a_betslip_order_to_a_foreign_venue_is_converted_at_the_live_rate(
     (row,) = await rows(sessions)
     assert (row.currency, row.stake_ccy, row.stake_inr) == ("GBP", D("8.50"), D("999.60"))
     assert await bank(sessions, user_id) == (BANK - D("999.60"), D("999.60"))
-
-
-# ================================================================ pre-flight: nothing fires
-@pytest.mark.asyncio
-async def test_pre_flight_refusals_fire_nothing(sessions: async_sessionmaker[AsyncSession], redis: Redis, settings: Settings, user_id: uuid.UUID) -> None:
-    await arb_books(redis, settings)
-    book = Scripted()
-    legs = legs_for(sessions, redis, settings, book)
-
-    with pytest.raises(CfoError) as moved:  # Pinnacle no longer offers 2.20
-        await legs.execute_arbitrage(user_id, arb_request(away="2.20"))
-    assert moved.value.reason == "PRICE_MOVED" and moved.value.detail["current_odds"] == "2.1400"
-
-    # Each leg alone (₹10,000) fits a 1% fixture cap of ₹10,000; both together do not
-    async with sessions() as session:
-        session.add(RiskGuardSettings(user_id=user_id, max_market_exposure_pct=D("1.00")))
-        await session.commit()
-    with pytest.raises(CfoError) as capped:
-        await legs.execute_arbitrage(user_id, arb_request())
-    assert capped.value.reason == "BLOCKED_BY_MARKET_EXPOSURE"
-
-    await put_book(redis, settings, "pinnacle", {"HOME": "1.95", "DRAW": "3.40", "AWAY": "2.14"})
-    with pytest.raises(CfoError) as incomplete:  # the market has a draw now: two legs don't cover it
-        await legs.execute_arbitrage(user_id, arb_request())
-    assert incomplete.value.reason == "ARB_INCOMPLETE"
-    assert book.orders == [] and await rows(sessions) == []
-
-
-@pytest.mark.asyncio
-async def test_commission_can_erase_an_arbitrage_before_it_fires(sessions: async_sessionmaker[AsyncSession], redis: Redis, settings: Settings, user_id: uuid.UUID) -> None:
-    """Raw 2.04 + 2.00 is 0.990196; Betfair's 5% makes it 1.003018. Refused, nothing placed."""
-    await put_book(redis, settings, "betfair_ex_uk", {"HOME": "2.04", "AWAY": "1.70"})
-    await put_book(redis, settings, "pinnacle", {"HOME": "1.95", "AWAY": "2.00"})
-    book = Scripted()
-    with pytest.raises(CfoError) as caught:
-        await legs_for(sessions, redis, settings, book).execute_arbitrage(user_id, arb_request(home="2.04", away="2.00"))
-    assert caught.value.reason == "NO_ARBITRAGE" and book.orders == []
-
-
-@pytest.mark.asyncio
-async def test_a_double_click_fires_the_legs_once(sessions: async_sessionmaker[AsyncSession], redis: Redis, settings: Settings, user_id: uuid.UUID) -> None:
-    await arb_books(redis, settings)
-    book = Scripted()
-    legs = legs_for(sessions, redis, settings, book)
-    key = uuid.uuid4()
-    first, second = await asyncio.gather(legs.execute_arbitrage(user_id, arb_request(key)), legs.execute_arbitrage(user_id, arb_request(key)), return_exceptions=True)
-    outcomes = sorted([type(first).__name__, type(second).__name__])
-    assert outcomes == ["DuplicateExecutionError", "MultiLegReceipt"]
-    assert len(book.orders) == 2
 
 
 # ================================================================ hedges
@@ -611,7 +415,8 @@ async def test_the_publisher_streams_5x_a_second_without_polling_postgres(
 
 
 @pytest.mark.asyncio
-async def test_portfolio_and_arbitrage_endpoints(sessions: async_sessionmaker[AsyncSession], redis: Redis, settings: Settings, user_id: uuid.UUID) -> None:
+async def test_portfolio_and_fx_endpoints_without_arbitrage(sessions: async_sessionmaker[AsyncSession], redis: Redis, settings: Settings, user_id: uuid.UUID) -> None:
+    """Group 96 retired arbitrage: its two routes are gone; the portfolio and FX views still answer."""
     from fastapi import FastAPI
 
     from app.api.deps import get_current_user
@@ -620,22 +425,16 @@ async def test_portfolio_and_arbitrage_endpoints(sessions: async_sessionmaker[As
     app = FastAPI()
     app.include_router(portfolio.router, prefix="/api/v1")
     app.state.redis = redis
-    app.state.bookmaker = Scripted(HOME=fills("4000.00"))
     async with sessions() as session:
         user = await session.get(User, user_id)
     app.dependency_overrides[get_current_user] = lambda: user
     app.dependency_overrides[cfo_execution.get_session_factory] = lambda: sessions
     app.dependency_overrides[get_settings] = lambda: settings
-    await arb_books(redis, settings)
-    body = arb_request().model_dump(mode="json")
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://t") as client:
-        fired = await client.post("/api/v1/omni/arbitrage/execute", json=body)
-        assert fired.status_code == 200 and fired.json()["status"] == "COMPLETE"
-        assert [leg["filled_stake_inr"] for leg in fired.json()["legs"]] == [4000.0, 4000.0]
-        again = await client.post("/api/v1/omni/arbitrage/execute", json=body)
-        assert again.status_code == 409 and again.json()["detail"]["reason"] == "DUPLICATE_REQUEST"
+        assert (await client.get("/api/v1/omni/arbitrage")).status_code == 404
+        assert (await client.post("/api/v1/omni/arbitrage/execute", json={})).status_code == 404
         view = (await client.get("/api/v1/omni/portfolio")).json()
-        assert view["totals"]["open_bets"] == 2 and view["markets"][0]["worst_case"] == "560.00"
+        assert view["totals"]["open_bets"] == 0
         assert (await client.put("/api/v1/omni/fx-rates", json={"currency": "GBP", "inr_per_unit": "110"})).status_code in (401, 403)
         rates = (await client.get("/api/v1/omni/fx-rates")).json()
         assert rates["rates"] == [] and rates["haircut_pct"] == settings.FX_HAIRCUT_PCT

@@ -11,10 +11,8 @@ from sqlalchemy.exc import IntegrityError
 
 from app.domain.phantom.errors import PhantomDomainError
 from app.domain.phantom.manager import CointegrationSignal, MatchedBettingMode
-from app.models.phantom import ArbitrageOpportunityModel, PhantomCalculationLogModel
+from app.models.phantom import PhantomCalculationLogModel
 from app.schemas.phantom import (
-    ArbitrageOpportunityRead,
-    ArbitrageRequest,
     CointegrationRequest,
     PhantomCalculationLogRead,
 )
@@ -23,18 +21,6 @@ pytestmark = pytest.mark.asyncio
 
 
 # ---------------------------------------------------------------- reference implementations
-
-
-def ref_arbitrage(odds, commissions, target):
-    effective = [1.0 + (o - 1.0) * (1.0 - c / 100.0) for o, c in zip(odds, commissions, strict=True)]
-    implied = [1.0 / e for e in effective]
-    total = sum(implied)
-    return {
-        "effective": effective,
-        "total": total,
-        "profit_pct": ((1.0 / total) - 1.0) * 100.0,
-        "stakes": [round((p / total) * target, 2) for p in implied],
-    }
 
 
 def ref_market_maker(s, q, gamma, sigma, big_t, t, k):
@@ -53,130 +39,7 @@ async def _count(session, model) -> int:
     return (await session.execute(select(func.count()).select_from(model))).scalar_one()
 
 
-# ---------------------------------------------------------------- arbitrage
-
-
-async def test_two_way_arbitrage_without_commission(manager, db_session):
-    outcome = await manager.detect_arbitrage(
-        db_session, "Arsenal v Chelsea", "MATCH_ODDS_2WAY", [2.1, 2.1], [0.0, 0.0], 100.0, 1.0
-    )
-    result = outcome["result"]
-
-    assert result["is_arbitrage"] is True
-    assert result["total_implied_probability"] == pytest.approx(2 / 2.1)
-    assert result["guaranteed_profit_pct"] == pytest.approx(5.0)
-    assert result["stakes"] == [50.0, 50.0]
-    assert result["guaranteed_profit"] == pytest.approx(5.0)
-
-    opportunity = ArbitrageOpportunityRead.model_validate(outcome["opportunity"])
-    assert opportunity.stakes == [50.0, 50.0]
-    assert opportunity.is_active is True
-    assert opportunity.created_at is not None
-    assert await _count(db_session, ArbitrageOpportunityModel) == 1
-
-
-@pytest.mark.parametrize(
-    ("odds", "commissions", "expected_arb"),
-    [
-        ([2.1, 2.1], [5.0, 5.0], True),     # commission shrinks but does not kill the edge
-        ([2.1, 2.1], [10.0, 10.0], False),  # commission on profit erases the edge
-        ([2.2, 2.05], [2.0, 0.0], True),    # asymmetric commissions
-        ([1.9, 1.95], [0.0, 0.0], False),   # overround book
-    ],
-)
-async def test_two_way_arbitrage_with_commissions(manager, db_session, odds, commissions, expected_arb):
-    outcome = await manager.detect_arbitrage(db_session, "Evt", "MKT", odds, commissions, 200.0, 0.0)
-    ref = ref_arbitrage(odds, commissions, 200.0)
-    result = outcome["result"]
-
-    assert result["effective_odds"] == pytest.approx(ref["effective"])
-    assert result["total_implied_probability"] == pytest.approx(ref["total"])
-    assert result["guaranteed_profit_pct"] == pytest.approx(ref["profit_pct"])
-    assert result["stakes"] == ref["stakes"]
-    assert result["is_arbitrage"] is expected_arb
-    assert (outcome["opportunity"] is not None) is expected_arb
-
-
-async def test_three_way_arbitrage_equalises_returns(manager, db_session):
-    odds, commissions, target = [3.4, 3.8, 3.9], [2.0, 5.0, 0.0], 1_000.0
-    outcome = await manager.detect_arbitrage(db_session, "Derby", "1X2", odds, commissions, target, 5.0)
-    ref = ref_arbitrage(odds, commissions, target)
-    result = outcome["result"]
-
-    assert result["is_arbitrage"] is True
-    assert result["stakes"] == ref["stakes"]
-    assert sum(result["stake_weights"]) == pytest.approx(1.0)
-    returns = [s * e for s, e in zip(result["stakes"], ref["effective"], strict=True)]
-    assert max(returns) - min(returns) <= 0.01 * max(ref["effective"])
-    assert result["guaranteed_profit"] > 0
-
-
-async def test_n_way_markets_supported(manager, db_session):
-    no_arb = await manager.detect_arbitrage(db_session, "Race", "WIN", [6.0] * 7, [0.0] * 7, 70.0, 0.0)
-    assert no_arb["result"]["is_arbitrage"] is False  # book 7/6 > 1
-    assert no_arb["result"]["stakes"] == [10.0] * 7
-
-    arb = await manager.detect_arbitrage(db_session, "Race", "WIN", [9.0] * 8, [0.0] * 8, 80.0, 0.0)
-    assert arb["result"]["is_arbitrage"] is True  # book 8/9 < 1
-    assert len(arb["result"]["stakes"]) == 8
-
-
-async def test_minimum_margin_filters_small_arbitrage(manager, db_session):
-    outcome = await manager.detect_arbitrage(db_session, "Evt", "MKT", [2.1, 2.1], [0.0, 0.0], 100.0, 6.0)
-    assert outcome["result"]["guaranteed_profit_pct"] == pytest.approx(5.0)
-    assert outcome["result"]["is_arbitrage"] is False
-    assert outcome["opportunity"] is None
-    assert await _count(db_session, ArbitrageOpportunityModel) == 0
-
-
-@pytest.mark.parametrize(
-    ("odds", "commissions", "target"),
-    [
-        ([2.0, 2.0, 2.0], [0.0, 0.0], 100.0),   # length mismatch: zip() must never truncate
-        ([2.0], [0.0], 100.0),                  # single outcome
-        ([0.0, 2.0], [0.0, 0.0], 100.0),        # zero odds
-        ([-3.0, 2.0], [0.0, 0.0], 100.0),       # negative odds
-        ([1.0, 2.0], [0.0, 0.0], 100.0),        # decimal odds must exceed 1
-        ([2.0, 2.0], [100.0, 0.0], 100.0),      # commission must be < 100
-        ([2.0, 2.0], [-1.0, 0.0], 100.0),
-        ([float("nan"), 2.0], [0.0, 0.0], 100.0),
-        ([2.0, 2.0], [0.0, 0.0], 0.0),
-        ([2.0, 2.0], [0.0, 0.0], float("inf")),
-    ],
-)
-async def test_arbitrage_rejects_invalid_inputs(manager, db_session, odds, commissions, target):
-    with pytest.raises(PhantomDomainError):
-        await manager.detect_arbitrage(db_session, "Evt", "MKT", odds, commissions, target, 0.0)
-    assert await _count(db_session, ArbitrageOpportunityModel) == 0
-
-
-async def test_arbitrage_request_rejects_length_mismatch():
-    with pytest.raises(ValidationError, match="same length"):
-        ArbitrageRequest(
-            event_name="Evt",
-            market_type="MKT",
-            odds=[2.0, 2.0, 2.0],
-            commissions_pct=[0.0, 0.0],
-            target_total_stake=100.0,
-            minimum_profit_margin_pct=0.0,
-        )
-
-
-async def test_storage_rejects_non_arbitrage_probability(session_factory):
-    async with session_factory() as session:
-        with pytest.raises(IntegrityError):
-            await session.execute(
-                insert(ArbitrageOpportunityModel).values(
-                    id=uuid4(),
-                    event_name="E",
-                    market_type="M",
-                    total_implied_probability=1.05,
-                    guaranteed_profit_pct=1.0,
-                    target_total_stake=100.0,
-                    stakes_json="[50,50]",
-                )
-            )
-        await session.rollback()
+# ---------------------------------------------------------------- storage
 
 
 @pytest.mark.parametrize(

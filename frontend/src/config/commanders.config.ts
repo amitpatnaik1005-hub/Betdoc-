@@ -1,5 +1,5 @@
 /**
- * Single source of truth for the 17 BetDoc commanders, in claude_code_handoff.md order.
+ * Single source of truth for the 16 BetDoc commanders, in claude_code_handoff.md order (GARUDA retired in Group 96).
  * IDs mirror the PostgreSQL enum `hive_legendary_bot` exactly (guarded by tests/test_commander_parity.py).
  * Commanders without a section page own a reserved route prefix so the registry stays validatable.
  */
@@ -12,7 +12,6 @@ export const COMMANDER_IDS = [
   "KUMBHA",
   "PANINI",
   "PRATAP",
-  "GARUDA",
   "TODAR MAL",
   "ARYABHATA",
   "CHANAKYA",
@@ -27,7 +26,7 @@ export const COMMANDER_IDS = [
 export type CommanderId = (typeof COMMANDER_IDS)[number];
 export type CommanderProtocol = "REST" | "WEBSOCKET" | "HYBRID";
 export type CommanderStatus = "ACTIVE" | "STANDBY" | "ENGAGED";
-export type CommanderSceneKey = "command" | "lab" | "factory" | "phantom";
+export type CommanderSceneKey = "command" | "lab" | "factory";
 
 export interface CommanderTheme {
   primary: string; // #RRGGBB
@@ -126,17 +125,6 @@ export const COMMANDER_REGISTRY: Readonly<Record<CommanderId, CommanderProfile>>
     clearanceLevel: 9,
     status: "STANDBY",
     scene: "factory",
-  },
-  GARUDA: {
-    id: "GARUDA",
-    name: "Garuda",
-    domain: "Phantom / Stealth Scraping",
-    routePrefixes: ["/phantom"],
-    networkProtocol: "HYBRID",
-    theme: { primary: "#06B6D4", glow: "rgba(6, 182, 212, 0.55)", accent: "#A5F3FC" },
-    clearanceLevel: 9,
-    status: "STANDBY",
-    scene: "phantom",
   },
   "TODAR MAL": {
     id: "TODAR MAL",

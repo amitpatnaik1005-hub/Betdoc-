@@ -1,96 +1,10 @@
-"""HTTP tests for PHANTOM using httpx.AsyncClient + ASGITransport."""
+"""HTTP tests for The Lab's quant toolkit (PANINI) using httpx.AsyncClient + ASGITransport."""
 
 import pytest
 
 pytestmark = pytest.mark.asyncio
 
-BASE = "/api/v1/phantom"
-
-ARB_PAYLOAD = {
-    "event_name": "Arsenal v Chelsea",
-    "market_type": "MATCH_ODDS_2WAY",
-    "odds": [2.1, 2.1],
-    "commissions_pct": [0.0, 0.0],
-    "target_total_stake": 100.0,
-    "minimum_profit_margin_pct": 1.0,
-}
-
-
-# ---------------------------------------------------------------- arbitrage
-
-
-async def test_arbitrage_two_way_returns_opportunity(client):
-    response = await client.post(f"{BASE}/arbitrage", json=ARB_PAYLOAD)
-    assert response.status_code == 200
-    body = response.json()
-    assert body["is_arbitrage"] is True
-    assert body["stakes"] == [50.0, 50.0]
-    assert body["guaranteed_profit_pct"] == pytest.approx(5.0)
-    assert body["opportunity"]["stakes"] == [50.0, 50.0]
-    assert body["opportunity"]["created_at"]
-    assert "stakes_json" not in body["opportunity"]
-
-
-async def test_arbitrage_three_way_with_commissions(client):
-    payload = {
-        **ARB_PAYLOAD,
-        "market_type": "1X2",
-        "odds": [3.4, 3.8, 3.9],
-        "commissions_pct": [2.0, 5.0, 0.0],
-        "target_total_stake": 1_000.0,
-    }
-    body = (await client.post(f"{BASE}/arbitrage", json=payload)).json()
-    assert body["is_arbitrage"] is True
-    assert len(body["stakes"]) == 3
-    assert body["effective_odds"] == pytest.approx([3.352, 3.66, 3.9])
-    assert body["guaranteed_profit"] > 0
-
-
-async def test_arbitrage_without_edge_returns_no_opportunity(client):
-    payload = {**ARB_PAYLOAD, "odds": [1.9, 1.95], "minimum_profit_margin_pct": 0.0}
-    response = await client.post(f"{BASE}/arbitrage", json=payload)
-    assert response.status_code == 200
-    assert response.json()["is_arbitrage"] is False
-    assert response.json()["opportunity"] is None
-
-
-@pytest.mark.parametrize(
-    "overrides",
-    [
-        {"odds": [2.0, 2.0, 2.0]},                          # length mismatch with commissions_pct
-        {"odds": [0.0, 2.1]},                               # zero odds
-        {"odds": [-2.0, 2.1]},                              # negative odds
-        {"odds": [1.0, 2.1]},                               # odds must exceed 1
-        {"odds": [2.1], "commissions_pct": [0.0]},          # single outcome
-        {"odds": [2.0] * 33, "commissions_pct": [0.0] * 33},  # too many legs for the JSON columns
-        {"commissions_pct": [100.0, 0.0]},
-        {"target_total_stake": 0},
-        {"minimum_profit_margin_pct": -1},
-        {"event_name": ""},
-        {"unexpected": True},
-    ],
-)
-async def test_arbitrage_invalid_payloads_return_422(client, overrides):
-    response = await client.post(f"{BASE}/arbitrage", json={**ARB_PAYLOAD, **overrides})
-    assert response.status_code == 422
-
-
-@pytest.mark.parametrize("token", ["NaN", "Infinity", "-Infinity"])
-async def test_arbitrage_rejects_non_finite_json_tokens(client, token):
-    raw = (
-        '{"event_name":"E","market_type":"M","odds":[' + token + ',2.1],"commissions_pct":[0,0],'
-        '"target_total_stake":100,"minimum_profit_margin_pct":0}'
-    )
-    try:
-        response = await client.post(
-            f"{BASE}/arbitrage", content=raw, headers={"Content-Type": "application/json"}
-        )
-        assert response.status_code in (422, 500)
-    except ValueError as exc:
-        if "Out of range float values" in str(exc):
-            pytest.skip("FastAPI JSONResponse serialization bug for NaN inputs.")
-        raise
-
+BASE = "/api/v1/lab/quant-toolkit"  # Group 96: absorbed from /phantom into The Lab
 
 # ---------------------------------------------------------------- dutching
 

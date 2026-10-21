@@ -611,7 +611,6 @@ class Settings(BaseSettings):
     SPORTS_ODDS_REGIONS: str = "uk,eu,us,au"
     SPORTS_BOARD_TTL_SECONDS: int = Field(default=3600, ge=60)
     SPORTS_MIN_EDGE: float = Field(default=0.02, gt=0, lt=1)  # a value line: EV over the fair (model or sharp) price
-    SPORTS_MIN_ARBITRAGE: float = Field(default=0.015, gt=0, lt=1)  # a cross-venue arbitrage: guaranteed return over this
     SPORTS_NORMALIZATION_BUDGET_MS: float = Field(default=12.0, gt=0)  # FA-3: one event's odds normalised within this
     SPORTS_MAX_EDGES: int = Field(default=200, ge=1, le=5000)  # the edge list kept in Redis
     # FA-4: the CFO's fractional Kelly per sport (model parameter uncertainty); overrides app.domain.sports.twin_bridge's table

@@ -1,4 +1,5 @@
-"""Multi-leg execution (Group 64): arbitrages and hedges through the Omni-Sniper, one leg at a time.
+"""Multi-leg execution (Group 64): hedges through the Omni-Sniper, one leg at a time. (Arbitrage execution
+was retired in Group 96; the legging rules below are written for any multi-leg plan.)
 
 Every leg is an ordinary two-phase CFO execution (``TradeExecutor.execute_leg``): reserved under the
 bankroll lock, fired through the sniper, committed or rolled back. What this module adds is the
@@ -47,16 +48,14 @@ from app.domain.math.arbitrage_calc import (
     Offer,
     best_offers,
     book_profits,
-    from_inr,
     hedge_after_fills,
     hedge_book,
     leg_cost_inr,
-    stake_arbitrage,
     to_inr,
 )
 from app.models.cfo_vault import AuditEvent
 from app.schemas.cfo_vault import ExecutionReceipt
-from app.schemas.portfolio import ArbitrageExecuteRequest, HedgeExecuteRequest, LegReceipt, MultiLegReceipt
+from app.schemas.portfolio import HedgeExecuteRequest, LegReceipt, MultiLegReceipt
 from app.services.aryabhata_pipeline import load_risk_limits
 from app.services.cfo_execution import TradeExecutor
 from app.services.cfo_ledger import CfoError, DuplicateExecutionError, OrderTicket, audit_row, opening_balance, read_account, write_audit
@@ -166,83 +165,6 @@ class LegExecutor:
         self.settings = settings
         self.clock = clock
         self.feed = SniperFeed(redis, settings, clock)
-
-    # -------------------------------------------------------------- arbitrage
-    async def execute_arbitrage(self, user_id: uuid.UUID, request: ArbitrageExecuteRequest) -> MultiLegReceipt:
-        group = request.idempotency_key
-        await self._claim_group(group)
-        ctx, books, meta = await self.portfolio.market(request.fixture_id, request.market)
-        if meta is not None and meta.commence_time is not None and meta.commence_time <= ctx.now:
-            raise CfoError("MARKET_IN_PLAY", "Arbitrage runs pre-match only: in-play prices from polled feeds are already stale", status_code=409)
-        selections = [leg.selection for leg in request.legs]
-        outcomes = market_outcomes(books, [*selections, *(meta.labels if meta else ())])
-        if sorted(outcomes) != sorted(selections):
-            raise CfoError(
-                "ARB_INCOMPLETE",
-                f"An arbitrage has to cover every outcome ({', '.join(outcomes)}); an uncovered one loses every leg",
-                status_code=422,
-                detail={"outcomes": list(outcomes)},
-            )
-        chosen = self._live_legs(ctx, books, [(leg.selection, leg.bookmaker_id, leg.odds) for leg in request.legs])
-        try:
-            arb = stake_arbitrage(chosen, request.total_stake_inr)
-        except ArbitrageMathError as exc:
-            raise CfoError("NO_ARBITRAGE", str(exc), status_code=409) from exc
-        min_margin = Decimal(str(self.settings.ARB_MIN_MARGIN_PCT)) / _HUNDRED
-        if arb is None or arb.margin < min_margin:
-            raise CfoError("NO_ARBITRAGE", "At these prices, after commission and FX, this is no longer an arbitrage", status_code=409)
-
-        # Exchange legs first (a thin exchange market is what partly fills), then the longest price
-        ordered = sorted(arb.legs, key=lambda leg: (-leg.offer.commission, -leg.rupee_odds, leg.offer.selection))
-        legs = [_Leg.of(leg.offer, leg.stake_ccy) for leg in ordered]
-        tickets = {leg.selection: self._ticket(user_id, request.fixture_id, request.market, group, "arbitrage", leg, meta) for leg in legs}
-        await self._preflight(user_id, list(tickets.values()), total=arb.total_stake_inr, risk_reducing=False)
-        await self._emit(user_id, group, f"Arbitrage {arb.margin * _HUNDRED:.3f}% · {len(legs)} legs · ₹{arb.total_stake_inr} · pre-flight passed")
-
-        fired: list[HeldBet] = []
-        target: Decimal | None = None  # what every outcome should pay: the lowest payout placed so far
-        status = "COMPLETE"
-        for index, leg in enumerate(legs):
-            remaining = legs[index + 1 :]
-            try:
-                if target is not None:
-                    before = leg.stake_inr
-                    leg.resize(from_inr(target / leg.offer.rupee_odds(), leg.offer.fx))
-                    if leg.stake_inr != before:
-                        await self._emit(user_id, group, f"Leg {chr(65 + index)} {leg.selection}: re-sized ₹{before} → ₹{leg.stake_inr} to match the fills before it", "warning")
-                    if leg.stake_inr <= ZERO:
-                        leg.status, leg.reason = "SKIPPED", "RESIZED_TO_ZERO"
-                        status = "LEGGED"
-                        break
-                placed = sum((h.stake_inr for h in fired), ZERO)
-                # The rest re-size to this leg's payout: its outcome must still cover all of it
-                rest_book = sum((ONE / later.offer.rupee_odds() for later in remaining), ZERO)
-                if rest_book >= ONE:
-                    raise CfoError("NO_ARBITRAGE", "The remaining legs no longer leave room for this one", status_code=409)
-                leg.floor = _floor(leg.offer, (placed + leg.stake_inr) / (leg.value_inr() * (ONE - rest_book)))
-            except _SEQUENCE_ERRORS as exc:
-                if not fired:
-                    raise exc if isinstance(exc, CfoError) else CfoError("NO_ARBITRAGE", str(exc), status_code=409) from exc
-                leg.status, leg.reason, leg.message = "FAILED", "LEG_SIZING_FAILED", str(exc)  # legs are live: report, never raise
-                status = "LEGGED"
-                break
-            ok = await self._fire(user_id, group, index, leg, replace(tickets[leg.selection], stake_inr=leg.stake_inr, stake_ccy=leg.stake_ccy()))
-            if not ok:
-                status = "ABORTED" if not fired and leg.status == "FAILED" else "LEGGED"
-                break
-            assert leg.held is not None
-            fired.append(leg.held)
-            payout = leg.held.stake_inr * leg.held.rupee_odds
-            target = payout if target is None else min(target, payout)
-            if leg.status == "PARTIAL":
-                await self._emit(
-                    user_id, group,
-                    f"Leg {chr(65 + index)} partial fill: ₹{leg.held.stake_inr} of ₹{leg.stake_inr} matched; "
-                    f"the remaining legs scale to {(leg.held.stake_inr / leg.stake_inr * _HUNDRED).quantize(Decimal('0.1'))}%",
-                    "warning",
-                )
-        await self._abort_rest(user_id, group, "arbitrage", legs, request.fixture_id)
-        return self._receipt(group, "arbitrage", legs, fired, outcomes, status)
 
     # -------------------------------------------------------------- hedge
     async def execute_hedge(self, user_id: uuid.UUID, request: HedgeExecuteRequest) -> MultiLegReceipt:

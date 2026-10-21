@@ -794,8 +794,9 @@ def test_celery_beat_and_tasks_registered() -> None:
     assert "app.workers.paper_trading_tasks" in celery_app.conf.include
 
 
-def test_ashvatthama_is_commander_seventeen() -> None:
+def test_ashvatthama_closes_the_roster() -> None:
     roster = [bot.value for bot in LegendaryBot]
-    assert len(roster) == 17 and roster[-1] == "ASHVATTHAMA" and "DEVRAYA" not in roster
+    # 16 since Group 96 retired GARUDA; ASHVATTHAMA is still the last commander
+    assert len(roster) == 16 and roster[-1] == "ASHVATTHAMA" and "DEVRAYA" not in roster and "GARUDA" not in roster
     assert LegendaryBot.ASHVATTHAMA in PROBES and set(PROBES) == set(LegendaryBot)
     assert Decimal(get_settings().PAPER_DEFAULT_BALANCE_INR) == Decimal("100000")

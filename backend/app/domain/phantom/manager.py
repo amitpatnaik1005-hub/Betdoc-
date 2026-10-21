@@ -1,4 +1,6 @@
-"""PhantomManager: GARUDA's parameter-driven quantitative engines.
+"""PhantomManager: The Lab's (PANINI) parameter-driven quant toolkit: dutching, matched betting,
+Avellaneda-Stoikov market making and cointegration signals. Every run is logged to ``phantom_calculations``.
+Group 96 retired arbitrage detection and the Phantom section; the engines moved to /lab/quant-toolkit.
 
 Every business number comes from the caller. The only literals are mathematical
 identities (decimal odds > 1, probabilities sum to 1, percent = /100) and the
@@ -12,18 +14,17 @@ from collections.abc import Sequence
 from enum import StrEnum
 from typing import Any
 
+from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.domain.phantom.errors import PhantomDomainError
-from app.models.phantom import ArbitrageOpportunityModel, CalcType, PhantomCalculationLogModel
+from app.models.phantom import CalcType, PhantomCalculationLogModel
 
-logger = logging.getLogger("betdoc.phantom.garuda")
+logger = logging.getLogger("betdoc.lab.quant")
 
 MONEY_DECIMALS = 2
 JSON_COLUMN_MAX_LENGTH = 2048
-EVENT_NAME_MAX_LENGTH = 128
-MARKET_TYPE_MAX_LENGTH = 64
 
 
 class MatchedBettingMode(StrEnum):
@@ -92,15 +93,6 @@ def _dumps(payload: Any, label: str) -> str:
     return encoded
 
 
-def _require_text(name: str, value: Any, max_length: int) -> str:
-    text = (value if isinstance(value, str) else "").strip()
-    if not text:
-        raise PhantomDomainError(f"{name} must not be blank.", field=name)
-    if len(text) > max_length:
-        raise PhantomDomainError(f"{name} must be at most {max_length} characters.", field=name)
-    return text
-
-
 # --------------------------------------------------------------------------- manager
 
 
@@ -111,7 +103,7 @@ class PhantomManager:
             await db.commit()
         except IntegrityError as exc:
             await db.rollback()
-            logger.warning("[GARUDA]: %s rejected by storage constraints.", label)
+            logger.warning("[PANINI]: %s rejected by storage constraints.", label)
             raise PhantomDomainError(f"{label} rejected by storage constraints.") from exc
         await db.refresh(instance)
         return instance
@@ -126,98 +118,7 @@ class PhantomManager:
         )
         return await self._persist(db, log, f"{calc_type.value} calculation log")
 
-    # ------------------------------------------------------------------ 1. arbitrage
-
-    async def detect_arbitrage(
-        self,
-        db: AsyncSession,
-        event_name: str,
-        market_type: str,
-        odds: Sequence[float],
-        commissions_pct: Sequence[float],
-        target_total_stake: float,
-        minimum_profit_margin_pct: float,
-    ) -> dict[str, Any]:
-        event = _require_text("event_name", event_name, EVENT_NAME_MAX_LENGTH)
-        market = _require_text("market_type", market_type, MARKET_TYPE_MAX_LENGTH)
-        odds_list = _require_finite_list("odds", odds)
-        commissions = _require_finite_list("commissions_pct", commissions_pct)
-        if len(odds_list) < 2:
-            raise PhantomDomainError("odds must contain at least two outcomes.", field="odds")
-        if len(odds_list) != len(commissions):
-            raise PhantomDomainError(
-                f"odds ({len(odds_list)}) and commissions_pct ({len(commissions)}) must have the same length."
-            )
-        _require_decimal_odds("odds", odds_list)
-        for index, commission in enumerate(commissions):
-            _require_commission_pct(f"commissions_pct[{index}]", commission)
-        _require_finite(target_total_stake=target_total_stake, minimum_profit_margin_pct=minimum_profit_margin_pct)
-        if target_total_stake <= 0:
-            raise PhantomDomainError("target_total_stake must be greater than zero.")
-
-        effective_odds = [1.0 + (o - 1.0) * (1.0 - (c / 100.0)) for o, c in zip(odds_list, commissions, strict=True)]
-        if any(eo <= 0 for eo in effective_odds):
-            raise PhantomDomainError("Effective odds must be positive.")
-        implied_probs = [1.0 / eo for eo in effective_odds]
-        total_prob = sum(implied_probs)
-        if total_prob <= 0:
-            raise PhantomDomainError("Total implied probability must be positive.")
-
-        profit_pct = ((1.0 / total_prob) - 1.0) * 100.0
-        weights = [p / total_prob for p in implied_probs]
-        stakes = [round(weight * target_total_stake, MONEY_DECIMALS) for weight in weights]
-        total_staked = _money(sum(stakes))
-        leg_returns = [_money(stake * eo) for stake, eo in zip(stakes, effective_odds, strict=True)]
-        guaranteed_profit = _money(min(leg_returns) - total_staked)
-        is_arbitrage = total_prob < 1.0 and profit_pct >= minimum_profit_margin_pct
-
-        opportunity: ArbitrageOpportunityModel | None = None
-        if is_arbitrage:
-            opportunity = await self._persist(
-                db,
-                ArbitrageOpportunityModel(
-                    event_name=event,
-                    market_type=market,
-                    total_implied_probability=total_prob,
-                    guaranteed_profit_pct=profit_pct,
-                    target_total_stake=target_total_stake,
-                    stakes_json=_dumps(stakes, "Arbitrage stakes"),
-                    is_active=True,
-                ),
-                "Arbitrage opportunity",
-            )
-            logger.info(
-                "[GARUDA]: arbitrage locked on %s / %s: %d legs, %.4f%% guaranteed.",
-                event,
-                market,
-                len(odds_list),
-                profit_pct,
-            )
-        else:
-            logger.info(
-                "[GARUDA]: no qualifying arbitrage on %s / %s (book %.6f, margin %.4f%%, required %.4f%%).",
-                event,
-                market,
-                total_prob,
-                profit_pct,
-                minimum_profit_margin_pct,
-            )
-
-        result = {
-            "is_arbitrage": is_arbitrage,
-            "total_implied_probability": total_prob,
-            "guaranteed_profit_pct": profit_pct,
-            "effective_odds": effective_odds,
-            "implied_probabilities": implied_probs,
-            "stake_weights": weights,
-            "stakes": stakes,
-            "total_staked": total_staked,
-            "leg_returns": leg_returns,
-            "guaranteed_profit": guaranteed_profit,
-        }
-        return {"result": result, "opportunity": opportunity}
-
-    # ------------------------------------------------------------------ 2. dutching
+    # ------------------------------------------------------------------ 1. dutching
 
     async def calculate_dutching(
         self, db: AsyncSession, target_total_stake: float, odds: Sequence[float]
@@ -252,10 +153,10 @@ class PhantomManager:
             {"target_total_stake": target_total_stake, "odds": odds_list},
             result,
         )
-        logger.info("[GARUDA]: dutched %d selections -> return %.2f.", len(odds_list), guaranteed_return)
+        logger.info("[PANINI]: dutched %d selections -> return %.2f.", len(odds_list), guaranteed_return)
         return {"result": result, "log": log}
 
-    # ------------------------------------------------------------------ 3. matched betting
+    # ------------------------------------------------------------------ 2. matched betting
 
     async def calculate_matched_bet(
         self,
@@ -322,7 +223,7 @@ class PhantomManager:
             result,
         )
         logger.info(
-            "[GARUDA]: %s matched bet -> lay %.2f (back win %.2f / lay win %.2f).",
+            "[PANINI]: %s matched bet -> lay %.2f (back win %.2f / lay win %.2f).",
             resolved_mode.value,
             lay_stake,
             back_win_profit,
@@ -330,7 +231,7 @@ class PhantomManager:
         )
         return {"result": result, "log": log}
 
-    # ------------------------------------------------------------------ 4. Avellaneda-Stoikov
+    # ------------------------------------------------------------------ 3. Avellaneda-Stoikov
 
     async def calculate_market_maker_quotes(
         self,
@@ -399,7 +300,7 @@ class PhantomManager:
             result,
         )
         logger.info(
-            "[GARUDA]: A-S quotes bid %.2f / ask %.2f (reservation %.6f, spread %.6f).",
+            "[PANINI]: A-S quotes bid %.2f / ask %.2f (reservation %.6f, spread %.6f).",
             optimal_bid,
             optimal_ask,
             reservation_price,
@@ -407,7 +308,7 @@ class PhantomManager:
         )
         return {"result": result, "log": log}
 
-    # ------------------------------------------------------------------ 5. cointegration
+    # ------------------------------------------------------------------ 4. cointegration
 
     async def evaluate_cointegration(
         self,
@@ -455,5 +356,21 @@ class PhantomManager:
             result,
         )
         log_fn = logger.warning if signal is CointegrationSignal.STOP_LOSS_LIQUIDATE else logger.info
-        log_fn("[GARUDA]: cointegration z=%.4f -> %s.", current_z_score, signal.value)
+        log_fn("[PANINI]: cointegration z=%.4f -> %s.", current_z_score, signal.value)
         return {"result": result, "log": log}
+
+    # ------------------------------------------------------------------ history
+
+    async def list_calculations(self, db: AsyncSession, calc_type: str | None = None, limit: int = 25) -> list[PhantomCalculationLogModel]:
+        """Newest runs first, optionally one calculator's only."""
+        stmt = select(PhantomCalculationLogModel).order_by(PhantomCalculationLogModel.created_at.desc()).limit(limit)
+        if calc_type:
+            try:
+                kind = CalcType(calc_type.strip().upper())
+            except ValueError as exc:
+                raise PhantomDomainError(f"calc_type must be one of {', '.join(m.value for m in CalcType)}.", field="calc_type") from exc
+            stmt = stmt.where(PhantomCalculationLogModel.calc_type == kind.value)
+        return list((await db.execute(stmt)).scalars().all())
+
+
+PhantomQuantManager = PhantomManager

@@ -1,9 +1,7 @@
-"""Hedging, arbitrage and FX under ``/api/v1/omni`` (Group 64).
+"""Hedging and FX under ``/api/v1/omni`` (Group 64). Arbitrage execution was retired in Group 96.
 
     GET  /omni/portfolio             every open book marked to the live books, with its hedges
     POST /omni/portfolio/hedge       fire a hedge (free bet ... balanced) leg by leg
-    GET  /omni/arbitrage             the latest scan (commission- and FX-adjusted)
-    POST /omni/arbitrage/execute     fire an arbitrage: Leg A first, the rest sized from its fill
     GET  /omni/fx-rates              the live rates and their age
     PUT  /omni/fx-rates              set one (admin)
 
@@ -13,7 +11,6 @@ Refusals carry ``{"reason", "message", ...}`` in ``detail``, like every CFO endp
 
 from __future__ import annotations
 
-import json
 import time
 from typing import Annotated, Any
 
@@ -25,14 +22,13 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from app.api.deps import CurrentAdmin, CurrentUser
 from app.api.v1.cfo_execution import get_session_factory
 from app.core.config import Settings, get_settings
-from app.schemas.portfolio import ArbitrageExecuteRequest, FxRateUpdate, HedgeExecuteRequest, MultiLegReceipt
+from app.schemas.portfolio import FxRateUpdate, HedgeExecuteRequest, MultiLegReceipt
 from app.services.bookmaker_gateway import BookmakerGateway
 from app.services.cfo_execution import TradeExecutor
 from app.services.cfo_ledger import CfoError
 from app.services.fx_rates import FxRates, FxUnavailableError
 from app.services.leg_executor import LegExecutor
 from app.services.portfolio_manager import PortfolioManager
-from app.services.portfolio_stream import PortfolioKeys
 
 router = APIRouter(prefix="/omni", tags=["portfolio"])
 
@@ -71,31 +67,6 @@ async def portfolio(request: Request, user: CurrentUser, sessions: SessionFactor
 async def hedge(payload: HedgeExecuteRequest, request: Request, user: CurrentUser, sessions: SessionFactory, settings: AppSettings) -> MultiLegReceipt:
     try:
         return await _legs(request, sessions, settings).execute_hedge(user.id, payload)
-    except CfoError as exc:
-        raise _http(exc) from exc
-
-
-# ---------------------------------------------------------------- arbitrage
-@router.get("/arbitrage")
-async def arbitrage(request: Request, user: CurrentUser, sessions: SessionFactory, settings: AppSettings) -> dict[str, Any]:  # noqa: ARG001
-    redis = _redis(request)
-    if redis is not None:
-        try:
-            raw = await redis.get(PortfolioKeys(settings).arbitrage_last)
-        except (RedisError, OSError):
-            raw = None
-        if raw:
-            return json.loads(raw)
-    arbs = await _manager(request, sessions, settings).scan()  # no publisher running: scan on demand
-    return {"type": "arbitrage", "ts": None, "arbs": arbs}
-
-
-@router.post("/arbitrage/execute", response_model=MultiLegReceipt)
-async def execute_arbitrage(
-    payload: ArbitrageExecuteRequest, request: Request, user: CurrentUser, sessions: SessionFactory, settings: AppSettings
-) -> MultiLegReceipt:
-    try:
-        return await _legs(request, sessions, settings).execute_arbitrage(user.id, payload)
     except CfoError as exc:
         raise _http(exc) from exc
 

@@ -1,4 +1,4 @@
-"""Contracts for hedging, arbitrage execution and FX (``/api/v1/omni``, Group 64)."""
+"""Contracts for hedging and FX (``/api/v1/omni``, Group 64). Arbitrage execution was retired in Group 96."""
 
 from __future__ import annotations
 
@@ -23,42 +23,6 @@ def _uuid4(value: UUID) -> UUID:
     if value.version != 4:
         raise ValueError("idempotency_key must be a uuid4")
     return value
-
-
-class ArbitrageLegRequest(_Strict):
-    selection: str = Field(min_length=1, max_length=64)
-    bookmaker_id: str = Field(min_length=1, max_length=64)
-    odds: Odds  # the price the scanner showed: the leg is refused if the book now offers less
-
-    @field_validator("odds")
-    @classmethod
-    def _places(cls, value: Decimal) -> Decimal:
-        return _max_places(value, 4, "odds")
-
-
-class ArbitrageExecuteRequest(_Strict):
-    idempotency_key: UUID  # one per arbitrage; each leg's key derives from it
-    fixture_id: str = Field(min_length=1, max_length=128)
-    market: str = Field(default="Match Odds", min_length=1, max_length=64)
-    total_stake_inr: Stake
-    legs: list[ArbitrageLegRequest] = Field(min_length=2, max_length=4)
-
-    @field_validator("idempotency_key")
-    @classmethod
-    def _key(cls, value: UUID) -> UUID:
-        return _uuid4(value)
-
-    @field_validator("total_stake_inr")
-    @classmethod
-    def _paise(cls, value: Decimal) -> Decimal:
-        return _max_places(value, 2, "total_stake_inr")
-
-    @field_validator("legs")
-    @classmethod
-    def _one_per_outcome(cls, legs: list[ArbitrageLegRequest]) -> list[ArbitrageLegRequest]:
-        if len({leg.selection for leg in legs}) != len(legs):
-            raise ValueError("one leg per outcome")
-        return legs
 
 
 class HedgeLegExpectation(_Strict):

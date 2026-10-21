@@ -41,7 +41,6 @@ const TheWire = lazy(() => import('./pages/TheWire').then(m => ({ default: m.The
 const Core = lazy(() => import('./pages/Core').then(m => ({ default: m.Core })));
 const TheHive = lazy(() => import('./pages/TheHive').then(m => ({ default: m.TheHive })));
 const TheOracle = lazy(() => import('./pages/TheOracle').then(m => ({ default: m.TheOracle })));
-const Phantom = lazy(() => import('./pages/Phantom').then(m => ({ default: m.Phantom })));
 const TheArchive = lazy(() => import('./pages/TheArchive').then(m => ({ default: m.TheArchive })));
 const ControlPanel = lazy(() => import('./pages/ControlPanel').then(m => ({ default: m.ControlPanel })));
 const SportsEngine = lazy(() => import('./pages/SportsEngine').then(m => ({ default: m.SportsEngine })));
@@ -403,7 +402,6 @@ const NAV_ITEMS: readonly { to: string; label: string; icon: string; bot: Comman
   { to: '/lab',            label: 'The Lab',        icon: 'science',         bot: 'PANINI'   },
   { to: '/hive',           label: 'The Hive',       icon: 'hive',            bot: 'VIDUR'    },
   { to: '/vault',          label: 'The Vault',      icon: 'account_balance', bot: 'KUMBHA'   },
-  { to: '/phantom',        label: 'Phantom',        icon: 'blur_on',         bot: 'GARUDA'   },
   { to: '/wire',           label: 'The Wire',       icon: 'newspaper',       bot: 'VIDUR'    },
   { to: '/sports',         label: 'Sports Engine',  icon: 'sports',          bot: 'ARYABHATA'},
   { to: '/sandbox',        label: 'Paper Trading',  icon: 'experiment',      bot: 'TODAR MAL'},
@@ -738,7 +736,7 @@ const usePaletteCommands = (): PaletteCommand[] => {
         icon: 'refresh',
         group: 'Actions',
         run: () => {
-          invalidate('dashboard', 'vault', 'arena', 'capital', 'hive', 'lab', 'core', 'commanders', 'system', 'signals', 'archive', 'the-wire', 'phantom', 'oracle');
+          invalidate('dashboard', 'vault', 'arena', 'capital', 'hive', 'lab', 'core', 'commanders', 'system', 'signals', 'archive', 'the-wire', 'oracle');
           toast.info('Refreshing all sections');
         },
       },
@@ -878,11 +876,8 @@ const App = () => {
             <TheOracle />
           </AnimatedRoute>
         } />
-        <Route path="/phantom" element={
-          <AnimatedRoute>
-            <Phantom />
-          </AnimatedRoute>
-        } />
+        {/* Group 96: Phantom was retired; its quant toolkit lives in The Lab */}
+        <Route path="/phantom" element={<Navigate replace to="/lab" />} />
         <Route path="/archive" element={
           <AnimatedRoute>
             <TheArchive />

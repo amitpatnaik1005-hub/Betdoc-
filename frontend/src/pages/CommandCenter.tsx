@@ -65,7 +65,7 @@ interface Tip {
 // Routable sections by commander, for roster click-through.
 const COMMANDER_ROUTE: Record<string, string> = {
   KAUTILYA: '/command-center', ASHOKA: '/oracle', BAJIRAO: '/arena', VIDUR: '/hive', KUMBHA: '/vault',
-  PANINI: '/lab', PRATAP: '/core', GARUDA: '/phantom', 'TODAR MAL': '/archive', CHANAKYA: '/vault',
+  PANINI: '/lab', PRATAP: '/core', 'TODAR MAL': '/archive', CHANAKYA: '/vault',
   DRONA: '/lab', ARYABHATA: '/core', KARNA: '/hive', ARJUNA: '/arena', SHIVAJI: '/control-panel',
   BHEESHMA: '/control-panel', ASHVATTHAMA: '/sandbox',
 };

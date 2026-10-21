@@ -5,9 +5,7 @@
  *   locks in a profit; "Hedge" opens the hedge modal.
  * - Hedge modal: a slider from Unbalanced (Free Bet: nothing lost if the bet fails, all profit on
  *   it) to Balanced (Equal Profit on every outcome), with the projected P&L per outcome.
- * - Arbitrage: on hold since Group 80's pivot (Coming Soon / Under Optimization): the fleet's compute goes to
- *   Ashoka's value picks, Parimatch execution and the Paper Trading Sandbox.
- *   Execution fires Leg A first; a partial fill re-sizes the legs after it.
+ *   Hedge legs fire one at a time; a partial fill re-sizes the legs after it. (Arbitrage was retired in Group 96.)
  */
 import { type KeyboardEvent, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
@@ -28,7 +26,6 @@ import {
 } from "../../lib/portfolio";
 import { invalidate } from "../../lib/resource";
 import { newIdempotencyKey } from "../../store/useExecutionStore";
-import { ArbitrageComingSoon } from "./ArbitrageComingSoon";
 import { Button, CARD_VARIANTS, ConfirmButton, EmptyState, LiveDot, Panel, Pill, SPRING, SURFACE, Skeleton } from "../../ui/kit";
 
 const cx = (...parts: (string | false | null | undefined)[]): string => parts.filter(Boolean).join(" ");
@@ -413,13 +410,6 @@ const ReceiptView = ({ receipt, outcomes, book }: { receipt: MultiLegReceipt; ou
   </div>
 );
 
-// ---------------------------------------------------------------- arbitrage (on hold, Group 80)
-const ArbScanner = () => (
-  <Panel title="Arbitrage Matrix" icon="radar" className="lg:col-span-5" subtitle="Multi-Bookmaker Engine">
-    <ArbitrageComingSoon compact />
-  </Panel>
-);
-
 // ---------------------------------------------------------------- the tab
 export const ActivePortfolio = () => {
   const { status, portfolio, receivedAt, error, loading } = useLivePortfolio();
@@ -436,7 +426,7 @@ export const ActivePortfolio = () => {
         {error && !portfolio && <p className="mt-4 text-[12px] text-rose-600 dark:text-rose-300">{error}</p>}
       </Panel>
 
-      <motion.section variants={CARD_VARIANTS} className="flex min-w-0 flex-col gap-4 lg:col-span-7">
+      <motion.section variants={CARD_VARIANTS} className="flex min-w-0 flex-col gap-4 lg:col-span-12">
         <div className="flex min-h-[32px] items-center gap-2.5 px-1">
           <span className="material-symbols-outlined text-[18px] text-stone-400 dark:text-stone-500">stacks</span>
           <h2 className="text-[15px] font-semibold text-stone-900 dark:text-stone-100">Live positions</h2>
@@ -454,8 +444,6 @@ export const ActivePortfolio = () => {
           </div>
         )}
       </motion.section>
-
-      <ArbScanner />
 
       <AnimatePresence>{live && <HedgeModal key={live.market_key} book={live} onClose={() => setHedging(null)} />}</AnimatePresence>
     </>

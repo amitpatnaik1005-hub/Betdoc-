@@ -30,7 +30,6 @@ from app.models import BetLedger
 from app.models.competitive_intel import CompetitorBotModel
 from app.models.control_panel import SETTINGS_SINGLETON_ID, SystemSettingsModel
 from app.models.paper_trading import PaperBet
-from app.models.phantom import ArbitrageOpportunityModel
 from app.models.risk import StopLossEventModel
 from app.models.the_core import BacktestJobModel, SmallcaseRegistryModel
 from app.models.the_hive import BotProfileModel, BotStatus, HiveTaskModel, LegendaryBot
@@ -51,7 +50,7 @@ _TABLES: list[Table] = [
     model.__table__  # type: ignore[attr-defined]
     for model in (
         BotProfileModel, HiveTaskModel, SystemSettingsModel, PredictionRecord, BetLedger, ExperimentModel,
-        SmallcaseRegistryModel, ArbitrageOpportunityModel, StopLossEventModel, BacktestJobModel,
+        SmallcaseRegistryModel, StopLossEventModel, BacktestJobModel,
         ResearchReportModel, CompetitorBotModel, PaperBet,
     )
 ]
@@ -176,23 +175,23 @@ async def test_failing_and_slow_probes_mark_only_that_commander_fatal(
         await asyncio.sleep(5)
         return BotStatus.ONLINE, {}
 
-    monkeypatch.setitem(supervisor.PROBES, LegendaryBot.GARUDA, broken)
+    monkeypatch.setitem(supervisor.PROBES, LegendaryBot.ARJUNA, broken)
     monkeypatch.setitem(supervisor.PROBES, LegendaryBot.KARNA, slow)
     fast_timeout = get_settings().model_copy(update={"HIVE_SUPERVISOR_PROBE_TIMEOUT_SECONDS": 0.05})
 
     statuses = await sweep(factory, HiveOrchestrator(), ctx, started_at=0.0, settings=fast_timeout)
-    assert statuses[LegendaryBot.GARUDA] is BotStatus.FATAL
+    assert statuses[LegendaryBot.ARJUNA] is BotStatus.FATAL
     assert statuses[LegendaryBot.KARNA] is BotStatus.FATAL
     assert statuses[LegendaryBot.ASHOKA] is not BotStatus.FATAL
 
     async with factory() as db:
         summary = await build_telemetry_summary(db)
-    garuda = next(i for i in summary.commanders if i.bot_name is LegendaryBot.GARUDA)
+    arjuna = next(i for i in summary.commanders if i.bot_name is LegendaryBot.ARJUNA)
     karna = next(i for i in summary.commanders if i.bot_name is LegendaryBot.KARNA)
     assert summary.fatal_count == 2
-    assert garuda.activity_summary == "Probe failed · RuntimeError: subsystem unreachable"
+    assert arjuna.activity_summary == "Probe failed · RuntimeError: subsystem unreachable"
     assert karna.activity_summary.startswith("Probe failed · TimeoutError")
-    assert garuda.probe_latency_ms is not None and karna.probe_latency_ms is not None
+    assert arjuna.probe_latency_ms is not None and karna.probe_latency_ms is not None
 
 
 # --------------------------------------------------------------------------- telemetry

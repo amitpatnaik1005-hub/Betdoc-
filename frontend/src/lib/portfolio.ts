@@ -1,9 +1,9 @@
 /**
- * Live portfolio, hedging and arbitrage (backend `app/services/portfolio_manager.py`, Group 64).
+ * Live portfolio and hedging (backend `app/services/portfolio_manager.py`, Group 64; arbitrage retired in Group 96).
  *
  * The portfolio streams over `/ws/portfolio` five times a second (every open book marked against
- * the live books, with its balanced and free-bet hedges); the arbitrage scan arrives on the same
- * socket whenever it changes. While the socket is not open, `GET /omni/portfolio` is polled.
+ * the live books, with its balanced and free-bet hedges). While the socket is not open, `GET /omni/portfolio`
+ * is polled.
  *
  * Money stays a string end to end here (the backend's exact Decimal text) until it is displayed.
  */
@@ -97,28 +97,6 @@ export interface PortfolioPayload {
   fx_missing: string[];
 }
 
-export interface ArbLeg extends PricedOffer {
-  stake_inr: string;
-  stake_ccy: string;
-  payout_inr: string;
-}
-
-export interface ArbOpportunity {
-  id: string;
-  fixture_id: string;
-  market: string;
-  home: string;
-  away: string;
-  commence_time: string | null;
-  booksum: string;
-  margin_pct: string;
-  roi_pct: string;
-  total_stake_inr: string;
-  guaranteed_profit_inr: string;
-  legs: ArbLeg[];
-  detected_at: string;
-}
-
 export type LegStatus = "FILLED" | "PARTIAL" | "UNCONFIRMED" | "FAILED" | "ABORTED" | "SKIPPED";
 
 export interface LegReceipt {
@@ -169,11 +147,9 @@ export const n = (value: string | number | null | undefined): number => (value =
 export function useLivePortfolio() {
   const [status, setStatus] = useState<OmniSocketStatus>("idle");
   const [live, setLive] = useState<PortfolioPayload | null>(null);
-  const [arbs, setArbs] = useState<{ ts: string | null; arbs: ArbOpportunity[] } | null>(null);
   const [receivedAt, setReceivedAt] = useState<number | null>(null);
   const socketOpen = status === "open";
   const fallback = useResource(socketOpen ? null : "cfo:portfolio", () => apiClient.get<PortfolioPayload>("/omni/portfolio"), { intervalMs: 3_000 });
-  const scan = useResource(socketOpen ? null : "cfo:arbitrage", () => apiClient.get<{ ts: string | null; arbs: ArbOpportunity[] }>("/omni/arbitrage"), { intervalMs: 5_000 });
 
   useEffect(() => {
     const offStatus = OmniSocket.channel(PORTFOLIO_PATH).onStatus(setStatus);
@@ -183,8 +159,6 @@ export function useLivePortfolio() {
       if (frame.type === "portfolio") {
         setLive(data as PortfolioPayload);
         setReceivedAt(Date.now());
-      } else if (frame.type === "arbitrage") {
-        setArbs(data as { ts: string | null; arbs: ArbOpportunity[] });
       }
     });
     return () => {
@@ -197,7 +171,6 @@ export function useLivePortfolio() {
   return {
     status,
     portfolio,
-    arbs: (socketOpen ? arbs : (scan.data ?? arbs))?.arbs ?? [],
     receivedAt: socketOpen ? receivedAt : fallback.updatedAt,
     error: portfolio ? null : fallback.error,
     loading: !portfolio && fallback.loading,

@@ -1,4 +1,4 @@
-"""Commander supervisor: real heartbeats and live telemetry for the 17 commanders.
+"""Commander supervisor: real heartbeats and live telemetry for the 16 commanders.
 
 Each commander owns a subsystem. Every interval the supervisor runs a cheap, read-only health probe
 against that subsystem and records the result through the Hive heartbeat API, so the UI shows what
@@ -39,7 +39,6 @@ from app.models import BetLedger
 from app.models.competitive_intel import CompetitorBotModel
 from app.models.control_panel import SETTINGS_SINGLETON_ID, SystemSettingsModel
 from app.models.paper_trading import PaperBet, PaperBetStatus
-from app.models.phantom import ArbitrageOpportunityModel
 from app.models.risk import StopLossEventModel
 from app.models.the_core import BacktestJobModel, EngineTaskStatus, SmallcaseRegistryModel, SmallcaseStatus
 from app.models.the_hive import BotProfileModel, BotStatus, HiveTaskModel, LegendaryBot, TaskStatus
@@ -131,12 +130,6 @@ async def _pratap(db: AsyncSession, _: ProbeContext) -> tuple[BotStatus, dict[st
         "smallcases_active": active, "smallcases_total": total, "activity_summary": f"{active}/{total} smallcases active"}
 
 
-async def _garuda(db: AsyncSession, _: ProbeContext) -> tuple[BotStatus, dict[str, Any]]:
-    live = await _count(db, select(func.count()).where(ArbitrageOpportunityModel.is_active.is_(True)))
-    summary = f"{_n(live, 'active arbitrage opportunity', 'active arbitrage opportunities')}" if live else "No active arbitrage"
-    return (BotStatus.WORKING if live else BotStatus.ONLINE), {"active_arbitrage": live, "activity_summary": summary}
-
-
 async def _todar_mal(db: AsyncSession, _: ProbeContext) -> tuple[BotStatus, dict[str, Any]]:
     started = time.perf_counter()
     await db.execute(text("SELECT 1"))
@@ -224,7 +217,6 @@ PROBES: dict[LegendaryBot, Probe] = {
     LegendaryBot.KUMBHA: _kumbha,
     LegendaryBot.PANINI: _panini,
     LegendaryBot.PRATAP: _pratap,
-    LegendaryBot.GARUDA: _garuda,
     LegendaryBot.TODAR_MAL: _todar_mal,
     LegendaryBot.ARYABHATA: _aryabhata,
     LegendaryBot.CHANAKYA: _chanakya,
@@ -303,7 +295,7 @@ async def build_telemetry_summary(
     settings: Settings | None = None,
     now: datetime | None = None,
 ) -> CommanderTelemetrySummaryResponse:
-    """Roll the stored beats up into fleet health, freshness and latency for all 17 commanders."""
+    """Roll the stored beats up into fleet health, freshness and latency for all 16 commanders."""
     cfg = settings or get_settings()
     stale_after = stale_after_seconds(cfg)
     warn_ms = cfg.HIVE_SUPERVISOR_LATENCY_WARN_MS

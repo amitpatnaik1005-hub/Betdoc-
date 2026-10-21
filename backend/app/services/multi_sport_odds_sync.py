@@ -10,9 +10,10 @@ Two Celery beat jobs drive it (``app.workers.sports_tasks``):
   ``ODDS_QUOTA_FLOOR`` stops the tick). Every event is normalised onto the OmniRoute venues (``onexbet`` ->
   ``1xbet``, Betfair net of commission) inside the FA-3 budget (``SPORTS_NORMALIZATION_BUDGET_MS``, 12 ms), given
   its de-vigged consensus and its sharp benchmark (Pinnacle, else the Betfair exchange), and stored in Redis.
-* ``screen_cross_provider_arbitrage`` (every ``SPORTS_ARB_SCREEN_SECONDS``, 30 s): every stored board screened
-  across all venues for cross-venue arbitrage (the best price per outcome books under 1) and value lines (a
+* ``screen_cross_provider_arbitrage`` (every ``SPORTS_ARB_SCREEN_SECONDS``, 30 s; the task keeps its historical name
+  so running workers and beats need no change): every stored board screened across all venues for value lines (a
   retail price over the sharp fair price by ``SPORTS_MIN_EDGE``); the edge list is stored and published live.
+  Group 96 retired cross-venue arbitrage.
 
 ``screen_multi_provider_edges`` prices one match with its sport's quantitative adapter instead of the market, so
 the desk can shop a model price across every venue it holds quotes for.
@@ -162,27 +163,11 @@ def normalize_event(raw: Mapping[str, Any], feed_key: str) -> NormalizedEvent | 
     return event
 
 
-def screen_event(event: Mapping[str, Any], *, min_edge: float, min_arbitrage: float) -> list[dict[str, Any]]:
-    """Cross-venue arbitrage and value lines on one stored board event."""
+def screen_event(event: Mapping[str, Any], *, min_edge: float) -> list[dict[str, Any]]:
+    """+EV value lines on one stored board event, priced against the sharp benchmark (Group 96: no arbitrage)."""
     venue_odds: dict[str, dict[str, float]] = event["venue_odds"]
     outcomes: list[str] = list(event["outcomes"])
     found: list[dict[str, Any]] = []
-    best: dict[str, tuple[str, float, float]] = {}
-    for venue, quotes in venue_odds.items():
-        for o in outcomes:
-            if o in quotes:
-                n = net_odds(quotes[o], DEFAULT_COMMISSION.get(venue, 0.0))
-                if o not in best or n > best[o][2]:
-                    best[o] = (venue, quotes[o], n)
-    if len(best) == len(outcomes):
-        booksum = sum(1.0 / best[o][2] for o in outcomes)
-        guaranteed = 1.0 / booksum - 1.0
-        if guaranteed >= min_arbitrage:
-            found.append({"kind": "arbitrage", "event_id": event["event_id"], "sport_key": event["sport_key"], "feed_key": event["feed_key"],
-                          "home": event["home"], "away": event["away"], "commence_time": event["commence_time"],
-                          "legs": [{"outcome": o, "venue": best[o][0], "odds": best[o][1], "stake_share": round((1.0 / best[o][2]) / booksum, 5)}
-                                   for o in outcomes],
-                          "booksum": round(booksum, 5), "arb_return_pct": round(guaranteed * 100.0, 3), "developer_credit": DEVELOPER_CREDIT})
     sharp = event.get("sharp")
     if sharp:
         fair = sharp["fair_probabilities"]
@@ -360,15 +345,15 @@ class MultiSportOddsSyncService:
                     continue
         return boards
 
-    async def screen_arbitrage(self, redis: Redis, now: datetime) -> dict[str, Any]:
-        """One beat tick of ``screen_cross_provider_arbitrage``."""
+    async def screen_value_lines(self, redis: Redis, now: datetime) -> dict[str, Any]:
+        """One beat tick of ``screen_cross_provider_arbitrage`` (historical task name): the +EV value lines."""
         s = self.settings
         edges: list[dict[str, Any]] = []
         boards = await self.stored_boards(redis)
         for board in boards:
             for event in board.get("events", []):
-                edges.extend(screen_event(event, min_edge=s.SPORTS_MIN_EDGE, min_arbitrage=s.SPORTS_MIN_ARBITRAGE))
-        edges.sort(key=lambda e: e.get("arb_return_pct", e.get("edge_pct", 0.0)), reverse=True)
+                edges.extend(screen_event(event, min_edge=s.SPORTS_MIN_EDGE))
+        edges.sort(key=lambda e: e.get("edge_pct", 0.0), reverse=True)
         edges = edges[: s.SPORTS_MAX_EDGES]
         payload = json.dumps({"screened_at": now.isoformat(), "edges": edges})
         try:
@@ -377,8 +362,7 @@ class MultiSportOddsSyncService:
                 await redis.publish(edges_channel(s), payload)
         except RedisError as exc:
             logger.warning("sports: storing the edge list failed: %s", exc)
-        return {"boards": len(boards), "edges": len(edges), "arbitrages": sum(1 for e in edges if e["kind"] == "arbitrage"),
-                "value_lines": sum(1 for e in edges if e["kind"] == "value")}
+        return {"boards": len(boards), "edges": len(edges), "value_lines": sum(1 for e in edges if e["kind"] == "value")}
 
     async def latest_edges(self, redis: Redis) -> dict[str, Any]:
         raw = await redis.get(edges_key(self.settings))
@@ -400,7 +384,7 @@ class MultiSportOddsSyncService:
         Performs multi-venue line shopping across all bookmaker quotes
         (Pinnacle, Betfair, The Odds API, Parimatch, Stake, 1xBet),
         compares against the quantitative sport adapter fair odds,
-        and identifies positive EV value bets and cross-venue arbitrage.
+        and identifies positive EV value bets (single venue, best net price; Group 96 retired arbitrage).
         """
         adapter = SportAdapterRegistry.get_adapter(sport_key)
         fair = adapter.calculate_fair_odds(home_stats, away_stats, context)
@@ -443,14 +427,4 @@ class MultiSportOddsSyncService:
                 "route": None if route is None else route.as_dict(), "pillar_1": verdict.as_dict(), "confidence": confidence.as_dict(),
                 "kelly_multiplier": fair.kelly_multiplier, "developer_credit": DEVELOPER_CREDIT,
             })
-        if len(best) == len(sides):
-            booksum = sum(1.0 / best[s][2] for s, _ in sides)
-            if booksum < 1.0 - self.settings.SPORTS_MIN_ARBITRAGE * booksum:
-                ret = 1.0 / booksum - 1.0
-                edge = {"match_id": match_id, "sport_key": adapter.sport_key, "market_type": "cross_venue_arbitrage",
-                        "legs": [{"side": s, "venue": best[s][0], "odds": best[s][1], "stake_share": round((1.0 / best[s][2]) / booksum, 5)} for s, _ in sides],
-                        "arb_return_pct": round(ret * 100.0, 2), "developer_credit": DEVELOPER_CREDIT}
-                if len(sides) == 2:
-                    edge.update({"home_venue": best["home"][0], "home_odds": best["home"][1], "away_venue": best["away"][0], "away_odds": best["away"][1]})
-                edges.append(edge)
         return edges

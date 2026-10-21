@@ -282,21 +282,19 @@ export const SportsEngine = () => {
       </Panel>
 
       <Panel title="Cross-provider edges" icon="bolt" className="lg:col-span-5" updatedAt={edges.updatedAt}
-        subtitle={edges.data?.screened_at ? `screened ${formatAgo(edges.data.screened_at)}` : 'the beat screens every 30 s'}>
+        subtitle={edges.data?.screened_at ? `screened ${formatAgo(edges.data.screened_at)}` : 'the beat screens every 30 s for +EV value lines'}>
         <Async resource={edges} isEmpty={(d) => d.edges.length === 0}
-          empty={<EmptyState icon="bolt" title={`No ${info.name} edges right now`} detail={edges.data?.available === false ? 'Redis is unreachable from the API.' : 'Arbitrages and value lines appear here once the boards show one.'} />}>
+          empty={<EmptyState icon="bolt" title={`No ${info.name} edges right now`} detail={edges.data?.available === false ? 'Redis is unreachable from the API.' : 'Value lines appear here once the boards show one.'} />}>
           {(d) => (
             <ul className="flex max-h-[520px] flex-col gap-2 overflow-y-auto pr-1">
               {d.edges.map((e, i) => (
                 <li key={`${e.event_id}:${e.kind}:${e.venue ?? i}:${e.outcome ?? ''}`} className="rounded-2xl bg-stone-50 p-3 text-xs dark:bg-white/[0.03]">
                   <div className="flex items-center justify-between gap-2">
                     <span className="truncate font-semibold text-stone-800 dark:text-stone-100">{e.home} v {e.away}</span>
-                    <Pill tone={e.kind === 'arbitrage' ? 'good' : 'info'}>{e.kind === 'arbitrage' ? `arb ${e.arb_return_pct?.toFixed(2)}%` : `+${e.edge_pct?.toFixed(2)}%`}</Pill>
+                    <Pill tone="info">+{e.edge_pct?.toFixed(2)}%</Pill>
                   </div>
                   <p className="mt-1 text-stone-500 dark:text-stone-400">
-                    {e.kind === 'arbitrage'
-                      ? e.legs?.map((l) => `${humanize(l.outcome)} ${l.venue} @ ${formatOdds(l.odds)} (${(l.stake_share * 100).toFixed(0)}%)`).join(' · ')
-                      : `${humanize(e.outcome ?? '')} at ${e.venue} @ ${formatOdds(e.odds)} vs ${e.benchmark}`}
+                    {`${humanize(e.outcome ?? '')} at ${e.venue} @ ${formatOdds(e.odds)} vs ${e.benchmark}`}
                   </p>
                 </li>
               ))}

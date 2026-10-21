@@ -33,8 +33,12 @@ target_metadata = Base.metadata
 _NALANDA_PARTITION = re.compile(r"^nalanda_[a-z0-9_]+_p(\d{4}w\d{2}|default)$")
 
 
+# Group 96 retired arbitrage: this table stays in the schema history, unmapped, and is never dropped by autogenerate
+_RETIRED_TABLES = frozenset({"phantom_arbitrage_opportunities"})
+
+
 def include_name(name, type_, parent_names):  # noqa: ANN001, ARG001 - Alembic's hook signature
-    if type_ == "table" and name and _NALANDA_PARTITION.match(name):
+    if type_ == "table" and name and (_NALANDA_PARTITION.match(name) or name in _RETIRED_TABLES):
         return False
     return True
 

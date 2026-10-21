@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends
 
 from app.api.deps import get_current_user
 from app.api.v1 import auth, bet, exchange, ingestion, ws, execution, admin, odds, engine, capital, bet_calculator, oracle, vault, arena, market_signals, dashboard, the_wire, the_lab, the_hive, the_core, popular_picks, competitive_intel, oracle_scout, archive, control_panel, cfo_execution, sniper, portfolio, hive_trading, lab_quant, nalanda, sentinel
-from app.api.v1 import bookmakers, cfo, human_touch, omni, omni_admin, omni_fleet, parimatch_feed, phantom, sports, vault_admin, execution_router, digital_twin, settlement_feedback, model_calibration, never_forget, user_xp, cfo_growth, manual_parlay, inplay_ws, wire_ws, sports_engine, paper_trading, real_money
+from app.api.v1 import bookmakers, cfo, human_touch, omni, omni_admin, omni_fleet, parimatch_feed, sports, vault_admin, execution_router, digital_twin, settlement_feedback, model_calibration, never_forget, user_xp, cfo_growth, manual_parlay, inplay_ws, wire_ws, sports_engine, paper_trading, real_money
 
 api_router = APIRouter(prefix="/api/v1")
 
@@ -39,7 +39,6 @@ api_router.include_router(control_panel.router, prefix='/control-panel', depende
 api_router.include_router(bookmakers.router, dependencies=_authenticated)  # /bookmakers
 api_router.include_router(cfo.router, prefix='/the-vault/cfo', dependencies=_authenticated)
 api_router.include_router(human_touch.router, dependencies=_authenticated)  # /human-touch
-api_router.include_router(phantom.router, prefix='/phantom', dependencies=_authenticated)
 api_router.include_router(sports.router, dependencies=_authenticated)  # /sports
 api_router.include_router(omni.router)  # /omni/ws/stream: token-checked in the handshake
 api_router.include_router(omni_admin.router)  # /admin/omni: X-Omni-Admin-Token

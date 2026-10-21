@@ -209,7 +209,7 @@ _probe_lock = asyncio.Lock()
 
 @router.get("/telemetry-summary", response_model=CommanderTelemetrySummaryResponse)
 async def commander_telemetry_summary(current_user: CurrentUser, db: DbSession) -> CommanderTelemetrySummaryResponse:  # noqa: ARG001
-    """Fleet health, freshness, probe latency and activity summary for all 17 commanders."""
+    """Fleet health, freshness, probe latency and activity summary for every commander."""
     return await build_telemetry_summary(db)
 
 

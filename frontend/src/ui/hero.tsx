@@ -16,7 +16,7 @@ interface CommanderHeroProps {
   actions?: ReactNode;
   /** Optional live figures strip under the headline. */
   stats?: ReactNode;
-  /** Optional animated scene (Hive, Lab, Core, Phantom). */
+  /** Optional animated scene (Hive, Lab, Core). */
   scene?: ReactNode;
 }
 

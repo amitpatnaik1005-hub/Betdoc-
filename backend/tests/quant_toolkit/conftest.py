@@ -1,7 +1,10 @@
-"""Isolated fixtures for PHANTOM. Never imports app.main."""
+"""Isolated fixtures for The Lab's quant toolkit (PANINI; absorbed from Phantom in Group 96). Never imports app.main."""
 
 from collections.abc import AsyncIterator
 from typing import Any
+
+import uuid
+from types import SimpleNamespace
 
 import pytest
 import pytest_asyncio
@@ -11,16 +14,16 @@ from sqlalchemy import event
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.pool import StaticPool
 
-from app.api.deps import get_db
-from app.api.v1.phantom import router as phantom_router
+from app.api.deps import CurrentUser, get_db
+from app.api.v1.the_lab import router as lab_router
 from app.domain.phantom.manager import PhantomManager
 from app.models import Base
-from app.models.phantom import ArbitrageOpportunityModel, PhantomCalculationLogModel
+from app.models.phantom import PhantomCalculationLogModel
 
-PHANTOM_TABLES = [ArbitrageOpportunityModel.__table__, PhantomCalculationLogModel.__table__]
+PHANTOM_TABLES = [PhantomCalculationLogModel.__table__]
 
-app = FastAPI(title="BetDoc PHANTOM Test App")
-app.include_router(phantom_router, prefix="/api/v1/phantom")
+app = FastAPI(title="BetDoc Quant Toolkit Test App")
+app.include_router(lab_router, prefix="/api/v1/lab")
 
 
 @pytest_asyncio.fixture
@@ -71,6 +74,7 @@ async def client(session_factory: async_sessionmaker[AsyncSession]) -> AsyncIter
             yield session
 
     app.dependency_overrides[get_db] = override_get_db
+    app.dependency_overrides[CurrentUser.__metadata__[0].dependency] = lambda: SimpleNamespace(id=uuid.uuid4(), role="USER")
     try:
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as http:
             yield http

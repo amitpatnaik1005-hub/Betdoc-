@@ -18,7 +18,11 @@ def utc_now() -> datetime:
 
 
 class LegendaryBot(StrEnum):
-    """The 17 commanders, in handoff order. Must match frontend/src/config/commanders.config.ts."""
+    """The 16 commanders, in handoff order. Must match frontend/src/config/commanders.config.ts.
+
+    GARUDA was retired with the Phantom section in Group 96 (its Hive history moved to PANINI, who absorbed
+    the quant toolkit); the label stays dormant in the Postgres type ``hive_legendary_bot``.
+    """
 
     ASHOKA = "ASHOKA"  # Oracle: prediction engine
     KAUTILYA = "KAUTILYA"  # Command Center: master control
@@ -27,7 +31,6 @@ class LegendaryBot(StrEnum):
     KUMBHA = "KUMBHA"  # The Vault: capital management
     PANINI = "PANINI"  # The Lab: quantitative research
     PRATAP = "PRATAP"  # Core: system architecture
-    GARUDA = "GARUDA"  # Phantom: stealth scraping
     TODAR_MAL = "TODAR MAL"  # Archive: data warehouse
     ARYABHATA = "ARYABHATA"  # Math engine: probability distributions
     CHANAKYA = "CHANAKYA"  # Risk management: Kelly criterion

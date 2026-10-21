@@ -97,8 +97,9 @@ export interface Evaluation {
   developer_credit: string;
 }
 
+/** A +EV value line from the 30 s screen (Group 96 retired cross-venue arbitrage). */
 export interface StoredEdge {
-  kind: "arbitrage" | "value";
+  kind: "value";
   event_id: string;
   sport_key: SportKey;
   feed_key: string;
@@ -110,8 +111,6 @@ export interface StoredEdge {
   odds?: number;
   edge_pct?: number;
   benchmark?: string;
-  arb_return_pct?: number;
-  legs?: { outcome: string; venue: string; odds: number; stake_share: number }[];
 }
 
 export interface EdgeBoard {

@@ -1,4 +1,4 @@
-"""Pydantic V2 contracts for PHANTOM."""
+"""Pydantic V2 contracts for The Lab's quant toolkit (PANINI): dutching, matched betting, Avellaneda-Stoikov, cointegration."""
 
 import json
 from collections.abc import Mapping
@@ -8,17 +8,11 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from app.domain.phantom.manager import (
-    EVENT_NAME_MAX_LENGTH,
-    MARKET_TYPE_MAX_LENGTH,
-    CointegrationSignal,
-    MatchedBettingMode,
-)
+from app.domain.phantom.manager import CointegrationSignal, MatchedBettingMode
 
 MAX_LEGS = 32  # keeps stakes/inputs within the 2048-char JSON columns
 
 DecimalOdds = Annotated[float, Field(gt=1.0, allow_inf_nan=False)]
-CommissionPct = Annotated[float, Field(ge=0.0, lt=100.0, allow_inf_nan=False)]
 
 
 class PhantomSchema(BaseModel):
@@ -61,60 +55,7 @@ class PhantomCalculationLogRead(PhantomSchema):
         return _decode_json_fields(cls, data, {"inputs_json": "inputs", "outputs_json": "outputs"})
 
 
-class ArbitrageOpportunityRead(PhantomSchema):
-    id: UUID
-    event_name: str
-    market_type: str
-    total_implied_probability: float
-    guaranteed_profit_pct: float
-    target_total_stake: float
-    stakes: list[float]
-    is_active: bool
-    created_at: datetime
-
-    @model_validator(mode="before")
-    @classmethod
-    def _decode_json(cls, data: Any) -> Any:
-        return _decode_json_fields(cls, data, {"stakes_json": "stakes"})
-
-
-# --------------------------------------------------------------------------- 1. arbitrage
-
-
-class ArbitrageRequest(PhantomSchema):
-    model_config = ConfigDict(from_attributes=True, extra="forbid", str_strip_whitespace=True)
-
-    event_name: str = Field(min_length=1, max_length=EVENT_NAME_MAX_LENGTH)
-    market_type: str = Field(min_length=1, max_length=MARKET_TYPE_MAX_LENGTH)
-    odds: list[DecimalOdds] = Field(min_length=2, max_length=MAX_LEGS)
-    commissions_pct: list[CommissionPct] = Field(min_length=2, max_length=MAX_LEGS)
-    target_total_stake: float = Field(gt=0, allow_inf_nan=False)
-    minimum_profit_margin_pct: float = Field(ge=0, allow_inf_nan=False)
-
-    @model_validator(mode="after")
-    def _lengths_match(self) -> "ArbitrageRequest":
-        if len(self.odds) != len(self.commissions_pct):
-            raise ValueError(
-                f"odds ({len(self.odds)}) and commissions_pct ({len(self.commissions_pct)}) must have the same length."
-            )
-        return self
-
-
-class ArbitrageResponse(PhantomSchema):
-    is_arbitrage: bool
-    total_implied_probability: float
-    guaranteed_profit_pct: float
-    effective_odds: list[float]
-    implied_probabilities: list[float]
-    stake_weights: list[float]
-    stakes: list[float]
-    total_staked: float
-    leg_returns: list[float]
-    guaranteed_profit: float
-    opportunity: ArbitrageOpportunityRead | None
-
-
-# --------------------------------------------------------------------------- 2. dutching
+# --------------------------------------------------------------------------- 1. dutching
 
 
 class DutchingRequest(PhantomSchema):
@@ -131,7 +72,7 @@ class DutchingResponse(PhantomSchema):
     log: PhantomCalculationLogRead
 
 
-# --------------------------------------------------------------------------- 3. matched betting
+# --------------------------------------------------------------------------- 2. matched betting
 
 
 class MatchedBettingRequest(PhantomSchema):
@@ -151,7 +92,7 @@ class MatchedBettingResponse(PhantomSchema):
     log: PhantomCalculationLogRead
 
 
-# --------------------------------------------------------------------------- 4. Avellaneda-Stoikov
+# --------------------------------------------------------------------------- 3. Avellaneda-Stoikov
 
 
 class MarketMakerRequest(PhantomSchema):
@@ -174,7 +115,7 @@ class MarketMakerResponse(PhantomSchema):
     log: PhantomCalculationLogRead
 
 
-# --------------------------------------------------------------------------- 5. cointegration
+# --------------------------------------------------------------------------- 4. cointegration
 
 
 class CointegrationRequest(PhantomSchema):

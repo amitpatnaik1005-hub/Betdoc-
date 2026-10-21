@@ -70,7 +70,7 @@ async def test_ghost_sweeper_and_expiration(session_factory, orch) -> None:
     await _link(session_factory, orch, doomed, orphan)
 
     async with session_factory() as session:
-        await orch.claim_task(session, ghost, LegendaryBot.GARUDA)
+        await orch.claim_task(session, ghost, LegendaryBot.KARNA)
     async with session_factory() as session:
         await orch.claim_task(session, alive, LegendaryBot.PANINI)
     async with session_factory() as session:
@@ -80,7 +80,7 @@ async def test_ghost_sweeper_and_expiration(session_factory, orch) -> None:
     async with session_factory.begin() as session:
         await session.execute(
             update(BotProfileModel)
-            .where(BotProfileModel.bot_name == LegendaryBot.GARUDA)
+            .where(BotProfileModel.bot_name == LegendaryBot.KARNA)
             .values(last_ping_at=now - timedelta(minutes=20))
         )
 
@@ -90,7 +90,7 @@ async def test_ghost_sweeper_and_expiration(session_factory, orch) -> None:
     assert report.reverted_task_ids == (ghost,)
     assert report.expired_task_ids == (doomed,)
     assert report.blocked_task_ids == (orphan,)
-    assert LegendaryBot.GARUDA in report.offline_bots
+    assert LegendaryBot.KARNA in report.offline_bots
 
     ghost_task = await _load(session_factory, ghost)
     assert ghost_task.status == TaskStatus.BACKLOG and ghost_task.assignee_name is None
