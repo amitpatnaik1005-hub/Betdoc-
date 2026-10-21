@@ -12,7 +12,7 @@ import { ModelRecalibrationPanel } from '../components/oracle/ModelRecalibration
 import { NeverForgetLearningJournal } from '../components/oracle/NeverForgetLearningJournal';
 import { ManualParlayWorkbench } from '../components/parlay/ManualParlayWorkbench';
 import { ashokaHeadline, useSlips } from '../lib/oracle';
-import { Async, Button, EmptyState, Field, Meter, NumberInput, Page, Panel, Pill, Select, Stat, StatGrid, StatusBadge, num } from '../ui/kit';
+import { Async, Button, ComponentGuideBanner, EmptyState, Field, Meter, num, NumberInput, Page, Panel, Pill, Select, Stat, StatGrid, StatusBadge } from '../ui/kit';
 
 // ---------------------------------------------------------------------------
 // CONTRACTS
@@ -335,6 +335,17 @@ export const TheOracle = () => {
         }
       />
 
+      <ComponentGuideBanner
+        className="lg:col-span-12"
+        moduleName="The Oracle"
+        purpose="ASHOKA's betting desk: slips that passed Monte Carlo pricing and the anti-correlation gate, the Digital Twin's 15-pillar check, and the bets you actually placed, settled from final scores."
+        steps={[
+          "Read the vetted slips: each shows its edge and its honest win probability",
+          "Run the Twin fortress on a slip; only one that passes every enforced pillar is vetted",
+          "Placed it at your bookmaker? Press \"I placed this bet\" so it settles and teaches the models",
+        ]}
+        kpiCodes={["EV", "SLIP_SCORE", "BRIER_SCORE"]}
+      />
       <ScorecardStrip />
       <VettedSlips slips={slips} />
       <TwinFortressPanel />

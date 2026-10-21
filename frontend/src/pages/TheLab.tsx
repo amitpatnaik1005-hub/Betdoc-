@@ -8,7 +8,7 @@ import { formatAgo, formatDateTime, formatOdds, formatPct, formatRatioPct } from
 import { runMutation, useResource } from '../lib/resource';
 import { type Selection, useExecutionStore } from '../store/useExecutionStore';
 import { CommanderHero, MOTIFS } from '../ui/hero';
-import { Async, Button, ConfirmButton, EmptyState, Field, KeyValues, NumberInput, Page, Panel, Select, StatusBadge, TextInput, Toggle, num } from '../ui/kit';
+import { Async, Button, ComponentGuideBanner, ConfirmButton, EmptyState, Field, KeyValues, num, NumberInput, Page, Panel, Select, StatusBadge, TextInput, Toggle } from '../ui/kit';
 import { Markdown } from '../ui/markdown';
 
 // ---------------------------------------------------------------------------
@@ -378,6 +378,17 @@ export const TheLab = () => {
             <Button icon="lan" busy={health.loading && health.data !== undefined} onClick={() => void health.refresh()}>Probe sources</Button>
           </>
         }
+      />
+      <ComponentGuideBanner
+        className="lg:col-span-12"
+        moduleName="The Lab"
+        purpose="PANINI's research bench: price a match with the model ensemble, compare it with the live market, and run the quant calculators. Nothing here places a bet."
+        steps={[
+          "Price a match in the Model sandbox (Poisson, Dixon-Coles and Elo blended)",
+          "Compare with KARNA's live board: Parimatch and 1xBet against the margin-free consensus",
+          "Size or hedge an idea in the Quant toolkit (dutching, matched betting and more)",
+        ]}
+        kpiCodes={["EV", "OVERROUND"]}
       />
       <CompetitiveIntelLivePanel />
       <ModelSandbox />

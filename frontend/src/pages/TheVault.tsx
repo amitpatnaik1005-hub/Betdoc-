@@ -9,7 +9,7 @@ import { RealHistoryTable } from '../components/real_money/RealHistoryTable';
 import { TaxCertificateModal } from '../components/real_money/TaxCertificateModal';
 import { CommanderHero, MOTIFS } from '../ui/hero';
 import { DivergingBars, LineChart } from '../ui/charts';
-import { AnimatedNumber, Async, Button, ConfirmButton, type Column, DataTable, EmptyState, Field, KeyValues, NumberInput, Page, Panel, Segmented, Stat, StatusBadge, TextInput, Toggle, num } from '../ui/kit';
+import { AnimatedNumber, Async, Button, type Column, ComponentGuideBanner, ConfirmButton, DataTable, EmptyState, Field, KeyValues, num, NumberInput, Page, Panel, Segmented, Stat, StatusBadge, TextInput, Toggle } from '../ui/kit';
 
 // ---------------------------------------------------------------------------
 // CONTRACTS
@@ -311,6 +311,17 @@ export const TheVault = () => {
             <Button icon="refresh" onClick={() => { void overview.refresh(); void ledger.refresh(); }}>Reconcile now</Button>
           </>
         }
+      />
+      <ComponentGuideBanner
+        className="lg:col-span-12"
+        moduleName="The Vault"
+        purpose="KUMBHA's record of your real money in rupees: cash in and out, settled tickets, 30% TDS under Section 115BBJ, growth, risk and the stop-loss guard."
+        steps={[
+          "Record each deposit or withdrawal so the vault matches your bookmaker balance",
+          "Review settled tickets, P&L after tax and the TDS certificate",
+          "Watch the risk engine and stop-loss guard before staking more",
+        ]}
+        kpiCodes={["KELLY_STAKE", "EV"]}
       />
       {/* Group 97: the real cash vault (deposits, withdrawals, settled real tickets, the Section 115BBJ certificate),
           moved here from the retired Live Desk; tickets are placed by hand and settle from recorded final scores */}

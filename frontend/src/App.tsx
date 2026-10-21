@@ -190,14 +190,14 @@ const StatTile = ({ label, value, icon, motionPreset, tone = 'neutral', changeKe
   const t = TONE_STYLE[tone];
 
   return (
-    <div className="flex min-w-0 flex-1 items-center gap-2 px-3 py-3 sm:min-w-[10rem] sm:flex-none sm:gap-3 sm:px-5 sm:py-3.5">
+    <div className="flex min-w-0 flex-1 items-center gap-2 px-3 py-1.5 sm:min-w-[7.5rem] sm:flex-none sm:gap-2.5 sm:px-3.5 sm:py-2">
       <AnimatedGlyph
         icon={icon}
         motionPreset={motionPreset}
-        className={`hidden shrink-0 text-[20px] transition-colors duration-300 sm:inline-block ${t.icon}`}
+        className={`hidden shrink-0 text-[17px] transition-colors duration-300 2xl:inline-block ${t.icon}`}
       />
       <div className="min-w-0">
-        <p className="text-xs font-medium text-stone-400 dark:text-stone-500">
+        <p className="text-[10px] font-medium uppercase leading-none tracking-wide text-stone-400 dark:text-stone-500">
           {label}
         </p>
         <motion.p
@@ -205,7 +205,7 @@ const StatTile = ({ label, value, icon, motionPreset, tone = 'neutral', changeKe
           initial={reduceMotion ? false : { opacity: 0.4, y: -3 }}
           animate={{ opacity: 1, y: 0 }}
           transition={glide}
-          className={`mt-1.5 truncate font-mono text-[13px] font-medium leading-none tracking-tight tabular-nums transition-colors duration-500 sm:text-[15px] ${t.value}`}
+          className={`mt-1 truncate font-mono text-[13px] font-medium leading-none tracking-tight tabular-nums transition-colors duration-500 sm:text-[14px] ${t.value}`}
         >
           {value}
         </motion.p>
@@ -249,25 +249,27 @@ const StageHeader = (): ReactElement => {
   const pnlIcon = dayPnl > 0 ? 'trending_up' : dayPnl < 0 ? 'trending_down' : 'trending_flat';
 
   return (
-    <header className="sticky top-0 z-10 flex flex-wrap items-center justify-between gap-3 bg-[#F8F6F0]/70 px-4 py-3.5 backdrop-blur-xl backdrop-saturate-150 sm:gap-4 sm:px-10 sm:py-5 dark:bg-stone-950/70">
-      <div className="flex min-w-0 items-center gap-3.5">
+    // Group 99: one 56px row whenever the column is wide enough; otherwise the figures wrap under the title rather than
+    // squeezing it (the title block keeps at least 15rem, the tiles never shrink)
+    <header className="sticky top-0 z-30 flex min-h-[56px] shrink-0 flex-wrap items-center justify-between gap-x-4 gap-y-2 bg-[#F8F6F0]/80 px-4 py-1.5 backdrop-blur-xl backdrop-saturate-150 sm:px-6 dark:bg-stone-950/75">
+      <div className="flex min-w-[15rem] flex-1 items-center gap-3">
         {isCompact && (
           <button type="button" onClick={toggleLeft} aria-label="Open navigation" className="-ml-1 grid size-10 shrink-0 place-items-center rounded-2xl text-stone-600 transition-transform duration-300 hover:bg-stone-900/5 active:scale-95 dark:text-stone-300 dark:hover:bg-white/5">
             <span className="material-symbols-outlined text-2xl">menu</span>
           </button>
         )}
-        <span className="relative grid size-11 shrink-0 place-items-center rounded-2xl bg-white shadow-soft dark:bg-stone-900 dark:shadow-none">
+        <span className="relative grid size-9 shrink-0 place-items-center rounded-xl bg-white shadow-soft dark:bg-stone-900 dark:shadow-none">
           <AnimatedGlyph
             icon="dns"
             motionPreset={socketStatus === 'live' ? 'pulse' : 'none'}
-            className="text-[20px] text-[#C89B3C] dark:text-[#E3BE63]"
+            className="text-[18px] text-[#C89B3C] dark:text-[#E3BE63]"
             filled
           />
         </span>
 
         <div className="min-w-0">
-          <div className="flex items-center gap-2.5">
-            <h1 className="truncate font-display text-xl font-bold tracking-[-0.02em] text-stone-900 dark:text-stone-100">
+          <div className="flex min-w-0 items-center gap-2">
+            <h1 className="truncate font-display text-[17px] font-bold leading-tight tracking-[-0.02em] text-stone-900 dark:text-stone-100">
               Quantitative Desk
             </h1>
             <span
@@ -295,32 +297,31 @@ const StageHeader = (): ReactElement => {
               </button>
             )}
           </div>
-          <div className="mt-1 flex items-center gap-2" role="status" aria-live="polite">
+          <div className="mt-0.5 flex min-w-0 items-center gap-2" role="status" aria-live="polite">
             <span className="relative flex size-2 shrink-0" aria-hidden="true">
               {socket.halo && <span className={`absolute inline-flex size-full rounded-full ${socket.halo}`} />}
               <span className={`relative inline-flex size-2 rounded-full ${socket.dot}`} />
             </span>
-            <p className={`text-[11px] font-medium tracking-wide ${socket.text}`}>
+            <p className={`truncate text-[11px] font-medium tracking-wide ${socket.text}`}>
               {MOCK_AUTH ? 'Mock session' : socket.label}
               <span className="text-stone-300 dark:text-stone-700"> · </span>
               <span className="text-stone-400 dark:text-stone-500">Odds feed {oddsLive ? (oddsTransport === 'polling' ? 'polling' : 'streaming') : 'idle'}</span>
               <span className="text-stone-300 dark:text-stone-700"> · </span>
               <span className="text-stone-400 dark:text-stone-500">INR book{money.converted ? ` · shown in ${money.currency}` : ''}</span>
-              <span className="text-stone-300 dark:text-stone-700"> · </span>
-              <span className="text-stone-400 dark:text-stone-500" title="Developer Credit">Amit Ashok Kumar Patnaik</span>
+              <span className="hidden text-stone-300 2xl:inline dark:text-stone-700"> · </span>
+              <span className="hidden text-stone-400 2xl:inline dark:text-stone-500" title="Developer Credit">Amit Ashok Kumar Patnaik</span>
             </p>
           </div>
         </div>
       </div>
 
-      <div className="flex flex-wrap items-center gap-2">
+      <div className="flex w-full items-center gap-2 sm:ml-auto sm:w-auto sm:shrink-0">
         <CurrencySelector />
-      </div>
-
-      <div className="flex w-full divide-x divide-stone-100 rounded-3xl bg-white shadow-soft sm:w-auto dark:divide-white/[0.05] dark:bg-stone-900 dark:shadow-none">
-        <StatTile label="Bankroll" value={summary.data ? money.format(bankroll) : '—'} icon="account_balance_wallet" motionPreset="breathe" tone="positive" changeKey={bankroll} />
-        <StatTile label="Exposure" value={summary.data ? money.format(exposure) : '—'} icon="inventory_2" motionPreset="sway" tone="caution" changeKey={exposure} />
-        <StatTile label="Today" value={summary.data ? `${dayPnl > 0 ? '+' : ''}${money.format(dayPnl)}` : '—'} icon={pnlIcon} motionPreset="drift" tone={pnlTone} changeKey={dayPnl} />
+        <div className="flex min-w-0 flex-1 divide-x divide-stone-100 rounded-2xl bg-white shadow-soft sm:flex-none dark:divide-white/[0.05] dark:bg-stone-900 dark:shadow-none">
+          <StatTile label="Bankroll" value={summary.data ? money.format(bankroll) : '—'} icon="account_balance_wallet" motionPreset="breathe" tone="positive" changeKey={bankroll} />
+          <StatTile label="Exposure" value={summary.data ? money.format(exposure) : '—'} icon="inventory_2" motionPreset="sway" tone="caution" changeKey={exposure} />
+          <StatTile label="Today" value={summary.data ? `${dayPnl > 0 ? '+' : ''}${money.format(dayPnl)}` : '—'} icon={pnlIcon} motionPreset="drift" tone={pnlTone} changeKey={dayPnl} />
+        </div>
       </div>
     </header>
   );

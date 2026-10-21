@@ -18,6 +18,7 @@ import {
 import { animate, motion, useMotionValue, useReducedMotion, useTransform } from "framer-motion";
 import type { ResourceResult } from "../lib/resource";
 import { formatAgo } from "../lib/format";
+import { KPI_GLOSSARY } from "./kpi_glossary";
 
 // --------------------------------------------------------------------------- motion
 /** Soft, organic spring: low stiffness, high damping, so nothing overshoots or snaps. */
@@ -532,3 +533,124 @@ export const KeyValues = ({ items }: { items: { label: string; value: ReactNode 
     ))}
   </dl>
 );
+
+// --------------------------------------------------------------------------- micro-guides (Group 99)
+/** A KPI's plain-English definition on hover, focus or tap (Escape closes). Unknown codes render nothing. */
+export const KpiGlossaryPill = ({ kpi }: { kpi: string }) => {
+  const [open, setOpen] = useState(false);
+  const id = useId();
+  const item = KPI_GLOSSARY[kpi.toUpperCase()];
+  if (!item) return null;
+
+  return (
+    <span className="relative inline-block" onMouseEnter={() => setOpen(true)} onMouseLeave={() => setOpen(false)}>
+      <button
+        type="button"
+        aria-expanded={open}
+        aria-describedby={open ? id : undefined}
+        title={item.shortDesc}
+        onClick={() => setOpen((o) => !o)}
+        onFocus={() => setOpen(true)}
+        onBlur={() => setOpen(false)}
+        onKeyDown={(e) => { if (e.key === "Escape") setOpen(false); }}
+        className="inline-flex items-center gap-1 rounded-full border border-stone-200 bg-white px-2 py-0.5 text-[10px] font-semibold text-stone-700 transition-colors hover:border-[#C89B3C] hover:text-[#9A7424] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#C89B3C]/50 dark:border-stone-700 dark:bg-stone-800 dark:text-stone-300 dark:hover:border-[#E3BE63] dark:hover:text-[#E3BE63]"
+      >
+        <span className="font-mono">{item.code.replace(/_/g, " ")}</span>
+        <span className="material-symbols-outlined text-[11px] opacity-60" aria-hidden="true">info</span>
+      </button>
+      {open && (
+        <span
+          id={id}
+          role="tooltip"
+          className="absolute left-0 top-full z-50 mt-1.5 block w-72 max-w-[calc(100vw-2rem)] rounded-xl border border-stone-200 bg-white p-3 text-[11px] leading-relaxed text-stone-700 shadow-xl dark:border-stone-700 dark:bg-stone-900 dark:text-stone-200"
+        >
+          <span className="block font-semibold text-[#9A7424] dark:text-[#E3BE63]">{item.name}</span>
+          <span className="mt-1 block text-stone-600 dark:text-stone-300">{item.plainEnglish}</span>
+          <span className="mt-1.5 block rounded-md bg-stone-50 p-1.5 font-mono text-[10px] text-stone-500 dark:bg-stone-800/80 dark:text-stone-400">
+            {item.example}
+          </span>
+        </span>
+      )}
+    </span>
+  );
+};
+
+export interface ComponentGuideBannerProps {
+  moduleName: string;
+  purpose: string;
+  steps: [string, string, string];
+  kpiCodes?: string[];
+  className?: string;
+}
+
+const bannerKey = (moduleName: string): string => `betdoc:banner:${moduleName}`;
+
+/** Every section's opening: what it is for, how to use it in three steps, and its key figures. Collapsing is remembered. */
+export const ComponentGuideBanner = ({ moduleName, purpose, steps, kpiCodes = [], className }: ComponentGuideBannerProps) => {
+  const bodyId = useId();
+  const [collapsed, setCollapsed] = useState(() => {
+    try {
+      return localStorage.getItem(bannerKey(moduleName)) === "collapsed";
+    } catch {
+      return false;
+    }
+  });
+
+  const toggle = () => {
+    const next = !collapsed;
+    setCollapsed(next);
+    try {
+      localStorage.setItem(bannerKey(moduleName), next ? "collapsed" : "open");
+    } catch {
+      // storage unavailable (private window): the choice lasts for this visit only
+    }
+  };
+
+  return (
+    <section
+      aria-label={`${moduleName} quick guide`}
+      className={cx("rounded-2xl border border-stone-200/80 bg-stone-50/90 p-4 sm:p-5 dark:border-white/[0.08] dark:bg-stone-900/60", className)}
+    >
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex min-w-0 items-center gap-2">
+          <span className="grid size-6 shrink-0 place-items-center rounded-lg bg-[#C89B3C]/10 text-[#9A7424] dark:text-[#E3BE63]" aria-hidden="true">
+            <span className="material-symbols-outlined text-[15px]">school</span>
+          </span>
+          <h2 className="truncate font-display text-xs font-bold uppercase tracking-wider text-stone-800 dark:text-stone-200">{moduleName} · quick guide</h2>
+        </div>
+        <button
+          type="button"
+          onClick={toggle}
+          aria-expanded={!collapsed}
+          aria-controls={bodyId}
+          className="inline-flex shrink-0 items-center gap-0.5 rounded-full px-2 py-1 text-[11px] font-medium text-stone-500 transition-colors hover:bg-stone-900/[0.04] hover:text-stone-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#C89B3C]/50 dark:text-stone-400 dark:hover:bg-white/[0.05] dark:hover:text-stone-100"
+        >
+          {collapsed ? "Show guide" : "Hide"}
+          <span className="material-symbols-outlined text-[14px]" aria-hidden="true">{collapsed ? "expand_more" : "expand_less"}</span>
+        </button>
+      </div>
+
+      {!collapsed && (
+        <div id={bodyId} className="mt-3 space-y-3 border-t border-stone-200/60 pt-3 dark:border-white/[0.05]">
+          <p className="text-[13px] leading-relaxed text-stone-700 dark:text-stone-300">{purpose}</p>
+          <ol className="grid grid-cols-1 gap-2 md:grid-cols-3">
+            {steps.map((step, idx) => (
+              <li key={idx} className="flex items-start gap-2 rounded-xl bg-white/80 p-2.5 text-xs leading-snug text-stone-600 dark:bg-stone-800/40 dark:text-stone-300">
+                <span className="grid size-5 shrink-0 place-items-center rounded-full bg-[#C89B3C]/15 font-mono text-[10px] font-bold text-[#9A7424] dark:text-[#E3BE63]" aria-hidden="true">
+                  {idx + 1}
+                </span>
+                <span>{step}</span>
+              </li>
+            ))}
+          </ol>
+          {kpiCodes.length > 0 && (
+            <div className="flex flex-wrap items-center gap-1.5">
+              <span className="text-[10px] font-semibold uppercase tracking-wide text-stone-400">Key figures</span>
+              {kpiCodes.map((code) => <KpiGlossaryPill key={code} kpi={code} />)}
+            </div>
+          )}
+        </div>
+      )}
+    </section>
+  );
+};
