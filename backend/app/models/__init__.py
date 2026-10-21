@@ -243,3 +243,4 @@ from app.models.paper_trading import CurrencyExchangeRate, PaperAccount, PaperBe
 from app.models.real_money import RealBankroll, RealBetTicket, RealCashTransaction  # noqa: E402,F401  (Group 95)
 from app.models.competitive_intel_live import BookmakerMarginBenchmark, CompetitorPublicConsensusSnapshot, CompetitorSignalFeedItem  # noqa: E402,F401  (Group 85)
 from app.models.emergency_kill_switch import EmergencyKillSwitchAuditModel, EmergencyKillSwitchStateModel  # noqa: E402,F401  (Group 86)
+from app.models.backup_vault import BackupRestoreAuditModel, BackupSnapshotManifestModel  # noqa: E402,F401  (Group 87)

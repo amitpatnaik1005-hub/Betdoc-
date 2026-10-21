@@ -582,6 +582,12 @@ class Settings(BaseSettings):
     EMERGENCY_MANUAL_COOLDOWN_MINUTES: int = Field(default=240, ge=1)
     EMERGENCY_RESUME_DAILY_EXPOSURE_INR: float = Field(default=500.0, gt=0)  # the resume form's default
     EMERGENCY_BOOK_LOCK_PREFIX: str = "betdoc:kill_switch:book"  # <prefix>:<parimatch|1xbet> = "1" while that book is locked
+    # ---- Encrypted backup & integrity restore vault (Group 87, SHIVAJI & TODAR MAL) ----
+    BACKUP_VAULT_DIR: str = "data/backups"  # encrypted snapshots; relative to PROJECT_ROOT unless absolute (gitignored)
+    BACKUP_RETENTION_COUNT: int = Field(default=30, ge=1, le=365)  # newest snapshots kept; pinned ones are never pruned
+    BACKUP_SCHEDULE_ENABLED: bool = True  # the beat's automated snapshot (and retention pass)
+    BACKUP_SCHEDULE_HOURS: int = Field(default=6, ge=1, le=168)
+    BACKUP_MAX_ROWS_PER_TABLE: int = Field(default=50_000, ge=100, le=500_000)  # a table over this is cut and the snapshot marked incomplete
     # the contrarian edge score (0-100): 50 + clamp(divergence x w) + clamp(EV x w) + RLM bonus - trap penalty + tight-margin bonus
     COMPETITIVE_EDGE_WEIGHTS: dict[str, float] = Field(default_factory=lambda: {
         "base": 50.0, "divergence_weight": 0.75, "divergence_min": -25.0, "divergence_max": 25.0, "ev_weight": 1.8, "ev_min": -20.0, "ev_max": 25.0,

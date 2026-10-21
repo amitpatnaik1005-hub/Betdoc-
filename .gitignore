@@ -57,3 +57,7 @@ _archive/
 # ---- Nalanda cold tier (Parquet files and chain anchors; mirrored by scripts/s3_mirror.py) ----
 backend/data/archive/
 data/archive/
+
+# Group 87: encrypted database snapshots (never committed)
+data/backups/
+backend/data/backups/

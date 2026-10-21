@@ -4,6 +4,7 @@ import { downloadCsv, formatAgo, formatDate, formatInt, formatPct } from '../lib
 import { runMutation, useResource } from '../lib/resource';
 import { CommanderHero, MOTIFS } from '../ui/hero';
 import { DivergingBars } from '../ui/charts';
+import { BackupRestoreVaultPanel } from '../components/archive/BackupRestoreVaultPanel';
 import { Async, Button, EmptyState, Field, KeyValues, Page, Panel, Pill, Select, StatusBadge, TextInput } from '../ui/kit';
 
 // ---------------------------------------------------------------------------
@@ -182,6 +183,7 @@ export const TheArchive = () => {
           {() => <DivergingBars caption="Row count by table" formatValue={formatInt} items={largest.map((t) => ({ label: t.table_name, value: t.row_count }))} />}
         </Async>
       </Panel>
+      <BackupRestoreVaultPanel />
       <TableBrowser tables={tables} />
       <BacktestLedger />
       <Panel title="Retention notes" icon="info" className="lg:col-span-5">

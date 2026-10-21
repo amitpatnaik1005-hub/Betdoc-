@@ -102,6 +102,17 @@ class ArchiveManager:
         newest = max((f.stat().st_mtime for f in self._backup_dir.glob(BACKUP_GLOB)), default=None)
         return datetime.fromtimestamp(newest, UTC) if newest is not None else None
 
+    async def _latest_vault_snapshot(self, db: AsyncSession) -> datetime | None:
+        """The newest live encrypted snapshot of the Group 87 vault, when its manifest table exists."""
+        from app.models.backup_vault import BackupSnapshotManifestModel  # noqa: PLC0415 - the vault is optional here
+
+        if BackupSnapshotManifestModel.__tablename__ not in await self._materialized_tables(db):
+            return None
+        newest = await db.scalar(select(func.max(BackupSnapshotManifestModel.created_at)).where(BackupSnapshotManifestModel.status != "PRUNED"))
+        if newest is None:
+            return None
+        return newest if newest.tzinfo else newest.replace(tzinfo=UTC)
+
     # ------------------------------------------------------------------ inventory helpers
 
     async def _materialized_tables(self, db: AsyncSession) -> set[str]:
@@ -123,11 +134,13 @@ class ArchiveManager:
         database_status = "ONLINE"
         probe_latency_ms: float | None = None
         total_records = 0
+        vault_backup_at: datetime | None = None
         try:
             started = time.perf_counter()
             await db.execute(select(literal(1)))
             probe_latency_ms = round((time.perf_counter() - started) * 1000.0, 3)
             total_records = sum(entry["row_count"] for entry in await self.get_tables(db))
+            vault_backup_at = await self._latest_vault_snapshot(db)
         except SQLAlchemyError:
             await db.rollback()
             database_status = "DEGRADED"
@@ -136,7 +149,7 @@ class ArchiveManager:
         overview = {
             "encryption_status": ENCRYPTION_STATUS,
             "algorithm": ENCRYPTION_ALGORITHM,
-            "last_backup_at": self._last_backup_at(),
+            "last_backup_at": max((t for t in (self._last_backup_at(), vault_backup_at) if t is not None), default=None),  # pg_dump or vault snapshot
             "total_tables": len(Base.metadata.tables),
             "database_status": database_status,
             "probe_latency_ms": probe_latency_ms,

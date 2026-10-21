@@ -18,8 +18,10 @@ from app.api.v1.archive import router as archive_router
 from app.domain.archive.manager import ArchiveManager
 from app.models import Base
 from app.models.archive import ArchiveAccessLogModel
+from app.models.backup_vault import BackupRestoreAuditModel, BackupSnapshotManifestModel
 
-ARCHIVE_TABLES = [ArchiveAccessLogModel.__table__]
+# Group 87: the encrypted backup vault's manifests and audits live beside the access log
+ARCHIVE_TABLES = [ArchiveAccessLogModel.__table__, BackupSnapshotManifestModel.__table__, BackupRestoreAuditModel.__table__]
 PROBE_TABLE_NAME = "archive_probe_items"
 PHANTOM_TABLE_NAME = "archive_phantom_probe"
 
