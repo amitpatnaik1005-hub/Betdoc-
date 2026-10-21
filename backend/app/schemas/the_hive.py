@@ -156,3 +156,46 @@ class TaskEvent(BaseModel):
     status: TaskStatus
     assignee_name: LegendaryBot | None = None
     occurred_at: datetime
+
+
+# ------------------------------------------------------------ Group 90: commander telemetry
+class CommanderProbeRequest(_WriteSchema):
+    bot_name: LegendaryBot | None = Field(
+        default=None,
+        description="One commander to probe now; omit or null to probe the whole roster.",
+    )
+
+
+class CommanderTelemetryItem(BaseModel):
+    bot_name: LegendaryBot
+    status: BotStatus
+    effective_status: str  # the stored status, or NO SIGNAL when never reported or stale
+    is_stale: bool
+    freshness_seconds: float | None = None
+    uptime_seconds: int = 0
+    tasks_completed: int = 0
+    error_count: int = 0
+    probe_latency_ms: float | None = None
+    latency_warning: bool = False
+    activity_summary: str
+    last_ping_at: datetime | None = None
+    resource_metrics: JsonObject = Field(default_factory=dict)
+
+
+class CommanderTelemetrySummaryResponse(BaseModel):
+    total_commanders: int
+    reporting_count: int
+    online_count: int
+    working_count: int
+    degraded_count: int
+    fatal_count: int
+    sleeping_count: int
+    offline_count: int
+    stale_count: int
+    overall_health_pct: float  # (online + working) / total, stale beats excluded
+    avg_probe_latency_ms: float | None = None
+    stale_after_seconds: float
+    latency_warn_ms: float
+    last_sweep_at: datetime | None = None
+    developer_credit: str
+    commanders: list[CommanderTelemetryItem]

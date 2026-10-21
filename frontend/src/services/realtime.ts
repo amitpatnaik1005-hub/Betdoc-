@@ -6,6 +6,7 @@
  * capital/risk and the dashboard), so one action anywhere updates every open view.
  */
 import { invalidate } from "../lib/resource";
+import { type RealtimeCommanderPayload, useCommanderStore } from "../store/useCommanderStore";
 import { useMarketStore } from "../store/useMarketStore";
 import { type BusEvent, useSystemStore } from "../store/useSystemStore";
 import { toast } from "../store/useToastStore";
@@ -39,6 +40,8 @@ function handleBusEvent(data: unknown): void {
   useSystemStore.getState().pushEvent(event);
 
   if (event.type === "commanders") {
+    // Paint the pushed statuses at once; the refetch then brings the full heartbeats
+    useCommanderStore.getState().hydrateFromRealtime(event as unknown as RealtimeCommanderPayload);
     invalidate("commanders");
     return;
   }

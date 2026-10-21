@@ -1,10 +1,11 @@
 import { motion } from 'framer-motion';
+import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { apiClient } from '../api/client';
 import MarketBoard from '../components/MarketBoard';
 import { BotAvatar } from '../components/bots/BotAvatar';
 import { emergencyStop, resumeTrading, useControls, useDashboardSummary } from '../lib/api';
-import { avatarStatus, useCommanders } from '../lib/commanders';
+import { avatarStatus, formatProbeLatency, useCommanders } from '../lib/commanders';
 import { formatAgo, formatINR, formatInt, formatPct, formatSignedINR, formatTime, humanize } from '../lib/format';
 import { invalidate, useResource } from '../lib/resource';
 import { useExecutionStore, isSelection } from '../store/useExecutionStore';
@@ -12,7 +13,7 @@ import { useSystemStore } from '../store/useSystemStore';
 import { toast } from '../store/useToastStore';
 import { useUIStore } from '../store/useUIStore';
 import { CommanderHero, MOTIFS } from '../ui/hero';
-import { AnimatedNumber, Async, Button, CARD_VARIANTS, ConfirmButton, EmptyState, Page, Panel, Pill, Stat, StatGrid, StatusBadge } from '../ui/kit';
+import { AnimatedNumber, Async, Button, CARD_VARIANTS, ConfirmButton, EmptyState, Page, Panel, Pill, Stat, StatGrid, StatusBadge, type Tone } from '../ui/kit';
 
 // ---------------------------------------------------------------------------
 // CONTRACTS
@@ -73,7 +74,7 @@ const COMMANDER_ROUTE: Record<string, string> = {
 function headlineMetric(metrics: Record<string, unknown> | undefined): string | null {
   if (!metrics) return null;
   for (const [key, value] of Object.entries(metrics)) {
-    if (key === 'probed_at' || key === 'error') continue;
+    if (key === 'probed_at' || key === 'error' || key === 'probe_latency_ms') continue;
     if (typeof value === 'number' || typeof value === 'string' || typeof value === 'boolean') return `${humanize(key)}: ${String(value)}`;
   }
   return typeof metrics.error === 'string' ? metrics.error : null;
@@ -125,38 +126,81 @@ const TelemetryMatrix = () => {
 const CommanderRoster = () => {
   const roster = useCommanders();
   const navigate = useNavigate();
-  const live = roster.commanders.filter((c) => c.status !== 'NO SIGNAL').length;
+  const [probing, setProbing] = useState(false);
+  const count = (...states: string[]) => roster.commanders.filter((c) => states.includes(c.status)).length;
+  const live = roster.commanders.length - count('NO SIGNAL');
+  const chips: { label: string; n: number; tone: Tone }[] = [
+    { label: 'Working', n: count('WORKING'), tone: 'info' },
+    { label: 'Online', n: count('ONLINE'), tone: 'good' },
+    { label: 'Degraded', n: count('DEGRADED', 'FATAL'), tone: 'warning' },
+  ];
+  const probeAll = async () => {
+    setProbing(true);
+    try {
+      await roster.probeNow();
+    } finally {
+      setProbing(false);
+    }
+  };
 
   return (
-    <Panel title="Commander roster" icon="groups" className="lg:col-span-4" subtitle={`${live}/17 reporting`} updatedAt={roster.updatedAt}>
+    <Panel
+      title="Commander roster"
+      icon="groups"
+      className="lg:col-span-4"
+      subtitle={`${live}/${roster.commanders.length} reporting`}
+      updatedAt={roster.updatedAt}
+      actions={
+        <Button size="sm" variant="ghost" icon="sensors" busy={probing} onClick={() => void probeAll()} title="Run every commander's health probe now">
+          {probing ? 'Probing…' : 'Probe all'}
+        </Button>
+      }
+    >
       <Async resource={roster} skeletonRows={5}>
         {() => (
-          <ul className="-mx-2 flex max-h-[360px] flex-col overflow-y-auto">
-            {roster.commanders.map(({ profile, heartbeat, status }) => (
-              <li key={profile.id}>
-                <button
-                  type="button"
-                  onClick={() => navigate(COMMANDER_ROUTE[profile.id] ?? '/command-center')}
-                  className="flex w-full items-center gap-3 rounded-xl px-2 py-2 text-left transition-colors hover:bg-stone-900/[0.03] dark:hover:bg-white/[0.04]"
-                >
-                  <BotAvatar botName={profile.name} status={avatarStatus(status)} size="sm" customHexColor={profile.theme.primary} />
-                  <span className="min-w-0 flex-1">
-                    <span className="flex items-baseline gap-2">
-                      <span className="text-sm font-semibold text-stone-800 dark:text-stone-100">{profile.name}</span>
-                      <span className="truncate text-[10px] text-stone-400">{profile.domain}</span>
+          <div className="flex flex-col gap-3">
+            <div className="flex flex-wrap gap-1.5">
+              {chips.map(({ label, n, tone }) => (
+                <Pill key={label} tone={n > 0 ? tone : 'neutral'}>
+                  <span className="tabular-nums">{n}</span> {label}
+                </Pill>
+              ))}
+            </div>
+            <ul className="-mx-2 flex max-h-[360px] flex-col overflow-y-auto">
+              {roster.commanders.map(({ profile, heartbeat, status, activitySummary, probeLatencyMs }) => (
+                <li key={profile.id}>
+                  <button
+                    type="button"
+                    onClick={() => navigate(COMMANDER_ROUTE[profile.id] ?? '/command-center')}
+                    className="flex w-full items-center gap-3 rounded-xl px-2 py-2 text-left transition-colors hover:bg-stone-900/[0.03] dark:hover:bg-white/[0.04]"
+                  >
+                    <BotAvatar botName={profile.name} status={avatarStatus(status)} size="sm" customHexColor={profile.theme.primary} />
+                    <span className="min-w-0 flex-1">
+                      <span className="flex items-baseline gap-2">
+                        <span className="text-sm font-semibold text-stone-800 dark:text-stone-100">{profile.name}</span>
+                        <span className="truncate text-[10px] text-stone-400">{profile.domain}</span>
+                      </span>
+                      <span
+                        className="block truncate text-[11px] text-stone-500 dark:text-stone-400"
+                        title={activitySummary ?? undefined}
+                      >
+                        {activitySummary ?? headlineMetric(heartbeat?.resource_metrics) ?? 'Awaiting first heartbeat'}
+                      </span>
                     </span>
-                    <span className="block truncate text-[11px] text-stone-500 dark:text-stone-400">
-                      {headlineMetric(heartbeat?.resource_metrics) ?? 'Awaiting first heartbeat'}
+                    <span className="flex flex-col items-end gap-0.5">
+                      <StatusBadge status={status === 'NO SIGNAL' ? 'OFFLINE' : status} label={status} />
+                      <span className="flex items-center gap-1.5 text-[10px] text-stone-400">
+                        {probeLatencyMs != null && (
+                          <span className="font-mono tabular-nums" title="Duration of the last health probe">{formatProbeLatency(probeLatencyMs)}</span>
+                        )}
+                        {heartbeat && <span>{formatAgo(heartbeat.last_ping_at)}</span>}
+                      </span>
                     </span>
-                  </span>
-                  <span className="flex flex-col items-end gap-0.5">
-                    <StatusBadge status={status === 'NO SIGNAL' ? 'OFFLINE' : status} label={status} />
-                    {heartbeat && <span className="text-[10px] text-stone-400">{formatAgo(heartbeat.last_ping_at)}</span>}
-                  </span>
-                </button>
-              </li>
-            ))}
-          </ul>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </div>
         )}
       </Async>
     </Panel>

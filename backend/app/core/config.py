@@ -681,6 +681,13 @@ class Settings(BaseSettings):
     RATE_LIMIT_GLOBAL_RPM: int = Field(default=600, gt=0)
     ARCHIVE_BACKUP_DIR: str | None = None  # where scripts/backup.sh writes *.sql.gz
     HIVE_SUPERVISOR_INTERVAL_SECONDS: float = Field(default=30.0, ge=0)  # 0 disables commander heartbeats
+    # ---- Group 90: commander telemetry -------------------------------------
+    HIVE_SUPERVISOR_PROBE_TIMEOUT_SECONDS: float = Field(default=5.0, gt=0, le=30.0)  # one subsystem probe; over it the commander is FATAL
+    # A beat older than interval x multiplier is NO SIGNAL (3.2 x 30s = 96s, the frontend's STALE_AFTER_MS);
+    # the floor applies while the background supervisor is off and only on-demand probes write beats
+    HIVE_SUPERVISOR_STALE_MULTIPLIER: float = Field(default=3.2, gt=1.0, le=20.0)
+    HIVE_SUPERVISOR_STALE_FLOOR_SECONDS: float = Field(default=96.0, gt=0)
+    HIVE_SUPERVISOR_LATENCY_WARN_MS: float = Field(default=250.0, gt=0)  # probe latency at or over this is flagged
 
     # ---- Group 57: cross-section integration (orchestrator + risk) ----------
     mask_visible_chars: int = Field(default=4, ge=0)

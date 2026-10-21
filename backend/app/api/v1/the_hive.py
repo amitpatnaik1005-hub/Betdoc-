@@ -11,6 +11,7 @@ from fastapi import (
     Depends,
     HTTPException,
     Query,
+    Request,
     Response,
     WebSocket,
     WebSocketDisconnect,
@@ -20,6 +21,8 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.api.deps import CurrentUser, WsUser, get_db
+from app.core.events import publish_event
+from app.core.websockets import manager as live_odds_manager
 from app.domain.the_hive import (
     DependencyCycleDetectedError,
     HiveDomainError,
@@ -34,6 +37,8 @@ from app.models.the_hive import BotProfileModel, HiveTaskModel, LegendaryBot, Ta
 from app.schemas.the_hive import (
     BotProfileRead,
     ClaimRequest,
+    CommanderProbeRequest,
+    CommanderTelemetrySummaryResponse,
     CompleteRequest,
     DependencyCreate,
     FailRequest,
@@ -46,6 +51,7 @@ from app.schemas.the_hive import (
     TaskEventType,
     TaskRead,
 )
+from app.services.commander_supervisor import ProbeContext, build_telemetry_summary, commanders_event, probe_single_commander
 
 logger = logging.getLogger(__name__)
 
@@ -194,6 +200,44 @@ async def bot_heartbeat(
         resource_metrics=payload.resource_metrics,
     )
     return BotProfileRead.model_validate(profile)
+
+
+# One on-demand probe at a time per process: a second click while a roster probe runs gets the
+# current telemetry instead of queueing another 17 probes behind it.
+_probe_lock = asyncio.Lock()
+
+
+@router.get("/telemetry-summary", response_model=CommanderTelemetrySummaryResponse)
+async def commander_telemetry_summary(current_user: CurrentUser, db: DbSession) -> CommanderTelemetrySummaryResponse:  # noqa: ARG001
+    """Fleet health, freshness, probe latency and activity summary for all 17 commanders."""
+    return await build_telemetry_summary(db)
+
+
+@router.post("/bots/probe", response_model=CommanderTelemetrySummaryResponse)
+async def probe_commanders_now(
+    request: Request,
+    current_user: CurrentUser,  # noqa: ARG001
+    db: DbSession,
+    payload: CommanderProbeRequest | None = None,
+) -> CommanderTelemetrySummaryResponse:
+    """Probe one commander (``bot_name``) or the whole roster now, record the beats and broadcast them.
+
+    The probes are the supervisor's read-only health checks; nothing is traded or changed.
+    """
+    redis = getattr(request.app.state, "redis", None)
+    if not _probe_lock.locked():
+        async with _probe_lock:
+            ctx = ProbeContext(
+                redis=redis,
+                vault_configured=getattr(request.app.state, "vault", None) is not None,
+                ws_clients=lambda: len(live_odds_manager.active_connections),
+            )
+            targets = [payload.bot_name] if payload is not None and payload.bot_name is not None else list(LegendaryBot)
+            for bot in targets:
+                await probe_single_commander(db, orchestrator, ctx, bot)
+    summary = await build_telemetry_summary(db)
+    await publish_event(redis, commanders_event(summary))
+    return summary
 
 
 # ==================================================================== tasks

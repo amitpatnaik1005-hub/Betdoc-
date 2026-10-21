@@ -23,7 +23,7 @@ import { useMarketStore } from './store/useMarketStore';
 import { useSystemStore } from './store/useSystemStore';
 import { useCommanderStore } from './store/useCommanderStore';
 import { COMMANDER_REGISTRY, type CommanderId } from './config/commanders.config';
-import { useCommanders } from './lib/commanders';
+import { formatProbeLatency, useCommanders, type LiveCommander } from './lib/commanders';
 import { emergencyStop, resumeTrading, useControls, useDashboardSummary } from './lib/api';
 import { invalidate } from './lib/resource';
 import { startRealtime } from './services/realtime';
@@ -235,6 +235,7 @@ const StageHeader = (): ReactElement => {
   const oddsLive = useMarketStore((s) => s.isConnected);
   const oddsTransport = useMarketStore((s) => s.transport);
   const activeCommander = useCommanderStore((s) => s.activeCommander);
+  const liveCommander = useCommanders().byId.get(activeCommander.id);
   const isCompact = useUIStore((s) => s.isCompact);
   const toggleLeft = useUIStore((s) => s.toggleLeft);
   const money = useDisplayMoney();
@@ -277,10 +278,17 @@ const StageHeader = (): ReactElement => {
               Quantitative Desk
             </h1>
             <span
-              className="hidden items-center gap-1 rounded-full bg-[color-mix(in_srgb,var(--accent)_12%,transparent)] px-2.5 py-0.5 text-[11px] font-medium text-[var(--accent-text)] sm:inline-flex"
-              title={activeCommander.domain}
+              className="hidden items-center gap-1.5 rounded-full bg-[color-mix(in_srgb,var(--accent)_12%,transparent)] px-2.5 py-0.5 text-[11px] font-medium text-[var(--accent-text)] sm:inline-flex"
+              title={commanderTooltip(activeCommander.domain, liveCommander)}
             >
+              <span
+                aria-hidden="true"
+                className={`size-1.5 rounded-full ${STATUS_DOT[liveCommander?.status ?? ''] ?? 'bg-stone-300 dark:bg-stone-600'} ${liveCommander?.status === 'WORKING' ? 'animate-breathe' : ''}`}
+              />
               {activeCommander.name}
+              {liveCommander?.probeLatencyMs != null && (
+                <span className="font-mono text-[10px] tabular-nums opacity-70">{formatProbeLatency(liveCommander.probeLatencyMs)}</span>
+              )}
             </span>
             {halted && (
               <button
@@ -408,6 +416,15 @@ const STATUS_DOT: Record<string, string> = {
   WORKING: 'bg-sky-400', ONLINE: 'bg-emerald-400', DEGRADED: 'bg-amber-400', FATAL: 'bg-rose-400', SLEEPING: 'bg-amber-400',
 };
 
+/** "<context> · <status> · <what the last probe measured> · <probe latency>" for header and rail tooltips. */
+const commanderTooltip = (context: string, commander: LiveCommander | undefined): string =>
+  [
+    context,
+    commander?.status ?? 'NO SIGNAL',
+    commander?.activitySummary,
+    commander?.probeLatencyMs != null ? `probe ${formatProbeLatency(commander.probeLatencyMs)}` : null,
+  ].filter(Boolean).join(' · ');
+
 const SidebarNav = ({ collapsed }: { collapsed: boolean }) => {
   const { byId } = useCommanders();
   return (
@@ -420,7 +437,7 @@ const SidebarNav = ({ collapsed }: { collapsed: boolean }) => {
             <li key={to}>
               <NavLink
                 to={to}
-                title={`${label} · ${COMMANDER_REGISTRY[bot].name} · ${status}`}
+                title={commanderTooltip(`${label} · ${COMMANDER_REGISTRY[bot].name}`, commander)}
                 className={({ isActive }) =>
                   [
                     'group relative flex items-center gap-3 rounded-2xl px-3 py-2.5 text-sm font-medium transition-[color,background-color,transform] duration-300 active:scale-[0.98]',
@@ -465,7 +482,7 @@ const SidebarNav = ({ collapsed }: { collapsed: boolean }) => {
                         'relative size-1.5 shrink-0 rounded-full',
                         collapsed ? 'absolute right-2 top-2' : '',
                         STATUS_DOT[status] ?? 'bg-stone-300 dark:bg-stone-600',
-                        '',
+                        status === 'WORKING' ? 'animate-breathe' : '',
                       ].join(' ')}
                     />
                   </>

@@ -1,8 +1,8 @@
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import { motion, useReducedMotion } from "framer-motion";
 import { BotAvatar } from "../components/bots/BotAvatar";
 import { COMMANDER_REGISTRY, type CommanderId } from "../config/commanders.config";
-import { avatarStatus, useCommanders } from "../lib/commanders";
+import { avatarStatus, formatProbeLatency, probeCommandersNow, useCommanders } from "../lib/commanders";
 import { formatAgo } from "../lib/format";
 import { CARD_VARIANTS, SPRING, StatusBadge } from "./kit";
 
@@ -27,6 +27,15 @@ export const CommanderHero = ({ commander, headline, detail, motif, actions, sta
   const live = byId.get(commander);
   const status = live?.status ?? "NO SIGNAL";
   const words = headline.split(" ");
+  const [probing, setProbing] = useState(false);
+  const probe = async () => {
+    setProbing(true);
+    try {
+      await probeCommandersNow(commander);
+    } finally {
+      setProbing(false);
+    }
+  };
 
   return (
     <motion.section
@@ -55,10 +64,34 @@ export const CommanderHero = ({ commander, headline, detail, motif, actions, sta
               <div className="mt-1 flex flex-wrap items-center gap-2">
                 <span className="font-display text-sm font-semibold text-stone-900 dark:text-stone-100">{profile.name}</span>
                 <StatusBadge status={status === "NO SIGNAL" ? "OFFLINE" : status} label={status} />
+                {live?.probeLatencyMs != null && (
+                  <span
+                    className="rounded-full bg-stone-100 px-2 py-0.5 font-mono text-[10px] tabular-nums text-stone-500 dark:bg-white/[0.06] dark:text-stone-400"
+                    title="Duration of the last health probe"
+                  >
+                    {formatProbeLatency(live.probeLatencyMs)}
+                  </span>
+                )}
                 {live?.heartbeat && (
                   <span className="text-xs text-stone-400 dark:text-stone-500">heartbeat {formatAgo(live.heartbeat.last_ping_at)}</span>
                 )}
+                <button
+                  type="button"
+                  onClick={() => void probe()}
+                  disabled={probing}
+                  aria-busy={probing || undefined}
+                  title={`Run ${profile.name}'s health probe now`}
+                  className="inline-flex items-center gap-1 rounded-full bg-stone-100 px-2 py-0.5 text-[10px] font-medium text-stone-600 transition-colors hover:bg-stone-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color-mix(in_srgb,var(--accent)_50%,transparent)] disabled:opacity-50 dark:bg-white/[0.06] dark:text-stone-300 dark:hover:bg-white/[0.12]"
+                >
+                  <span className={`material-symbols-outlined text-[12px] ${probing ? "animate-breathe" : ""}`} aria-hidden="true">sensors</span>
+                  {probing ? "Probing…" : "Probe"}
+                </button>
               </div>
+              {live?.activitySummary && (
+                <p className="mt-1 max-w-[28rem] truncate text-xs text-stone-500 dark:text-stone-400" title={live.activitySummary}>
+                  {live.activitySummary}
+                </p>
+              )}
             </div>
           </div>
 
