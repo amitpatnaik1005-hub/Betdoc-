@@ -101,7 +101,7 @@ export const RealBankrollCard = () => {
           <div>
             <h4 className="text-sm font-bold">SHIVAJI 15% Daily Stop-Loss Latch Active</h4>
             <p className="text-xs opacity-90">
-              Real-money execution halted until 00:00 IST to protect your capital. Daily loss reached{" "}
+              New real tickets are blocked until 00:00 IST to protect your capital. Daily loss reached{" "}
               {formatINR(data.daily_realized_loss)} ({data.daily_drawdown_pct.toFixed(1)}%).
             </p>
           </div>
@@ -134,7 +134,7 @@ export const RealBankrollCard = () => {
           <span className="font-mono text-2xl font-bold tracking-tight text-emerald-600 dark:text-emerald-400">
             {formatINR(data.cash_balance)}
           </span>
-          <span className="text-[11px] text-stone-400">Ready for assisted execution</span>
+          <span className="text-[11px] text-stone-400">Liquid cash, not locked in open tickets</span>
         </div>
 
         {/* Locked Exposure */}
@@ -253,7 +253,7 @@ export const RealBankrollCard = () => {
           <div className="w-full max-w-md rounded-3xl border border-stone-200 bg-white p-6 shadow-2xl dark:border-stone-800 dark:bg-stone-900">
             <h3 className="text-base font-bold text-stone-900 dark:text-stone-100">Record Real Cash Deposit</h3>
             <p className="mt-1 text-xs text-stone-500 dark:text-stone-400">
-              Credits your TODAR MAL liquid vault in INR for assisted execution on Parimatch.
+              Records cash you moved into your bookmaker account (INR), so the vault matches it.
             </p>
             <div className="mt-4 flex flex-col gap-3">
               <label className="text-xs font-semibold text-stone-700 dark:text-stone-300">

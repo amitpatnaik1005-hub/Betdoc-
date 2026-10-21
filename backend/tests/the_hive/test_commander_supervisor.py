@@ -29,7 +29,7 @@ from app.domain.the_hive import HiveOrchestrator
 from app.models import BetLedger
 from app.models.competitive_intel import CompetitorBotModel
 from app.models.control_panel import SETTINGS_SINGLETON_ID, SystemSettingsModel
-from app.models.paper_trading import PaperBet
+from app.models.real_money import RealBetTicket
 from app.models.risk import StopLossEventModel
 from app.models.the_core import BacktestJobModel, SmallcaseRegistryModel
 from app.models.the_hive import BotProfileModel, BotStatus, HiveTaskModel, LegendaryBot
@@ -51,7 +51,7 @@ _TABLES: list[Table] = [
     for model in (
         BotProfileModel, HiveTaskModel, SystemSettingsModel, PredictionRecord, BetLedger, ExperimentModel,
         SmallcaseRegistryModel, StopLossEventModel, BacktestJobModel,
-        ResearchReportModel, CompetitorBotModel, PaperBet,
+        ResearchReportModel, CompetitorBotModel, RealBetTicket,
     )
 ]
 DEVELOPER = "Amit Ashok Kumar Patnaik"
@@ -161,7 +161,7 @@ async def test_summaries_state_the_measured_state(factory: async_sessionmaker[As
         assert halted.resource_metrics["activity_summary"] == "Trading halted · daily exposure cap is 0"
 
         router = await probe_single_commander(db, hive, ctx, LegendaryBot.ASHVATTHAMA)
-        assert router.resource_metrics["activity_summary"] == "0 pending slips · 0 fills in 24h · 2 live sockets"
+        assert router.resource_metrics["activity_summary"] == "0 open real tickets · 2 live sockets"
 
 
 @pytest.mark.asyncio
@@ -175,23 +175,23 @@ async def test_failing_and_slow_probes_mark_only_that_commander_fatal(
         await asyncio.sleep(5)
         return BotStatus.ONLINE, {}
 
-    monkeypatch.setitem(supervisor.PROBES, LegendaryBot.ARJUNA, broken)
+    monkeypatch.setitem(supervisor.PROBES, LegendaryBot.DRONA, broken)
     monkeypatch.setitem(supervisor.PROBES, LegendaryBot.KARNA, slow)
     fast_timeout = get_settings().model_copy(update={"HIVE_SUPERVISOR_PROBE_TIMEOUT_SECONDS": 0.05})
 
     statuses = await sweep(factory, HiveOrchestrator(), ctx, started_at=0.0, settings=fast_timeout)
-    assert statuses[LegendaryBot.ARJUNA] is BotStatus.FATAL
+    assert statuses[LegendaryBot.DRONA] is BotStatus.FATAL
     assert statuses[LegendaryBot.KARNA] is BotStatus.FATAL
     assert statuses[LegendaryBot.ASHOKA] is not BotStatus.FATAL
 
     async with factory() as db:
         summary = await build_telemetry_summary(db)
-    arjuna = next(i for i in summary.commanders if i.bot_name is LegendaryBot.ARJUNA)
+    drona = next(i for i in summary.commanders if i.bot_name is LegendaryBot.DRONA)
     karna = next(i for i in summary.commanders if i.bot_name is LegendaryBot.KARNA)
     assert summary.fatal_count == 2
-    assert arjuna.activity_summary == "Probe failed · RuntimeError: subsystem unreachable"
+    assert drona.activity_summary == "Probe failed · RuntimeError: subsystem unreachable"
     assert karna.activity_summary.startswith("Probe failed · TimeoutError")
-    assert arjuna.probe_latency_ms is not None and karna.probe_latency_ms is not None
+    assert drona.probe_latency_ms is not None and karna.probe_latency_ms is not None
 
 
 # --------------------------------------------------------------------------- telemetry

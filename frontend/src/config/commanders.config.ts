@@ -1,5 +1,6 @@
 /**
- * Single source of truth for the 16 BetDoc commanders, in claude_code_handoff.md order (GARUDA retired in Group 96).
+ * Single source of truth for the 15 BetDoc commanders, in claude_code_handoff.md order (GARUDA retired in Group 96,
+ * ARJUNA in Group 97).
  * IDs mirror the PostgreSQL enum `hive_legendary_bot` exactly (guarded by tests/test_commander_parity.py).
  * Commanders without a section page own a reserved route prefix so the registry stays validatable.
  */
@@ -19,7 +20,6 @@ export const COMMANDER_IDS = [
   "DRONA",
   "BHEESHMA",
   "KARNA",
-  "ARJUNA",
   "ASHVATTHAMA",
 ] as const;
 
@@ -130,7 +130,7 @@ export const COMMANDER_REGISTRY: Readonly<Record<CommanderId, CommanderProfile>>
     id: "TODAR MAL",
     name: "Todar Mal",
     domain: "Archive / Multi-Currency & Tax Ledger",
-    routePrefixes: ["/archive", "/sandbox", "/paper-trading"],
+    routePrefixes: ["/archive"],
     networkProtocol: "REST",
     theme: { primary: "#10B981", glow: "rgba(16, 185, 129, 0.55)", accent: "#A7F3D0" },
     clearanceLevel: 8,
@@ -203,22 +203,11 @@ export const COMMANDER_REGISTRY: Readonly<Record<CommanderId, CommanderProfile>>
     status: "STANDBY",
     scene: "command",
   },
-  ARJUNA: {
-    id: "ARJUNA",
-    name: "Arjuna",
-    domain: "Sniper / High-Frequency Execution",
-    routePrefixes: ["/sniper"],
-    networkProtocol: "WEBSOCKET",
-    theme: { primary: "#22C55E", glow: "rgba(34, 197, 94, 0.55)", accent: "#BBF7D0" },
-    clearanceLevel: 8,
-    status: "STANDBY",
-    scene: "command",
-  },
   ASHVATTHAMA: {
     id: "ASHVATTHAMA",
     name: "Ashvatthama",
-    domain: "Execution Router / Bookmaker Gateway (Parimatch)",
-    routePrefixes: ["/live-desk", "/execution-gateway"],
+    domain: "Consultant & Bet-Slip Ornament Architect",
+    routePrefixes: ["/consultant"],  // reserved: no page of its own; KUMBHA owns /vault, where real tickets are kept
     networkProtocol: "HYBRID",
     theme: { primary: "#FB923C", glow: "rgba(251, 146, 60, 0.55)", accent: "#FFEDD5" },
     clearanceLevel: 6,

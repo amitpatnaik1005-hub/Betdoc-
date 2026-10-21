@@ -20,7 +20,7 @@ from app.models.cfo_vault import AuditLog, BankrollAccount
 from app.models.control_panel import SystemSettingsModel
 from app.models.emergency_kill_switch import EmergencyKillSwitchAuditModel, EmergencyKillSwitchStateModel
 from app.models.omni_vault import OmniFleetSource, OmniProviderConfig
-from app.models.paper_trading import CurrencyExchangeRate
+from app.models.tax_and_fx import CurrencyExchangeRate
 from app.models.real_money import RealBankroll
 
 # Group 86: the emergency fortress, and the ledgers it measures (no rows: an empty ledger measures nothing)

@@ -36,7 +36,7 @@ from app.api.deps import get_current_user, get_db
 from app.api.v1.real_money import router as real_money_router
 from app.core.config import Settings, get_settings
 from app.models import User
-from app.models.paper_trading import PaperAccount, PaperBet, TaxLedgerEntry
+from app.models.tax_and_fx import TaxLedgerEntry
 from app.models.real_money import (
     RealBankroll,
     RealBetTicket,
@@ -52,8 +52,6 @@ DEVELOPER_CREDIT = "Amit Ashok Kumar Patnaik"
 
 TABLES: list[Table] = [
     User.__table__,  # type: ignore[list-item]
-    PaperAccount.__table__,  # type: ignore[list-item]
-    PaperBet.__table__,  # type: ignore[list-item]
     RealBankroll.__table__,  # type: ignore[list-item]
     RealBetTicket.__table__,  # type: ignore[list-item]
     RealCashTransaction.__table__,  # type: ignore[list-item]

@@ -12,7 +12,6 @@ import {
 
 import { BRAND, AnimatedGlyph, type GlyphMotion, BetdocLogo as BrandLogo } from './ui/brand';
 import { useUIStore } from './store/useUIStore';
-import ExecutionTerminal from './components/ExecutionTerminal';
 import { ScoutDrawer as EmbeddedScout } from './components/oracle/ScoutDrawer';
 import LoginForm from './components/LoginForm';
 import { RouteErrorBoundary } from './components/RouteErrorBoundary';
@@ -28,10 +27,8 @@ import { emergencyStop, resumeTrading, useControls, useDashboardSummary } from '
 import { invalidate } from './lib/resource';
 import { startRealtime } from './services/realtime';
 import { toast } from './store/useToastStore';
-import { TradingModeToggle } from './components/navigation/TradingModeToggle';
 import { CurrencySelector } from './components/currency/CurrencySelector';
 import { useDisplayMoney } from './components/currency/useDisplayMoney';
-import { usePaperTradingStore } from './store/usePaperTradingStore';
 
 const CommandCenter = lazy(() => import('./pages/CommandCenter').then(m => ({ default: m.CommandCenter })));
 const TheArena = lazy(() => import('./pages/TheArena').then(m => ({ default: m.TheArena })));
@@ -44,8 +41,6 @@ const TheOracle = lazy(() => import('./pages/TheOracle').then(m => ({ default: m
 const TheArchive = lazy(() => import('./pages/TheArchive').then(m => ({ default: m.TheArchive })));
 const ControlPanel = lazy(() => import('./pages/ControlPanel').then(m => ({ default: m.ControlPanel })));
 const SportsEngine = lazy(() => import('./pages/SportsEngine').then(m => ({ default: m.SportsEngine })));
-const PaperTradingSandbox = lazy(() => import('./pages/PaperTradingSandbox').then(m => ({ default: m.PaperTradingSandbox })));
-const LiveDesk = lazy(() => import('./pages/LiveDesk').then(m => ({ default: m.LiveDesk })));
 
 // ---------------------------------------------------------------------------
 // UTILITIES PRESERVED FROM ORIGINAL
@@ -238,7 +233,6 @@ const StageHeader = (): ReactElement => {
   const isCompact = useUIStore((s) => s.isCompact);
   const toggleLeft = useUIStore((s) => s.toggleLeft);
   const money = useDisplayMoney();
-  const isPaperMode = usePaperTradingStore((s) => s.isPaperMode);
   // "Live" means the cross-section event bus is open; the odds feed is reported alongside it.
   const socketStatus: SocketStatus =
     MOCK_AUTH ? 'offline'
@@ -319,8 +313,7 @@ const StageHeader = (): ReactElement => {
         </div>
       </div>
 
-      <div className="flex flex-wrap items-center gap-2" aria-label={isPaperMode ? 'Paper trading mode' : 'Live real-money mode'}>
-        <TradingModeToggle />
+      <div className="flex flex-wrap items-center gap-2">
         <CurrencySelector />
       </div>
 
@@ -404,7 +397,6 @@ const NAV_ITEMS: readonly { to: string; label: string; icon: string; bot: Comman
   { to: '/vault',          label: 'The Vault',      icon: 'account_balance', bot: 'KUMBHA'   },
   { to: '/wire',           label: 'The Wire',       icon: 'newspaper',       bot: 'VIDUR'    },
   { to: '/sports',         label: 'Sports Engine',  icon: 'sports',          bot: 'ARYABHATA'},
-  { to: '/sandbox',        label: 'Paper Trading',  icon: 'experiment',      bot: 'TODAR MAL'},
   { to: '/archive',        label: 'Archive',        icon: 'inventory_2',     bot: 'TODAR MAL'},
   { to: '/core',           label: 'Core',           icon: 'memory',          bot: 'PRATAP'   },
   { to: '/control-panel',  label: 'Control Panel',  icon: 'settings',        bot: 'KAUTILYA' },
@@ -592,14 +584,14 @@ const ExecutionPanel = () => {
             whileTap={{ scale: 0.95 }}
             className="fixed bottom-5 right-5 z-30 inline-flex items-center gap-2 rounded-full bg-[var(--accent)] px-5 py-3.5 text-sm font-semibold text-[var(--accent-ink)] shadow-soft-lg"
           >
-            <span className="material-symbols-outlined text-xl">receipt_long</span>
-            Bet slip
+            <span className="material-symbols-outlined text-xl">chat</span>
+            Scout Oracle
           </motion.button>
         ) : (
           <motion.aside
             key="slip-sheet"
             role="dialog"
-            aria-label="Execution panel"
+            aria-label="Scout Oracle panel"
             initial={{ y: '100%' }}
             animate={{ y: 0 }}
             exit={{ y: '100%' }}
@@ -607,13 +599,10 @@ const ExecutionPanel = () => {
             className="fixed inset-0 z-50 flex flex-col bg-[#FBFAF7] dark:bg-stone-900"
           >
             <div className="flex shrink-0 items-center justify-between px-5 pb-2 pt-4">
-              <span className="font-display text-base font-semibold text-stone-900 dark:text-stone-100">Bet slip</span>
+              <span className="font-display text-base font-semibold text-stone-900 dark:text-stone-100">Scout Oracle</span>
               <button onClick={toggleRight} title="Close panel" className="grid size-10 place-items-center rounded-full bg-stone-900/[0.04] text-stone-500 transition-transform duration-300 active:scale-95 dark:bg-white/[0.06]"><span className="material-symbols-outlined text-xl">close</span></button>
             </div>
-            <div className="min-h-0 flex-1 overflow-y-auto">
-              <ExecutionTerminal />
-              <div className="flex h-[70vh] flex-col"><EmbeddedScout /></div>
-            </div>
+            <div className="flex min-h-0 flex-1 flex-col"><EmbeddedScout /></div>
           </motion.aside>
         )}
       </AnimatePresence>
@@ -630,17 +619,15 @@ const ExecutionPanel = () => {
       {isRightCollapsed ? (
         <div className="flex flex-col items-center gap-4 pt-6">
           <button onClick={toggleRight} title="Expand panel" className="flex h-10 w-10 items-center justify-center rounded-2xl text-stone-400 transition-[background-color,transform] duration-300 hover:bg-stone-900/[0.04] active:scale-95 dark:hover:bg-white/[0.05]"><span className="material-symbols-outlined text-xl">chevron_left</span></button>
-          <button onClick={toggleRight} title="Open Betslip" className="flex h-10 w-10 items-center justify-center rounded-2xl text-stone-400 transition-[background-color,transform] duration-300 hover:bg-stone-900/[0.04] active:scale-95 dark:hover:bg-white/[0.05]"><span className="material-symbols-outlined text-xl">receipt_long</span></button>
           <button onClick={toggleRight} title="Open Scout Oracle" className="flex h-10 w-10 items-center justify-center rounded-2xl text-stone-400 transition-[background-color,transform] duration-300 hover:bg-stone-900/[0.04] active:scale-95 dark:hover:bg-white/[0.05]"><span className="material-symbols-outlined text-xl">chat</span></button>
         </div>
       ) : (
         <motion.div className="flex flex-col h-full w-[380px]" initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.2 }}>
           <div className="flex shrink-0 items-center justify-between px-5 pb-1 pt-5">
-            <span className="font-display text-[15px] font-semibold text-stone-900 dark:text-stone-100">Bet slip</span>
+            <span className="font-display text-[15px] font-semibold text-stone-900 dark:text-stone-100">Scout Oracle</span>
             <button onClick={toggleRight} title="Collapse panel" className="flex h-8 w-8 items-center justify-center rounded-full text-stone-400 transition-[background-color,transform] duration-300 hover:bg-stone-900/[0.04] active:scale-95 dark:hover:bg-white/[0.05]"><span className="material-symbols-outlined text-base">chevron_right</span></button>
           </div>
-          <div className="flex-none max-h-[55%] overflow-y-auto"><ExecutionTerminal /></div>
-          <div className="flex-1 min-h-0 flex flex-col"><EmbeddedScout /></div>
+          <div className="flex min-h-0 flex-1 flex-col"><EmbeddedScout /></div>
         </motion.div>
       )}
     </motion.aside>
@@ -729,7 +716,7 @@ const usePaletteCommands = (): PaletteCommand[] => {
   return useMemo(
     () => [
       ...nav,
-      { id: 'act:betslip', label: 'Toggle bet slip', icon: 'receipt_long', group: 'Actions', run: toggleRight },
+      { id: 'act:scout', label: 'Toggle Scout Oracle', icon: 'chat', group: 'Actions', run: toggleRight },
       {
         id: 'act:refresh',
         label: 'Refresh every section',
@@ -840,27 +827,12 @@ const App = () => {
             <SportsEngine />
           </AnimatedRoute>
         } />
-        <Route path="/sandbox" element={
-          <AnimatedRoute>
-            <PaperTradingSandbox />
-          </AnimatedRoute>
-        } />
-        <Route path="/paper-trading" element={
-          <AnimatedRoute>
-            <PaperTradingSandbox />
-          </AnimatedRoute>
-        } />
-        <Route path="/live-desk" element={
-          <AnimatedRoute>
-            <LiveDesk />
-          </AnimatedRoute>
-        } />
-        <Route path="/real-money" element={
-          <AnimatedRoute>
-            <LiveDesk />
-          </AnimatedRoute>
-        } />
-        <Route path="/execution-gateway" element={<Navigate replace to="/live-desk" />} />
+        {/* Group 97: the Paper Trading Sandbox and the real-money execution desk were retired; the real vault lives in The Vault */}
+        <Route path="/sandbox" element={<Navigate replace to="/vault" />} />
+        <Route path="/paper-trading" element={<Navigate replace to="/vault" />} />
+        <Route path="/live-desk" element={<Navigate replace to="/vault" />} />
+        <Route path="/real-money" element={<Navigate replace to="/vault" />} />
+        <Route path="/execution-gateway" element={<Navigate replace to="/vault" />} />
         <Route path="/core" element={
           <AnimatedRoute>
             <Core />

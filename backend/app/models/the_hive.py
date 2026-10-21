@@ -18,10 +18,11 @@ def utc_now() -> datetime:
 
 
 class LegendaryBot(StrEnum):
-    """The 16 commanders, in handoff order. Must match frontend/src/config/commanders.config.ts.
+    """The 15 commanders, in handoff order. Must match frontend/src/config/commanders.config.ts.
 
-    GARUDA was retired with the Phantom section in Group 96 (its Hive history moved to PANINI, who absorbed
-    the quant toolkit); the label stays dormant in the Postgres type ``hive_legendary_bot``.
+    Retired, their Hive history handed to a successor and their labels left dormant in the Postgres type
+    ``hive_legendary_bot``: GARUDA (Group 96, to PANINI, who absorbed the quant toolkit) and ARJUNA (Group 97, to
+    KUMBHA, who now watches the orders awaiting reconciliation).
     """
 
     ASHOKA = "ASHOKA"  # Oracle: prediction engine
@@ -38,8 +39,7 @@ class LegendaryBot(StrEnum):
     DRONA = "DRONA"  # Training: ML ops
     BHEESHMA = "BHEESHMA"  # Rules & compliance: rate limiting
     KARNA = "KARNA"  # Competitive intel: odds shopping
-    ARJUNA = "ARJUNA"  # Sniper: high-frequency execution
-    ASHVATTHAMA = "ASHVATTHAMA"  # Execution router: bookmaker gateway (Parimatch), paper-mode simulation (Group 80)
+    ASHVATTHAMA = "ASHVATTHAMA"  # Consultant & bet-slip architect: real tickets placed by hand (Group 97)
 
 
 class BotStatus(StrEnum):

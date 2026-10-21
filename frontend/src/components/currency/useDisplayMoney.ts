@@ -5,13 +5,13 @@
  * board has no fresh rate for falls back to rupees (and says so), never to a guessed constant.
  */
 import { useCallback } from "react";
-import { useFxBoard } from "../../lib/paper_trading";
-import { usePaperTradingStore } from "../../store/usePaperTradingStore";
+import { useFxBoard } from "../../lib/currency";
+import { useCurrencyStore } from "../../store/useCurrencyStore";
 import { formatCurrency, formatINR, formatINRWhole, fromINR } from "../../utils/formatCurrency";
 
 /** `format(rupees)` to the paisa (or the unit's own places); `format(rupees, true)` in whole rupees for dense tiles. */
 export function useDisplayMoney(): { currency: string; converted: boolean; format: (rupees: number | null | undefined, whole?: boolean) => string } {
-  const currency = usePaperTradingStore((s) => s.displayCurrency);
+  const currency = useCurrencyStore((s) => s.displayCurrency);
   const board = useFxBoard(currency !== "INR");
   const rate = currency === "INR" ? 1 : board.data?.rates[currency]?.inr_per_unit;
   const usable = currency !== "INR" && typeof rate === "number" && rate > 0;

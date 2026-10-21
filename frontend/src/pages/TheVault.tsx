@@ -4,6 +4,9 @@ import { useDashboardSummary } from '../lib/api';
 import { downloadCsv, formatDate, formatDateTime, formatINR, formatINRCompact, formatOdds, formatPct, formatRatioPct, formatSignedINR } from '../lib/format';
 import { runMutation, useResource } from '../lib/resource';
 import { BankrollGrowthOptimizer } from '../components/cfo/BankrollGrowthOptimizer';
+import { RealBankrollCard } from '../components/real_money/RealBankrollCard';
+import { RealHistoryTable } from '../components/real_money/RealHistoryTable';
+import { TaxCertificateModal } from '../components/real_money/TaxCertificateModal';
 import { CommanderHero, MOTIFS } from '../ui/hero';
 import { DivergingBars, LineChart } from '../ui/charts';
 import { AnimatedNumber, Async, Button, ConfirmButton, type Column, DataTable, EmptyState, Field, KeyValues, NumberInput, Page, Panel, Segmented, Stat, StatusBadge, TextInput, Toggle, num } from '../ui/kit';
@@ -309,6 +312,13 @@ export const TheVault = () => {
           </>
         }
       />
+      {/* Group 97: the real cash vault (deposits, withdrawals, settled real tickets, the Section 115BBJ certificate),
+          moved here from the retired Live Desk; tickets are placed by hand and settle from recorded final scores */}
+      <section className="flex min-w-0 flex-col gap-6 lg:col-span-12" aria-label="Real-money vault">
+        <RealBankrollCard />
+        <RealHistoryTable />
+      </section>
+      <TaxCertificateModal />
       <GrowthPanel bankroll={bankroll} />
       <Panel title="P&L waterfall" icon="waterfall_chart" className="lg:col-span-4" updatedAt={waterfall.updatedAt}>
         <Async resource={waterfall} isEmpty={(r) => r.length === 0} empty={<EmptyState icon="waterfall_chart" title="No movements yet" />}>

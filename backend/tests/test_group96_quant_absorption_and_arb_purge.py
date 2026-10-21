@@ -37,11 +37,11 @@ MIGRATION = Path(__file__).resolve().parents[1] / "alembic" / "versions" / "f96a
 
 
 # --------------------------------------------------------------------------- the roster
-def test_garuda_is_retired_and_the_other_sixteen_remain() -> None:
-    assert len(LegendaryBot) == 16 and "GARUDA" not in {b.value for b in LegendaryBot}
+def test_garuda_is_retired() -> None:
+    assert "GARUDA" not in {b.value for b in LegendaryBot}  # Group 97 also retired ARJUNA: 15 remain
     assert {b.value for b in LegendaryBot} == {
         "ASHOKA", "KAUTILYA", "BAJIRAO", "VIDUR", "KUMBHA", "PANINI", "PRATAP", "TODAR MAL", "ARYABHATA",
-        "CHANAKYA", "SHIVAJI", "DRONA", "BHEESHMA", "KARNA", "ARJUNA", "ASHVATTHAMA",
+        "CHANAKYA", "SHIVAJI", "DRONA", "BHEESHMA", "KARNA", "ASHVATTHAMA",
     }
     assert set(PROBES) == set(LegendaryBot)  # every commander still has its health probe
 
@@ -54,11 +54,13 @@ def test_garuda_is_retired_and_the_other_sixteen_remain() -> None:
 ])
 async def test_arbitrage_and_phantom_routes_are_gone(method: str, path: str) -> None:
     app = FastAPI()
-    app.include_router(api_router, prefix="/api/v1")
+    app.include_router(api_router)  # already prefixed /api/v1
     app.dependency_overrides[get_current_user] = lambda: SimpleNamespace(id=uuid.uuid4(), role="ADMIN")
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://t") as client:
         assert (await client.request(method, path, json={})).status_code == 404
-    assert not any(getattr(r, "path", "").startswith(("/phantom", "/omni/arbitrage")) for r in api_router.routes)
+    paths = set(app.openapi()["paths"])
+    assert not any(p.startswith(("/api/v1/phantom", "/api/v1/omni/arbitrage")) for p in paths)
+    assert "/api/v1/lab/quant-toolkit/dutching" in paths and "/api/v1/omni/portfolio" in paths  # the app really is mounted
 
 
 def test_board_screening_emits_value_lines_only() -> None:

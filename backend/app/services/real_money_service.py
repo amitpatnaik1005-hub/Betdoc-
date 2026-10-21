@@ -5,7 +5,7 @@ Engineered for Amit Ashok Kumar Patnaik | BetDoc Quantitative Sports Trading Fle
 The assisted execution desk for real cash on Parimatch (INR, ``https://parimatchs1.com/en/all-live``) and 1xBet.
 No bookmaker is automated: ASHVATTHAMA builds the ticket (deep link, one-click clipboard slip, target odds, the
 minimum profitable floor, KUMBHA's Kelly stake), the trader places it by hand and confirms it here, and TODAR MAL
-keeps the real cash vault. The vault never touches the Paper Trading Sandbox's tables (Group 80).
+keeps the real cash vault (the Paper Trading Sandbox it once stood beside was retired in Group 97).
 
 * **Sizing (KUMBHA)**: fractional Kelly ``f = (p b - q) / b x fraction`` on liquid cash, the fraction being the
   sport's multiplier clamped to 0.20-0.50, and never more than ``REAL_MAX_STAKE_PCT`` (5%) of liquid cash.
@@ -49,7 +49,7 @@ from app.domain.sports.errors import SportNotFoundError
 from app.domain.sports.registry import SportAdapterRegistry
 from app.domain.sports.settlement import SettlementInputError
 from app.domain.sports.twin_bridge import sport_kelly_multiplier
-from app.models.paper_trading import TaxLedgerEntry
+from app.models.tax_and_fx import TaxLedgerEntry
 from app.models.real_money import (
     OPEN_STATUSES,
     RealBankroll,

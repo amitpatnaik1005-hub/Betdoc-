@@ -5,9 +5,9 @@
  * Picks the desk's display currency. Ledgers stay in INR (Parimatch's capital currency); figures are converted for
  * display with TODAR MAL's live rate board. A currency without a fresh rate is marked and shows rupees instead.
  */
-import { CURRENCY_LABELS, SUPPORTED_CURRENCIES, useFxBoard, type CurrencyCode } from "../../lib/paper_trading";
+import { CURRENCY_LABELS, SUPPORTED_CURRENCIES, useFxBoard, type CurrencyCode } from "../../lib/currency";
 import { MOCK_AUTH } from "../../store/useAuthStore";
-import { usePaperTradingStore } from "../../store/usePaperTradingStore";
+import { useCurrencyStore } from "../../store/useCurrencyStore";
 
 interface CurrencySelectorProps {
   /** Controlled use (a converter); the header leaves it unset and drives the global display currency. */
@@ -17,8 +17,8 @@ interface CurrencySelectorProps {
 }
 
 export const CurrencySelector = ({ value, onSelect, label = "Display currency" }: CurrencySelectorProps) => {
-  const display = usePaperTradingStore((s) => s.displayCurrency);
-  const setDisplay = usePaperTradingStore((s) => s.setDisplayCurrency);
+  const display = useCurrencyStore((s) => s.displayCurrency);
+  const setDisplay = useCurrencyStore((s) => s.setDisplayCurrency);
   const board = useFxBoard(!MOCK_AUTH);
   const selected = value ?? display;
   const missing = board.data?.missing ?? {};

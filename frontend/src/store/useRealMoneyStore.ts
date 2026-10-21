@@ -1,30 +1,17 @@
 /**
- * Real-Money Execution & Bankroll Store (Group 95).
- * Engineered for Amit Ashok Kumar Patnaik | BetDoc Quantitative Sports Trading Fleet.
+ * The real-money vault's bankroll store (Group 95; execution tickets retired with the Live Desk in Group 97).
+ * Engineered for Amit Ashok Kumar Patnaik | BetDoc.
  *
- * Coordinates execution modals, clipboard slips, and bankroll mutations with toasts.
+ * Deposit and withdrawal records and the Section 115BBJ certificate, shown in The Vault.
  */
 
 import { create } from "zustand";
 import { ApiError } from "../api/client";
-import {
-  confirmTicketPlacement,
-  createRealTicket,
-  depositRealCash,
-  settleRealTicket,
-  withdrawRealCash,
-  type ConfirmPlacementInput,
-  type CreateRealTicketInput,
-  type RealBankroll,
-  type RealBetTicket,
-  type SettleRealTicketInput,
-} from "../lib/real_money";
+import { depositRealCash, withdrawRealCash, type RealBankroll } from "../lib/real_money";
 import { formatINR } from "../utils/formatCurrency";
 import { toast } from "./useToastStore";
 
 interface RealMoneyState {
-  activeTicket: RealBetTicket | null;
-  isExecutionModalOpen: boolean;
   isDepositModalOpen: boolean;
   isWithdrawModalOpen: boolean;
   isTaxCertModalOpen: boolean;
@@ -32,8 +19,6 @@ interface RealMoneyState {
   error: string | null;
   developerCredit: string;
 
-  openExecutionModal: (ticket: RealBetTicket) => void;
-  closeExecutionModal: () => void;
   openDepositModal: () => void;
   closeDepositModal: () => void;
   openWithdrawModal: () => void;
@@ -41,9 +26,6 @@ interface RealMoneyState {
   openTaxCertModal: () => void;
   closeTaxCertModal: () => void;
 
-  createAndOpenTicket: (input: CreateRealTicketInput) => Promise<RealBetTicket | null>;
-  confirmPlacement: (input: ConfirmPlacementInput) => Promise<RealBetTicket | null>;
-  settleTicket: (input: SettleRealTicketInput) => Promise<RealBetTicket | null>;
   deposit: (amount: number, reference?: string, notes?: string) => Promise<RealBankroll | null>;
   withdraw: (amount: number, notes?: string) => Promise<RealBankroll | null>;
 }
@@ -60,17 +42,12 @@ const explain = (err: unknown): string => {
 };
 
 export const useRealMoneyStore = create<RealMoneyState>((set) => ({
-  activeTicket: null,
-  isExecutionModalOpen: false,
   isDepositModalOpen: false,
   isWithdrawModalOpen: false,
   isTaxCertModalOpen: false,
   isLoading: false,
   error: null,
   developerCredit: "Amit Ashok Kumar Patnaik",
-
-  openExecutionModal: (ticket) => set({ activeTicket: ticket, isExecutionModalOpen: true }),
-  closeExecutionModal: () => set({ isExecutionModalOpen: false }),
 
   openDepositModal: () => set({ isDepositModalOpen: true }),
   closeDepositModal: () => set({ isDepositModalOpen: false }),
@@ -80,75 +57,6 @@ export const useRealMoneyStore = create<RealMoneyState>((set) => ({
 
   openTaxCertModal: () => set({ isTaxCertModalOpen: true }),
   closeTaxCertModal: () => set({ isTaxCertModalOpen: false }),
-
-  createAndOpenTicket: async (input) => {
-    set({ isLoading: true, error: null });
-    try {
-      const ticket = await createRealTicket(input);
-      set({ activeTicket: ticket, isExecutionModalOpen: true });
-      toast.success(
-        "Parimatch Slip Built",
-        `ASHVATTHAMA sized ${formatINR(ticket.recommended_stake)} (Kelly) at floor ${ticket.minimum_profitable_odds.toFixed(2)}.`
-      );
-      return ticket;
-    } catch (err) {
-      const msg = explain(err);
-      set({ error: msg });
-      toast.error("Execution Ticket Refused", msg);
-      return null;
-    } finally {
-      set({ isLoading: false });
-    }
-  },
-
-  confirmPlacement: async (input) => {
-    set({ isLoading: true, error: null });
-    try {
-      const ticket = await confirmTicketPlacement(input);
-      set({ activeTicket: ticket });
-      toast.success(
-        "Real Stake Locked",
-        `Confirmed ${formatINR(ticket.placed_stake)} on ${ticket.event_name} @ ${ticket.placed_odds?.toFixed(2) ?? ticket.target_odds.toFixed(2)}.`
-      );
-      return ticket;
-    } catch (err) {
-      const msg = explain(err);
-      set({ error: msg });
-      toast.error("Placement Confirmation Failed", msg);
-      return null;
-    } finally {
-      set({ isLoading: false });
-    }
-  },
-
-  settleTicket: async (input) => {
-    set({ isLoading: true, error: null });
-    try {
-      const ticket = await settleRealTicket(input);
-      set({ activeTicket: ticket });
-      if (ticket.status === "WON" || ticket.status === "HALF_WON") {
-        toast.success(
-          `Ticket Settled (${ticket.status})`,
-          `Payout: ${formatINR(ticket.settlement_payout)} | Section 115BBJ 30% TDS: -${formatINR(ticket.tds_deducted)} | Net: +${formatINR(ticket.net_profit)}`
-        );
-      } else if (ticket.status === "LOST" || ticket.status === "HALF_LOST") {
-        toast.warning(
-          `Ticket Settled (${ticket.status})`,
-          `Stake forfeited: -${formatINR(Math.abs(ticket.net_profit))}`
-        );
-      } else {
-        toast.info(`Ticket Settled (${ticket.status})`, `Stake returned to liquid cash balance.`);
-      }
-      return ticket;
-    } catch (err) {
-      const msg = explain(err);
-      set({ error: msg });
-      toast.error("Settlement Refused", msg);
-      return null;
-    } finally {
-      set({ isLoading: false });
-    }
-  },
 
   deposit: async (amount, reference, notes) => {
     set({ isLoading: true, error: null });

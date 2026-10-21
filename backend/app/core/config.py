@@ -637,17 +637,7 @@ class Settings(BaseSettings):
     KALSHI_BASE_URL: str = "https://api.elections.kalshi.com/trade-api/v2"
     MANIFOLD_BASE_URL: str = "https://api.manifold.markets/v0"
 
-    # ---- Paper Trading Sandbox, multi-currency (TODAR MAL), Section 115BBJ ledger, ASHVATTHAMA execution (Group 80) ----
-    PAPER_DEFAULT_BALANCE_INR: Decimal = Field(default=Decimal("100000"), gt=0, le=Decimal("1000000000"))
-    PAPER_MAX_STAKE_PCT: float = Field(default=0.25, gt=0, le=1)  # one paper stake is at most this share of the virtual balance
-    PAPER_SLIPPAGE_TOLERANCE_PCT: float = Field(default=2.0, ge=0, lt=50)  # live price this far under the request: still filled at it
-    PAPER_QUOTE_MAX_AGE_SECONDS: int = Field(default=600, ge=5)  # a book's price older than this is not snapped
-    PAPER_SIM_LATENCY_MS: float = Field(default=180.0, ge=0, le=10000)  # the venue round trip ASHVATTHAMA models for a paper slip
-    PAPER_SETTLE_INTERVAL_SECONDS: float = Field(default=60.0, ge=10)
-    PAPER_MIN_SAMPLE: int = Field(default=30, ge=2)  # decided bets before a forward-test can be called proven
-    PAPER_SIGNIFICANCE_ALPHA: float = Field(default=0.05, gt=0, lt=0.5)
-    PAPER_RISK_FREE_RATE: float = Field(default=0.065, ge=0, lt=1)  # Indian sovereign bonds, annual
-    PAPER_CASHOUT_ALERT_PROBABILITY: float = Field(default=0.15, gt=0, lt=1)  # FA-1: a live probability under this advises a cash-out
+    # ---- Multi-currency (TODAR MAL) and the Section 115BBJ ledger (Group 80; the Paper Trading Sandbox was retired in Group 97) ----
     CURRENCY_SUPPORTED: List[str] = Field(default_factory=lambda: ["INR", "USD", "EUR", "GBP", "USDT", "BTC"])
     CURRENCY_CACHE_KEY: str = "fx:rates:latest"  # Redis hash: "<BASE>_<QUOTE>" -> {"rate", "as_of", "provider"}
     CURRENCY_MAX_AGE_SECONDS: int = Field(default=6 * 3600, ge=60)  # an older rate is refused, never shown as current

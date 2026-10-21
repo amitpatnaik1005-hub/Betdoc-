@@ -1,9 +1,9 @@
-"""Commander supervisor: real heartbeats and live telemetry for the 16 commanders.
+"""Commander supervisor: real heartbeats and live telemetry for the 15 commanders.
 
 Each commander owns a subsystem. Every interval the supervisor runs a cheap, read-only health probe
 against that subsystem and records the result through the Hive heartbeat API, so the UI shows what
 the platform is actually doing (an open bet makes BAJIRAO "WORKING", an unreconciled order makes
-ARJUNA "DEGRADED", a tripped kill switch puts KAUTILYA to "SLEEPING"), never a scripted status.
+KUMBHA "DEGRADED", a tripped kill switch puts KAUTILYA to "SLEEPING"), never a scripted status.
 
 Group 90: every beat also carries the measured ``probe_latency_ms`` and an ``activity_summary`` built
 only from the figures that probe read, so an indicator never claims more than was checked. A single
@@ -38,7 +38,7 @@ from app.domain.the_hive import HiveOrchestrator
 from app.models import BetLedger
 from app.models.competitive_intel import CompetitorBotModel
 from app.models.control_panel import SETTINGS_SINGLETON_ID, SystemSettingsModel
-from app.models.paper_trading import PaperBet, PaperBetStatus
+from app.models.real_money import RealBetTicket, RealTicketStatus
 from app.models.risk import StopLossEventModel
 from app.models.the_core import BacktestJobModel, EngineTaskStatus, SmallcaseRegistryModel, SmallcaseStatus
 from app.models.the_hive import BotProfileModel, BotStatus, HiveTaskModel, LegendaryBot, TaskStatus
@@ -113,8 +113,12 @@ async def _vidur(db: AsyncSession, _: ProbeContext) -> tuple[BotStatus, dict[str
 
 
 async def _kumbha(db: AsyncSession, _: ProbeContext) -> tuple[BotStatus, dict[str, Any]]:
+    """The Vault: the ledger, and (since ARJUNA's retirement in Group 97) any order still awaiting reconciliation."""
     total = await _count(db, select(func.count()).select_from(BetLedger))
-    return BotStatus.ONLINE, {"ledger_entries": total, "activity_summary": f"{_n(total, 'ledger entry', 'ledger entries')}"}
+    unresolved = await _count(db, select(func.count()).where(BetLedger.status == "UNKNOWN"))
+    summary = f"{_n(total, 'ledger entry', 'ledger entries')}" + (f" · {_n(unresolved, 'order')} awaiting reconciliation" if unresolved else "")
+    return (BotStatus.DEGRADED if unresolved else BotStatus.ONLINE), {
+        "ledger_entries": total, "orders_awaiting_reconciliation": unresolved, "activity_summary": summary}
 
 
 async def _panini(db: AsyncSession, _: ProbeContext) -> tuple[BotStatus, dict[str, Any]]:
@@ -191,22 +195,13 @@ async def _karna(db: AsyncSession, _: ProbeContext) -> tuple[BotStatus, dict[str
     return (BotStatus.WORKING if scanning else BotStatus.ONLINE), {"scrapers": counts, "activity_summary": summary}
 
 
-async def _arjuna(db: AsyncSession, _: ProbeContext) -> tuple[BotStatus, dict[str, Any]]:
-    unresolved = await _count(db, select(func.count()).where(BetLedger.status == "UNKNOWN"))
-    summary = f"{_n(unresolved, 'order')} awaiting reconciliation" if unresolved else "No orders awaiting reconciliation"
-    return (BotStatus.DEGRADED if unresolved else BotStatus.ONLINE), {
-        "orders_awaiting_reconciliation": unresolved, "activity_summary": summary}
-
-
 async def _ashvatthama(db: AsyncSession, ctx: ProbeContext) -> tuple[BotStatus, dict[str, Any]]:
-    """The execution router: open paper slips it executed, the last day's fills and the live WebSocket lane."""
-    since = datetime.now(UTC) - timedelta(hours=24)
-    pending = await _count(db, select(func.count()).where(PaperBet.status == PaperBetStatus.PENDING.value))
-    fills = await _count(db, select(func.count()).where(PaperBet.placed_at >= since))
+    """The consultant and ticket router: real tickets placed and still open, and the live WebSocket lane."""
+    open_tickets = await _count(db, select(func.count()).where(RealBetTicket.status == RealTicketStatus.PLACED.value))
     clients = ctx.ws_clients()
-    summary = f"{_n(pending, 'pending slip')} · {_n(fills, 'fill')} in 24h · {_n(clients, 'live socket')}"
-    return (BotStatus.WORKING if pending else BotStatus.ONLINE), {
-        "open_paper_slips": pending, "paper_fills_24h": fills, "live_clients": clients, "activity_summary": summary}
+    summary = f"{_n(open_tickets, 'open real ticket')} · {_n(clients, 'live socket')}"
+    return (BotStatus.WORKING if open_tickets else BotStatus.ONLINE), {
+        "open_real_tickets": open_tickets, "live_clients": clients, "activity_summary": summary}
 
 
 PROBES: dict[LegendaryBot, Probe] = {
@@ -224,7 +219,6 @@ PROBES: dict[LegendaryBot, Probe] = {
     LegendaryBot.DRONA: _drona,
     LegendaryBot.BHEESHMA: _bheeshma,
     LegendaryBot.KARNA: _karna,
-    LegendaryBot.ARJUNA: _arjuna,
     LegendaryBot.ASHVATTHAMA: _ashvatthama,
 }
 
@@ -295,7 +289,7 @@ async def build_telemetry_summary(
     settings: Settings | None = None,
     now: datetime | None = None,
 ) -> CommanderTelemetrySummaryResponse:
-    """Roll the stored beats up into fleet health, freshness and latency for all 16 commanders."""
+    """Roll the stored beats up into fleet health, freshness and latency for all 15 commanders."""
     cfg = settings or get_settings()
     stale_after = stale_after_seconds(cfg)
     warn_ms = cfg.HIVE_SUPERVISOR_LATENCY_WARN_MS

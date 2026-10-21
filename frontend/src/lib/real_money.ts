@@ -1,9 +1,9 @@
 /**
- * Real-Money Betting Gateway Client & Resource Hooks (Group 95).
- * Engineered for Amit Ashok Kumar Patnaik | BetDoc Quantitative Sports Trading Fleet.
+ * The real-money vault client (Group 95; its execution desk was retired in Group 97).
+ * Engineered for Amit Ashok Kumar Patnaik | BetDoc.
  *
- * Direct integration with TODAR MAL's live cash vault, ASHVATTHAMA's Parimatch execution router,
- * SHIVAJI's circuit-breaker safety shield, and Section 115BBJ 30% TDS withholding.
+ * TODAR MAL's real cash vault (deposits, withdrawals, the cash ledger), the settled ticket history and the
+ * Section 115BBJ 30% TDS certificate. Tickets settle on the server from recorded final scores.
  */
 
 import { apiClient } from "../api/client";
@@ -113,18 +113,6 @@ export interface RealCashTransaction {
   developer_name: string;
 }
 
-export interface OddsCheckResult {
-  ticket_reference: string;
-  bookmaker: string;
-  current_odds: number | null;
-  target_odds: number;
-  minimum_profitable_odds: number;
-  odds_decay_detected: boolean;
-  is_suspended: boolean;
-  as_of: string | null;
-  developer_name: string;
-}
-
 export interface TaxCertificate {
   user_id: string;
   financial_year: string;
@@ -137,39 +125,6 @@ export interface TaxCertificate {
   section: string;
   issued_at: string;
   developer_name: string;
-}
-
-export interface CreateRealTicketInput {
-  sport: string;
-  league: string;
-  match_id: string;
-  event_name: string;
-  market_type: string;
-  selection: string;
-  target_odds: number;
-  true_probability: number;
-  model_edge_pct?: number;
-  vetting_pillar_score?: number;
-  bookmaker?: string;
-  line?: number | null;
-  quote_market?: string | null;
-  quote_selection?: string | null;
-  notes?: string | null;
-}
-
-export interface ConfirmPlacementInput {
-  ticket_reference: string;
-  placed_odds: number;
-  placed_stake: number;
-  bookmaker_slip_id?: string | null;
-  override_odds_decay?: boolean;
-}
-
-export interface SettleRealTicketInput {
-  ticket_reference: string;
-  outcome?: RealTicketStatus | null;
-  scorecard?: Record<string, unknown> | null;
-  notes?: string | null;
 }
 
 export interface DepositInput {
@@ -202,38 +157,12 @@ export async function withdrawRealCash(input: WithdrawInput): Promise<RealBankro
   return result;
 }
 
-export async function createRealTicket(input: CreateRealTicketInput): Promise<RealBetTicket> {
-  const result = await apiClient.post<RealBetTicket>("/real-money/create-ticket", input);
-  invalidate("real_money");
-  return result;
-}
-
-export async function confirmTicketPlacement(input: ConfirmPlacementInput): Promise<RealBetTicket> {
-  const result = await apiClient.post<RealBetTicket>("/real-money/confirm-placement", input);
-  invalidate("real_money");
-  return result;
-}
-
-export async function settleRealTicket(input: SettleRealTicketInput): Promise<RealBetTicket> {
-  const result = await apiClient.post<RealBetTicket>("/real-money/settle-ticket", input);
-  invalidate("real_money");
-  return result;
-}
-
-export async function fetchActiveRealTickets(): Promise<RealBetTicket[]> {
-  return apiClient.get<RealBetTicket[]>("/real-money/active-tickets");
-}
-
 export async function fetchRealTicketHistory(limit = 50): Promise<RealBetTicket[]> {
   return apiClient.get<RealBetTicket[]>(`/real-money/history?limit=${limit}`);
 }
 
 export async function fetchRealCashTransactions(limit = 50): Promise<RealCashTransaction[]> {
   return apiClient.get<RealCashTransaction[]>(`/real-money/transactions?limit=${limit}`);
-}
-
-export async function checkTicketOdds(ticketReference: string): Promise<OddsCheckResult> {
-  return apiClient.get<OddsCheckResult>(`/real-money/tickets/${encodeURIComponent(ticketReference)}/odds-check`);
 }
 
 export async function fetchTaxCertificate(fy?: string): Promise<TaxCertificate> {
@@ -248,14 +177,6 @@ export function useRealBankroll(enabled = true) {
     enabled ? "real_money:bankroll" : null,
     fetchRealBankroll,
     { intervalMs: 15_000 }
-  );
-}
-
-export function useActiveRealTickets(enabled = true) {
-  return useResource<RealBetTicket[]>(
-    enabled ? "real_money:active_tickets" : null,
-    fetchActiveRealTickets,
-    { intervalMs: 10_000 }
   );
 }
 

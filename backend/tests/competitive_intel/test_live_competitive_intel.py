@@ -40,7 +40,7 @@ from app.domain.oracle.match_model import consensus_two_way
 from app.models import User
 from app.models.competitive_intel_live import BookmakerMarginBenchmark, CompetitorPublicConsensusSnapshot, CompetitorSignalFeedItem
 from app.models.control_panel import SystemSettingsModel
-from app.models.paper_trading import CurrencyExchangeRate
+from app.models.tax_and_fx import CurrencyExchangeRate
 from app.models.user_bets_ledger import UserPlacedBet, UserPlacedLeg
 from app.schemas.market import MarketTick
 from app.schemas.twin import FixtureIntel, PublicSplitsIntel, SelectionSplit

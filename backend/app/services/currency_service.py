@@ -35,7 +35,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import Settings, get_settings
 from app.domain.paper_trading.tax import TDS_RATE, section_115bbj
-from app.models.paper_trading import CurrencyExchangeRate
+from app.models.tax_and_fx import CurrencyExchangeRate
 from app.services.fx_rates import FxRates
 
 logger = logging.getLogger("betdoc.currency_service")
