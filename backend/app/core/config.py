@@ -610,6 +610,24 @@ class Settings(BaseSettings):
     SPORTS_MIN_EDGE: float = Field(default=0.02, gt=0, lt=1)  # a value line: EV over the fair (model or sharp) price
     SPORTS_NORMALIZATION_BUDGET_MS: float = Field(default=12.0, gt=0)  # FA-3: one event's odds normalised within this
     SPORTS_MAX_EDGES: int = Field(default=200, ge=1, le=5000)  # the edge list kept in Redis
+
+    # ---- Pre-match rate persistence (Group 101, point b.13a) ----
+    # Every Odds API board the ingestion fleet fetches is also kept as one row per fixture (pre_match_odds_snapshots), and
+    # the fleet fetches a sport only when its nearest fixture's tier says the stored board is due: tier 1 (kickoff over
+    # TIER1_KICKOFF away) every TIER1_MAX_AGE, tier 2 (over TIER2_KICKOFF away) every TIER2_MAX_AGE, tier 3 (closer, or
+    # in play) every TIER3_MAX_AGE, never faster than the fleet's own ODDS_POLLING_INTERVAL_SEC. One /odds call prices
+    # every fixture of a sport, so the sport is the unit a credit buys. A sport with no fixture stored is on tier 1.
+    PRE_MATCH_TIERED_POLLING_ENABLED: bool = True  # False: the fleet polls every sport at its own interval (pre-Group 101)
+    PRE_MATCH_HORIZON_HOURS: float = Field(default=72.0, gt=0, le=24 * 14)  # the "all" window served to the desk
+    PRE_MATCH_INPLAY_WINDOW_HOURS: float = Field(default=3.0, gt=0, le=24 * 6)  # a fixture this long past kickoff is still live (tier 3)
+    PRE_MATCH_RETENTION_HOURS: float = Field(default=48.0, gt=0)  # rows this long past kickoff are pruned on the next write
+    PRE_MATCH_TIER1_KICKOFF_SECONDS: float = Field(default=24 * 3600.0, gt=0)
+    PRE_MATCH_TIER1_MAX_AGE_SECONDS: float = Field(default=6 * 3600.0, gt=0)
+    PRE_MATCH_TIER2_KICKOFF_SECONDS: float = Field(default=2 * 3600.0, gt=0)
+    PRE_MATCH_TIER2_MAX_AGE_SECONDS: float = Field(default=3600.0, gt=0)
+    PRE_MATCH_TIER3_MAX_AGE_SECONDS: float = Field(default=60.0, gt=0)
+    PRE_MATCH_FORCE_REFRESH_COOLDOWN_SECONDS: float = Field(default=60.0, ge=0)  # a sport fetched this recently is served, not re-bought
+    PRE_MATCH_REDIS_PREFIX: str = "betdoc:pre_match"  # <prefix>:sport_polled hash: sport key -> last fetch (epoch seconds)
     # FA-4: the CFO's fractional Kelly per sport (model parameter uncertainty); overrides app.domain.sports.twin_bridge's table
     SPORTS_KELLY_MULTIPLIERS: dict[str, float] = Field(default_factory=lambda: {
         "soccer": 0.35, "cricket": 0.25, "basketball": 0.40, "tennis": 0.30, "baseball": 0.35, "american_football": 0.50,
@@ -797,6 +815,18 @@ class Settings(BaseSettings):
         if "INR" not in codes or set(codes) - {"INR", "USD"}:
             raise ValueError("CURRENCY_SUPPORTED: BetDoc runs on INR (canonical) and USD (display) only")
         return list(dict.fromkeys(codes))
+
+    @field_validator("PRE_MATCH_TIER3_MAX_AGE_SECONDS")
+    @classmethod
+    def validate_pre_match_tiers(cls, v: float, info) -> float:  # noqa: ANN001 - pydantic ValidationInfo
+        d = info.data
+        t1, t2 = d.get("PRE_MATCH_TIER1_KICKOFF_SECONDS"), d.get("PRE_MATCH_TIER2_KICKOFF_SECONDS")
+        a1, a2 = d.get("PRE_MATCH_TIER1_MAX_AGE_SECONDS"), d.get("PRE_MATCH_TIER2_MAX_AGE_SECONDS")
+        if None not in (t1, t2) and not t2 < t1:
+            raise ValueError("PRE_MATCH_TIER2_KICKOFF_SECONDS must be below PRE_MATCH_TIER1_KICKOFF_SECONDS")
+        if None not in (a1, a2) and not v <= a2 <= a1:
+            raise ValueError("pre-match max ages must not grow as kickoff nears: TIER3 <= TIER2 <= TIER1")
+        return v
 
     @field_validator("QUOTA_GUARD_WARN_FRACTION")
     @classmethod

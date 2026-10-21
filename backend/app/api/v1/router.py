@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends
 
 from app.api.deps import get_current_user
 from app.api.v1 import auth, bet, exchange, ingestion, ws, execution, admin, odds, engine, capital, bet_calculator, oracle, vault, arena, market_signals, dashboard, the_wire, the_lab, the_hive, the_core, popular_picks, competitive_intel, oracle_scout, archive, control_panel, cfo_execution, sniper, portfolio, hive_trading, lab_quant, nalanda, sentinel
-from app.api.v1 import bookmakers, cfo, human_touch, omni, omni_admin, omni_fleet, parimatch_feed, sports, vault_admin, execution_router, digital_twin, settlement_feedback, model_calibration, never_forget, user_xp, cfo_growth, manual_parlay, inplay_ws, wire_ws, sports_engine, real_money, currency_tax
+from app.api.v1 import bookmakers, cfo, human_touch, omni, omni_admin, omni_fleet, parimatch_feed, sports, vault_admin, execution_router, digital_twin, settlement_feedback, model_calibration, never_forget, user_xp, cfo_growth, manual_parlay, inplay_ws, wire_ws, sports_engine, real_money, currency_tax, pre_match
 
 api_router = APIRouter(prefix="/api/v1")
 
@@ -83,3 +83,5 @@ api_router.include_router(sports_engine.router)
 api_router.include_router(currency_tax.router, dependencies=_authenticated)
 # Group 95: /real-money (the Live Real-Money Desk: Parimatch execution tickets, real cash vault, 15% stop-loss, 30% TDS)
 api_router.include_router(real_money.router)
+# Group 101: /pre-match (the stored 24h-72h pre-match board the fleet keeps on its 3-tier cadence; no provider call on a read)
+api_router.include_router(pre_match.router, prefix="/pre-match", dependencies=_authenticated)

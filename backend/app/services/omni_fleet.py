@@ -79,6 +79,7 @@ from app.services.omni_quorum_buffer import buffer_events
 from app.services.omni_router import Availability, GroupStatus, PlanEntry, SourceDescriptor, compute_plan, config_descriptor, load_registry
 from app.services.omni_spool import SPOOL
 from app.services.omni_throttle import TokenBucket
+from app.services import pre_match_odds_service
 from app.services.sentinel_health import beat
 from app.services.vault import fleet_config as vault_fleet_config
 
@@ -304,6 +305,18 @@ async def _breaker_remaining(deps: FleetDeps, source_id: str) -> float | None:
         until = _local_breakers.get(source_id)
         remaining = until - time.monotonic() if until else 0.0
         return remaining if remaining > 0 else None
+
+
+async def refusal_reason(deps: FleetDeps, source_id: str) -> str | None:
+    """Why the scheduler would not run this source now (an open breaker, the quota reserve), for a forced run made on a
+    user's behalf (Group 101's pre-match refresh), which must not spend what the fleet itself would not."""
+    remaining = await _breaker_remaining(deps, source_id)
+    if remaining:
+        return f"the {source_id} circuit breaker is open for {remaining:.0f}s more"
+    quota = _float((await _safe_hgetall(deps, fleet_keys(deps.settings).fleet_metrics(source_id))).get("quota_fraction"))
+    if quota is not None and quota < deps.settings.OMNI_FLEET_QUOTA_RESERVE:
+        return f"{source_id} quota at {quota:.0%}, under the {deps.settings.OMNI_FLEET_QUOTA_RESERVE:.0%} reserve"
+    return None
 
 
 async def _trip_breaker(deps: FleetDeps, source_id: str, failures: int) -> float:
@@ -750,6 +763,8 @@ async def _run_locked(
                 for payload in batch.payloads:
                     await store_snapshots(session, payload.data, payload.key, batch.fetched_at)
                 await session.commit()
+            # Group 101: the latest board per fixture, which the desk reads and fleet_tick's tiered cadence schedules by
+            await pre_match_odds_service.persist_fleet_batch(deps.session_factory, deps.redis, settings, batch.payloads, batch.fetched_at)
     except ThrottledError as exc:
         summary.reason = "throttled"  # our own limiter deferred it: not the provider's fault
         logger.info("Fleet %s deferred: %s", source_id, exc)
@@ -807,10 +822,18 @@ async def fleet_tick(deps: FleetDeps, dispatch: Dispatch) -> dict[str, Any]:
         interval = tick_interval(descriptor, state.quota_fraction, shield_mode, deps.settings)  # Group 92: the quota cache shield
         if not is_due(_float(state.metrics.get("last_attempt_at")), interval, None, now):
             continue
+        scope = entry.native_scope
+        if sid == pre_match_odds_service.SOURCE_ID:
+            # Group 101: only the sports whose stored board its nearest fixture's tier says is due (one call buys a
+            # sport); the shield's stretch applies to every tier alike
+            scope = await pre_match_odds_service.due_scope(deps.session_factory, deps.redis, deps.settings, scope, datetime.now(UTC),
+                                                           stretch=interval / descriptor.interval_seconds)
+            if not scope:
+                continue
         # The claim stops a run that is queued but not started from being queued again
         if not await _claim(deps, keys.fleet_claim(sid), interval):
             continue
-        await dispatch(sid, entry.native_scope, "ingest", interval)
+        await dispatch(sid, scope, "ingest", interval)
         dispatched.append(sid)
     failovers = sorted(g for g, s in groups.items() if s.failover)
     return {"dispatched": dispatched, "failover_groups": failovers, "uncovered": sorted(g for g, s in groups.items() if s.uncovered)}

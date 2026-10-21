@@ -26,10 +26,11 @@ from app.models import Base
 from app.models.canonical import CanonicalEntity
 from app.models.odds import OddsSnapshot
 from app.models.omni_vault import OmniFleetSource, OmniQuarantineLog
+from app.models.pre_match_odds import PreMatchOddsSnapshotModel
 
 TEST_REDIS_URL = os.environ["TEST_REDIS_URL"]  # forced onto the isolated test database by tests/conftest.py
 _SENTINEL = "betdoc:test-sentinel"
-_TABLES = [OmniFleetSource.__table__, CanonicalEntity.__table__, OddsSnapshot.__table__, OmniQuarantineLog.__table__]
+_TABLES = [OmniFleetSource.__table__, CanonicalEntity.__table__, OddsSnapshot.__table__, OmniQuarantineLog.__table__, PreMatchOddsSnapshotModel.__table__]
 
 
 @pytest_asyncio.fixture
