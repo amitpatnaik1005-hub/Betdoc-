@@ -2,6 +2,7 @@ import { useEffect, useState, type FormEvent } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { apiClient } from '../api/client';
 import { TheLabScene } from '../components/bots/TheLabScene';
+import { CompetitiveIntelLivePanel } from '../components/lab/CompetitiveIntelLivePanel';
 import { formatAgo, formatDateTime, formatOdds, formatPct, formatRatioPct } from '../lib/format';
 import { runMutation, useResource } from '../lib/resource';
 import { type Selection, useExecutionStore } from '../store/useExecutionStore';
@@ -377,6 +378,7 @@ export const TheLab = () => {
           </>
         }
       />
+      <CompetitiveIntelLivePanel />
       <ModelSandbox />
       <SourceHealth health={health} />
       <ResearchDesk research={research} />

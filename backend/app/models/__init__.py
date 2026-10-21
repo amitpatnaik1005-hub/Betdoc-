@@ -241,3 +241,4 @@ from app.models.the_wire import InjuryRosterReport, NewsArticleSentiment, Offici
 from app.models.sports_config import LeagueRegistry, SportConfiguration  # noqa: E402,F401  (Group 79)
 from app.models.paper_trading import CurrencyExchangeRate, PaperAccount, PaperBet, PaperLedgerEntry, TaxLedgerEntry  # noqa: E402,F401  (Group 80)
 from app.models.real_money import RealBankroll, RealBetTicket, RealCashTransaction  # noqa: E402,F401  (Group 95)
+from app.models.competitive_intel_live import BookmakerMarginBenchmark, CompetitorPublicConsensusSnapshot, CompetitorSignalFeedItem  # noqa: E402,F401  (Group 85)

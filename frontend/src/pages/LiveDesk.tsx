@@ -14,7 +14,6 @@ import { RealBankrollCard } from "../components/real_money/RealBankrollCard";
 import { RealHistoryTable } from "../components/real_money/RealHistoryTable";
 import { TaxCertificateModal } from "../components/real_money/TaxCertificateModal";
 import { useRealMoneyStore } from "../store/useRealMoneyStore";
-import { formatINR } from "../utils/formatCurrency";
 
 interface ParlayLeg {
   id: string;

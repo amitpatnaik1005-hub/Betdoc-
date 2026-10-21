@@ -613,7 +613,8 @@ async def test_an_older_evaluation_can_never_overwrite_a_newer_one(redis: Redis)
 
 @pytest.mark.asyncio
 async def test_frames_older_than_the_line_window_never_signal(redis: Redis) -> None:
-    settings, clock = _settings(), Clock()
+    # the windows this test is about, pinned: a developer's .env may lengthen them for local operation
+    settings, clock = _settings(ARYABHATA_LINE_MAX_AGE_SECONDS=90.0, ARYABHATA_BOOK_MAX_AGE_SECONDS=300.0), Clock()
     consumer = pipeline.AryabhataConsumer(redis, settings, name="test", clock=clock)
     old = clock.now - timedelta(seconds=120)  # a backlog: fetched two minutes ago, processed now
     evaluations = await consumer.handle_quotes([_quote("odds_api", {"a": ("1.9", "1.9"), "b": ("1.95", "1.95")}, old), _quote("partner", {"p": ("2.1", "1.7")}, old)])

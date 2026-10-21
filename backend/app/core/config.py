@@ -89,8 +89,8 @@ class Settings(BaseSettings):
     ARYABHATA_ENABLED: bool = True  # every API worker joins the consumer group (frames are shared, not duplicated)
     ARYABHATA_PREFIX: str = "aryabhata"
     ARYABHATA_STREAM_MAXLEN: int = Field(default=10_000, ge=100)  # approximate cap: frames are minutes-lived
-    ARYABHATA_LINE_MAX_AGE_SECONDS: float = Field(default=86400.0, gt=0)  # persistent for local operation
-    ARYABHATA_BOOK_MAX_AGE_SECONDS: float = Field(default=86400.0, gt=0)  # persistent book consensus for local operation
+    ARYABHATA_LINE_MAX_AGE_SECONDS: float = Field(default=90.0, gt=0)  # a price older than this is never bet (a local .env may lengthen it)
+    ARYABHATA_BOOK_MAX_AGE_SECONDS: float = Field(default=300.0, gt=0)  # oldest book still in the consensus (a local .env may lengthen it)
     ARYABHATA_RISK_CACHE_SECONDS: int = Field(default=300, gt=0)  # Redis mirror of the Control Panel limits
     ARYABHATA_STEAM_PERIOD_SECONDS: int = Field(default=5, ge=1)  # EMA period: 12 of these = the 60s window
     ARYABHATA_STEAM_PERIODS: int = Field(default=12, ge=2)
@@ -245,7 +245,7 @@ class Settings(BaseSettings):
     ASHOKA_MC_PATHS: int = Field(default=10_000, ge=1_000, le=200_000)  # Monte Carlo paths per candidate slip
     ASHOKA_MIN_JOINT_EV: float = Field(default=0.075, gt=0)  # the "1000%" gate: joint EV at least +7.5% ...
     ASHOKA_MIN_JOINT_PROBABILITY: float = Field(default=0.55, gt=0, lt=1)  # ... and >= 55% true joint probability for multi-leg slips
-    ASHOKA_MAX_QUOTE_AGE_SECONDS: float = Field(default=86400.0, ge=10)  # persistent quote age threshold for local operation
+    ASHOKA_MAX_QUOTE_AGE_SECONDS: float = Field(default=180.0, ge=10)  # an older price is "re-check" material, never vetted (a local .env may lengthen it)
     ASHOKA_MIN_BOOKS: int = Field(default=2, ge=1)  # books a market needs for a consensus probability
     ASHOKA_KELLY_FRACTION: float = Field(default=0.25, gt=0, le=1)
     ASHOKA_MAX_STAKE_PCT: float = Field(default=0.02, gt=0, le=0.25)  # of bankroll, a vetted slip
@@ -550,6 +550,34 @@ class Settings(BaseSettings):
     WIRE_REFEREE_PRIOR_MATCHES: float = Field(default=10.0, ge=0)
     WIRE_REFEREE_MIN_MATCHES: int = Field(default=5, ge=1)  # fewer: the profile is shown but not written to the fortress
     WIRE_REFEREE_TOTALS_LINE: float = Field(default=2.5, gt=0)
+
+    # ---- Live competitive market intelligence: KARNA & PANINI (Group 85) ----
+    # Parimatch and 1xBet against the sharp zero-vig consensus, on the live board's Match Odds; public ticket and
+    # money shares only as measured (the public splits evidence, else BetDoc's own recorded bets): never seeded.
+    COMPETITIVE_LIVE_BOOKS: dict[str, str] = Field(default_factory=lambda: {"parimatch": "Parimatch", "1xbet": "1xBet"})  # canonical book -> display
+    COMPETITIVE_LIVE_SPORT_PRIORITY: List[str] = Field(default_factory=lambda: ["Cricket", "Football", "Tennis", "Basketball", "MMA/UFC"])
+    COMPETITIVE_LIVE_SYNC_MINUTES: int = Field(default=10, ge=1, le=59)
+    COMPETITIVE_LIVE_REFERENCE_BANKROLL_INR: Decimal = Field(default=Decimal("100000"), gt=0)  # stakes shown at this bankroll (KUMBHA's sizing policy)
+    # reverse line movement: the crowd heavy on a side whose price drifts, or light on one the money steams in
+    COMPETITIVE_RLM_PUBLIC_HEAVY_PCT: float = Field(default=65.0, gt=0, le=100)
+    COMPETITIVE_RLM_PUBLIC_LIGHT_PCT: float = Field(default=38.0, gt=0, le=100)
+    COMPETITIVE_RLM_MONEY_HEAVY_PCT: float = Field(default=58.0, gt=0, le=100)
+    COMPETITIVE_RLM_MIN_ODDS_MOVE: float = Field(default=0.04, gt=0)
+    # a public trap: the crowd heavy on a side that is worth less than its price, or that the money avoids
+    COMPETITIVE_TRAP_PUBLIC_PCT: float = Field(default=65.0, gt=0, le=100)
+    COMPETITIVE_TRAP_MAX_EV_PCT: float = -1.5
+    COMPETITIVE_TRAP_MONEY_MAX_PCT: float = Field(default=40.0, ge=0, le=100)
+    # verdicts: a sharp contrarian edge, a sharp consensus edge
+    COMPETITIVE_CONTRARIAN_MIN_EV_PCT: float = 3.0
+    COMPETITIVE_CONTRARIAN_MIN_DIVERGENCE_PCT: float = 12.0
+    COMPETITIVE_CONSENSUS_MIN_EV_PCT: float = 2.0
+    COMPETITIVE_CONSENSUS_MIN_MONEY_PCT: float = Field(default=55.0, gt=0, le=100)
+    COMPETITIVE_HIGH_VIG_PCT: float = Field(default=7.0, gt=0)  # a crowd pick whose cheapest account book charges more: CAUTION_HIGH_VIG
+    # the contrarian edge score (0-100): 50 + clamp(divergence x w) + clamp(EV x w) + RLM bonus - trap penalty + tight-margin bonus
+    COMPETITIVE_EDGE_WEIGHTS: dict[str, float] = Field(default_factory=lambda: {
+        "base": 50.0, "divergence_weight": 0.75, "divergence_min": -25.0, "divergence_max": 25.0, "ev_weight": 1.8, "ev_min": -20.0, "ev_max": 25.0,
+        "rlm_bonus": 12.0, "trap_penalty": 22.0, "tight_margin_pct": 4.5, "tight_margin_bonus": 4.0,
+    })
 
     # ---- The multi-sport engine: nine sport adapters, omni-provider line shopping (Group 79) ----
     SPORTS_SCAN_ENABLED: bool = True  # the beat's consensus poll and arbitrage screen
