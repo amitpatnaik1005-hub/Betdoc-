@@ -7,11 +7,24 @@ from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_db
+from app.core.config import Settings, get_settings
 from app.core.config import settings as app_settings
 from app.domain.control_panel.errors import ControlPanelDomainError
 from app.domain.control_panel.manager import ControlPanelManager
-from app.schemas.control_panel import REDACTED, SECRET_FIELDS, SettingsRead, SettingsUpdate
+from app.schemas.control_panel import (
+    REDACTED,
+    SECRET_FIELDS,
+    AutoDrawdownCheckRequest,
+    AutoDrawdownCheckResponse,
+    BookmakerLockRequest,
+    EmergencyDashboardResponse,
+    EmergencyResumeRequest,
+    EmergencyTriggerRequest,
+    SettingsRead,
+    SettingsUpdate,
+)
 from app.services.aryabhata_pipeline import publish_risk_limits
+from app.services.emergency_kill_switch_service import EmergencyKillSwitchService
 from app.services.risk_guard import kill_switch_engaged, set_kill_switch
 from app.services.sentinel_bus import emit_alert
 from app.services.sentinel_watch import kill_switch_alert
@@ -77,3 +90,41 @@ async def emergency_stop(request: Request, db: DbSession, manager: Manager) -> S
     await publish_risk_limits(redis, settings, app_settings)  # stakes drop to 0
     await emit_alert(redis, app_settings, kill_switch_alert(engaged=True, by="control-panel"))  # the Sentinel
     return _redact(SettingsRead.model_validate(settings))
+
+
+# ---------------------------------------------------------------- Group 86: the emergency fortress (KAUTILYA, CHANAKYA & SHIVAJI)
+_emergency = EmergencyKillSwitchService()
+
+
+def get_emergency_kill_switch_service() -> EmergencyKillSwitchService:
+    return _emergency
+
+
+Emergency = Annotated[EmergencyKillSwitchService, Depends(get_emergency_kill_switch_service)]
+AppSettings = Annotated[Settings, Depends(get_settings)]
+
+
+@router.get("/emergency-dashboard", response_model=EmergencyDashboardResponse)
+async def get_emergency_dashboard(request: Request, db: DbSession, service: Emergency, settings: AppSettings) -> EmergencyDashboardResponse:
+    """The fortress: lockout state, book locks, measured drawdown and streak, and the audit chain (re-verified)."""
+    return await service.dashboard(db, getattr(request.app.state, "redis", None), settings)
+
+
+@router.post("/emergency-kill", response_model=EmergencyDashboardResponse)
+async def trigger_emergency_kill(payload: EmergencyTriggerRequest, request: Request, db: DbSession, service: Emergency, settings: AppSettings) -> EmergencyDashboardResponse:
+    return await service.engage_global_kill(db, getattr(request.app.state, "redis", None), settings, payload)
+
+
+@router.post("/emergency-resume", response_model=EmergencyDashboardResponse)
+async def resume_emergency_kill(payload: EmergencyResumeRequest, request: Request, db: DbSession, service: Emergency, settings: AppSettings) -> EmergencyDashboardResponse:
+    return await service.resume_global_operations(db, getattr(request.app.state, "redis", None), settings, payload)
+
+
+@router.post("/bookmaker-lock", response_model=EmergencyDashboardResponse)
+async def toggle_bookmaker_lock(payload: BookmakerLockRequest, request: Request, db: DbSession, service: Emergency, settings: AppSettings) -> EmergencyDashboardResponse:
+    return await service.set_bookmaker_lock(db, getattr(request.app.state, "redis", None), settings, payload)
+
+
+@router.post("/auto-drawdown-check", response_model=AutoDrawdownCheckResponse)
+async def evaluate_auto_drawdown(payload: AutoDrawdownCheckRequest, request: Request, db: DbSession, service: Emergency, settings: AppSettings) -> AutoDrawdownCheckResponse:
+    return await service.evaluate_and_enforce_auto_drawdown(db, getattr(request.app.state, "redis", None), settings, payload)

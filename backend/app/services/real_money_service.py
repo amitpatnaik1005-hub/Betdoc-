@@ -380,6 +380,12 @@ async def create_execution_ticket(
     if is_halted:
         raise RealMoneyError("KILL_SWITCH_ACTIVE", "Trading is halted by the master kill switch.", 423)
 
+    # 1b. Group 86: a book under an emergency safety lock takes no ticket
+    from app.services.emergency_kill_switch_service import bookmaker_locked  # noqa: PLC0415 - the fortress imports the control panel
+
+    if await bookmaker_locked(redis, settings, req.bookmaker):
+        raise RealMoneyError("BOOKMAKER_LOCKED", f"{req.bookmaker} is under an emergency safety lock (Control Panel).", 423)
+
     # 2. Get bankroll & verify Shivaji circuit breakers
     bankroll = await get_or_create_bankroll(db, user_id, now)
 

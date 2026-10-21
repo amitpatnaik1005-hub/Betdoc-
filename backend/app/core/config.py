@@ -573,6 +573,15 @@ class Settings(BaseSettings):
     COMPETITIVE_CONSENSUS_MIN_EV_PCT: float = 2.0
     COMPETITIVE_CONSENSUS_MIN_MONEY_PCT: float = Field(default=55.0, gt=0, le=100)
     COMPETITIVE_HIGH_VIG_PCT: float = Field(default=7.0, gt=0)  # a crowd pick whose cheapest account book charges more: CAUTION_HIGH_VIG
+    # ---- Emergency fortress: kill switch, auto-drawdown and streak breaker, per-book locks (Group 86, KAUTILYA, CHANAKYA & SHIVAJI) ----
+    EMERGENCY_AUTO_KILL_DRAWDOWN_PCT: float = Field(default=15.0, ge=1, le=95)  # rolling loss / reference bankroll that trips the breaker
+    EMERGENCY_AUTO_KILL_WINDOW_HOURS: int = Field(default=24, ge=1, le=168)
+    EMERGENCY_MAX_CONSECUTIVE_LOSSES: int = Field(default=5, ge=1, le=25)
+    EMERGENCY_DRAWDOWN_COOLDOWN_MINUTES: int = Field(default=240, ge=1)
+    EMERGENCY_STREAK_COOLDOWN_MINUTES: int = Field(default=120, ge=1)
+    EMERGENCY_MANUAL_COOLDOWN_MINUTES: int = Field(default=240, ge=1)
+    EMERGENCY_RESUME_DAILY_EXPOSURE_INR: float = Field(default=500.0, gt=0)  # the resume form's default
+    EMERGENCY_BOOK_LOCK_PREFIX: str = "betdoc:kill_switch:book"  # <prefix>:<parimatch|1xbet> = "1" while that book is locked
     # the contrarian edge score (0-100): 50 + clamp(divergence x w) + clamp(EV x w) + RLM bonus - trap penalty + tight-margin bonus
     COMPETITIVE_EDGE_WEIGHTS: dict[str, float] = Field(default_factory=lambda: {
         "base": 50.0, "divergence_weight": 0.75, "divergence_min": -25.0, "divergence_max": 25.0, "ev_weight": 1.8, "ev_min": -20.0, "ev_max": 25.0,

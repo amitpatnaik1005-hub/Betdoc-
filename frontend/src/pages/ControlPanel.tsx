@@ -6,6 +6,7 @@ import { SniperTerminal } from '../components/sniper/SniperTerminal';
 import { ActivePortfolio } from '../components/portfolio/ActivePortfolio';
 import { HiveBots } from '../components/hive/HiveBots';
 import { FleetCommand } from '../components/fleet/FleetCommand';
+import { EmergencyKillSwitchPanel } from '../components/control/EmergencyKillSwitchPanel';
 import { type ControlSettings, emergencyStop, resumeTrading, useControls, useExchanges } from '../lib/api';
 import { formatAgo, formatINR, formatRatioPct, humanize } from '../lib/format';
 import { runMutation, useResource } from '../lib/resource';
@@ -358,6 +359,7 @@ export const ControlPanel = () => {
       </div>
       {tab === 'system' ? (
         <>
+          <EmergencyKillSwitchPanel />
           <Async resource={controls} skeletonRows={4}>
             {(settings) => (
               <>

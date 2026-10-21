@@ -15,9 +15,24 @@ from app.api.deps import get_db
 from app.api.v1.control_panel import router as control_panel_router
 from app.domain.control_panel.manager import ControlPanelManager
 from app.models import Base
+from app.models.bookmakers import BookmakerConfigModel
+from app.models.cfo_vault import AuditLog, BankrollAccount
 from app.models.control_panel import SystemSettingsModel
+from app.models.emergency_kill_switch import EmergencyKillSwitchAuditModel, EmergencyKillSwitchStateModel
+from app.models.paper_trading import CurrencyExchangeRate
+from app.models.real_money import RealBankroll
 
-CONTROL_PANEL_TABLES = [SystemSettingsModel.__table__]
+# Group 86: the emergency fortress, and the ledgers it measures (no rows: an empty ledger measures nothing)
+CONTROL_PANEL_TABLES = [
+    SystemSettingsModel.__table__,
+    EmergencyKillSwitchStateModel.__table__,
+    EmergencyKillSwitchAuditModel.__table__,
+    BookmakerConfigModel.__table__,
+    AuditLog.__table__,
+    BankrollAccount.__table__,
+    RealBankroll.__table__,
+    CurrencyExchangeRate.__table__,
+]
 
 app = FastAPI(title="BetDoc Control Panel Test App")
 app.include_router(control_panel_router, prefix="/api/v1/control-panel")
