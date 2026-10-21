@@ -164,7 +164,8 @@ celery_app.conf.update(
         "wire-news-scan": {"task": "wire.news_scan", "schedule": _settings.WIRE_NEWS_SCAN_MINUTES * 60.0, "options": {"expires": _settings.WIRE_NEWS_SCAN_MINUTES * 60.0}},
         "wire-espn-sync": {"task": "wire.espn_sync", "schedule": _settings.WIRE_ESPN_SYNC_MINUTES * 60.0, "options": {"expires": _settings.WIRE_ESPN_SYNC_MINUTES * 60.0}},
         "wire-weather-scan": {"task": "wire.weather_scan", "schedule": _settings.WIRE_WEATHER_SCAN_MINUTES * 60.0, "options": {"expires": _settings.WIRE_WEATHER_SCAN_MINUTES * 60.0}},
-        # Group 79: the multi-sport engine (nine sports' consensus boards, cross-provider arbitrage and value lines)
+        # Group 79: the multi-sport engine (nine sports' consensus boards and +EV value lines; Group 96 retired its arbitrage,
+        # the beat key and task name are historical)
         "sports-poll-consensus-odds": {"task": "sports.poll_multi_sport_consensus_odds", "schedule": _settings.SPORTS_ODDS_POLL_SECONDS,
                                        "options": {"expires": _settings.SPORTS_ODDS_POLL_SECONDS}},
         "sports-screen-arbitrage": {"task": "sports.screen_cross_provider_arbitrage", "schedule": _settings.SPORTS_ARB_SCREEN_SECONDS,

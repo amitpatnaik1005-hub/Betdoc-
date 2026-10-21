@@ -1,5 +1,5 @@
-"""Live portfolio (Group 64): every open position marked against the live books, with its hedges,
-and the arbitrage scanner.
+"""Live portfolio (Group 64): every open position marked against the live books, with its hedges.
+(Group 96 retired the arbitrage scanner.)
 
 Per market (fixture + market type) the user holds a *book*: ``P_k``, what it makes if outcome ``k``
 wins, from every confirmed open bet on it. Each book is priced against the best live back price for
@@ -13,14 +13,10 @@ commission and, for a foreign-currency account, the live FX rate and haircut
 
 A book holding a bet whose placement is unconfirmed (or dead-lettered) is shown but not hedged: a
 hedge against a bet that may not exist would be a naked bet of its own.
-
-The scanner looks at every pre-match market on the live board for ``sum(1 / True_Odds) < 1`` over
-the best executable price per outcome, every price commission- and FX-adjusted.
 """
 
 from __future__ import annotations
 
-import hashlib
 import logging
 import uuid
 from collections import defaultdict
@@ -43,7 +39,6 @@ from app.domain.math.arbitrage_calc import (
     ONE,
     PAISA,
     ZERO,
-    Arbitrage,
     ArbitrageMathError,
     FxQuote,
     HedgePlan,
@@ -52,7 +47,6 @@ from app.domain.math.arbitrage_calc import (
     best_offers,
     book_profits,
     commission_adjusted_odds,
-    find_arbitrage,
     hedge_book,
 )
 from app.services.aryabhata_engine import BookLine, ordered_labels
@@ -63,7 +57,6 @@ from app.services.venue_costs import BookmakerTerms, TermsTable
 
 logger = logging.getLogger("betdoc.portfolio")
 
-_HUNDRED = Decimal(100)
 VenueSource = Callable[[], Awaitable[Sequence[VenueConfig]]]
 
 
@@ -112,7 +105,7 @@ class PricingContext:
 
 def market_outcomes(books: Iterable[BookLine], extra: Iterable[str] = ()) -> tuple[str, ...]:
     """Every outcome any book has quoted for the market (stale ones too) plus any held: an outcome
-    missing from this list would make a hedge or an arbitrage look complete when it is not."""
+    missing from this list would make a hedge look complete when it is not."""
     labels = set(extra)
     for book in books:
         labels |= set(book.prices)
@@ -127,7 +120,7 @@ def market_offers(books: Iterable[BookLine], ctx: PricingContext) -> tuple[list[
             continue
         for label, price in book.prices.items():
             # The price an order can actually carry (4 places), rounded down: a prediction market's
-            # 1/p has sixteen digits, and rounding it up could manufacture an arbitrage
+            # 1/p has sixteen digits, and rounding it up could promise a hedge more than it pays
             executable = price.quantize(ODDS_QUANTUM, rounding=ROUND_DOWN)
             if executable <= ONE:
                 continue
@@ -165,29 +158,6 @@ def plan_json(plan: HedgePlan) -> dict[str, Any]:
         "worst_after": str(plan.worst_after),
         "best_after": str(plan.best_after),
         "locks_profit": plan.locks_profit,
-    }
-
-
-def arbitrage_id(fixture_id: str, market: str, arb: Arbitrage) -> str:
-    legs = "|".join(f"{leg.offer.selection}@{leg.offer.provider}:{leg.offer.raw_odds}" for leg in arb.legs)
-    return hashlib.sha1(f"{fixture_id}|{market}|{legs}".encode()).hexdigest()[:16]
-
-
-def arbitrage_json(meta: MarketMeta, arb: Arbitrage, now: datetime) -> dict[str, Any]:
-    return {
-        "id": arbitrage_id(meta.fixture_id, meta.market, arb),
-        "fixture_id": meta.fixture_id,
-        "market": meta.market,
-        "home": meta.home,
-        "away": meta.away,
-        "commence_time": meta.commence_time.isoformat() if meta.commence_time else None,
-        "booksum": str(arb.booksum.quantize(Decimal("0.000001"))),
-        "margin_pct": str((arb.margin * _HUNDRED).quantize(Decimal("0.001"))),
-        "roi_pct": str((arb.roi * _HUNDRED).quantize(Decimal("0.01"))),
-        "total_stake_inr": str(arb.total_stake_inr),
-        "guaranteed_profit_inr": str(arb.guaranteed_profit_inr),
-        "legs": [{**offer_json(leg.offer), "stake_inr": str(leg.stake_inr), "stake_ccy": str(leg.stake_ccy), "payout_inr": str(leg.payout_inr)} for leg in arb.legs],
-        "detected_at": now.isoformat(),
     }
 
 
@@ -296,7 +266,6 @@ def portfolio_payload(
     books_by_market: Mapping[str, Sequence[BookLine]],
     ctx: PricingContext,
     metas: Mapping[str, MarketMeta],
-    arbs: Sequence[dict[str, Any]] = (),
     seq: int = 0,
 ) -> dict[str, Any]:
     grouped: dict[str, list[OpenBet]] = defaultdict(list)
@@ -324,32 +293,8 @@ def portfolio_payload(
             "profitable_hedges": sum(1 for r in rows if r["profitable"]),
         },
         "markets": rows,
-        "arbs": list(arbs),
         "fx_missing": sorted(ctx.fx_errors),
     }
-
-
-def scan_arbitrage(
-    metas: Mapping[str, MarketMeta], books_by_market: Mapping[str, Sequence[BookLine]], ctx: PricingContext, settings: Settings
-) -> list[dict[str, Any]]:
-    """Pre-match markets only: a polled in-play price is already stale, and a stale leg is a fake arb."""
-    reference = Decimal(str(settings.ARB_REFERENCE_STAKE_INR))
-    min_margin = Decimal(str(settings.ARB_MIN_MARGIN_PCT)) / _HUNDRED
-    found: list[tuple[Decimal, dict[str, Any]]] = []
-    for key, meta in metas.items():
-        if meta.commence_time is None or meta.commence_time <= ctx.now:
-            continue
-        books = books_by_market.get(key, ())
-        offers, _ = market_offers(books, ctx)
-        offers = [o for o in offers if ctx.routable(o.provider)]
-        try:
-            arb = find_arbitrage(offers, market_outcomes(books, meta.labels), reference)
-        except ArbitrageMathError:
-            continue
-        if arb is not None and arb.margin >= min_margin:
-            found.append((arb.margin, arbitrage_json(meta, arb, ctx.now)))
-    found.sort(key=lambda pair: (-pair[0], pair[1]["id"]))
-    return [item for _, item in found[: settings.ARB_MAX_RESULTS]]
 
 
 # ---------------------------------------------------------------- the service
@@ -396,7 +341,7 @@ class PortfolioManager:
             logger.warning("Live books unreadable; portfolio priced without them")
             return {}
 
-    async def snapshot(self, user_id: uuid.UUID, *, cached: bool = True, arbs: Sequence[dict[str, Any]] = ()) -> dict[str, Any]:
+    async def snapshot(self, user_id: uuid.UUID, *, cached: bool = True) -> dict[str, Any]:
         if cached:
             bets = await cached_open_bets(self.redis, self.session_factory, self.settings, user_id)
         else:
@@ -405,7 +350,7 @@ class PortfolioManager:
         ctx = await self.context()
         books = await self.books([b.market_key for b in bets])
         metas = await board_markets(self.redis)
-        return portfolio_payload(user_id, bets, books, ctx, metas, arbs)
+        return portfolio_payload(user_id, bets, books, ctx, metas)
 
     async def market(self, fixture_id: str, market: str) -> tuple[PricingContext, tuple[BookLine, ...], MarketMeta | None]:
         key = f"{fixture_id}|{market}"
@@ -413,9 +358,3 @@ class PortfolioManager:
         books = (await self.books([key])).get(key, ())
         meta = (await board_markets(self.redis)).get(key)
         return ctx, books, meta
-
-    async def scan(self) -> list[dict[str, Any]]:
-        metas = await board_markets(self.redis)
-        ctx = await self.context()
-        books = await self.books([k for k, m in metas.items() if m.commence_time is not None and m.commence_time > ctx.now])
-        return scan_arbitrage(metas, books, ctx, self.settings)

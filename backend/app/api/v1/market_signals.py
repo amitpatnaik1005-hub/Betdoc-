@@ -8,14 +8,12 @@ from app.core.database import AsyncSessionLocal
 from app.domain.market_signals import (
     SQLOddsTickRepository,
     SteamDetectorEngine,
-    find_back_lay_arbitrage,
     find_best_price,
     find_market_surebets,
 )
 from app.models import utc_now
 from app.schemas.market_signals import (
     MAX_FUTURE_SKEW,
-    ArbitrageOpportunity,
     LineShopResult,
     MarketSurebet,
     OddsTick,
@@ -110,25 +108,6 @@ async def get_best_price(
     if result is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No fresh price or sharp consensus")
     return result
-
-
-@router.get("/arbitrage", response_model=list[ArbitrageOpportunity])
-async def get_arbitrage(
-    db: DbSession,
-    current_user: CurrentUser,
-    match_id: str = Query(..., min_length=1, max_length=128),
-    market_type: str = Query(..., min_length=1, max_length=64),
-    line: float | None = Query(default=None),
-    commission_pct: float = Query(0.02, ge=0.0, lt=1.0),
-    max_staleness_minutes: int = Query(5, ge=1, le=1440),
-) -> list[ArbitrageOpportunity]:
-    ticks = await _market_ticks(db, match_id, market_type, line, max_staleness_minutes)
-    opportunities: list[ArbitrageOpportunity] = []
-    for selection_id in sorted({t.selection_id for t in ticks}):
-        opp = find_back_lay_arbitrage(ticks, selection_id, commission_pct, max_staleness_minutes)
-        if opp is not None:
-            opportunities.append(opp)
-    return sorted(opportunities, key=lambda o: o.net_profit_pct, reverse=True)
 
 
 @router.get("/surebets", response_model=list[MarketSurebet])

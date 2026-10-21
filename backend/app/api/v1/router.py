@@ -45,7 +45,7 @@ api_router.include_router(omni_admin.router)  # /admin/omni: X-Omni-Admin-Token
 api_router.include_router(omni_fleet.router)  # /omni/fleet: Fleet Command (reads: user, writes: admin)
 api_router.include_router(cfo_execution.router, dependencies=_authenticated)  # /omni/execute-trade, bankroll, risk settings
 api_router.include_router(sniper.router, dependencies=_authenticated)  # /omni/venues, executions, dlq, sniper feed
-api_router.include_router(portfolio.router, dependencies=_authenticated)  # /omni/portfolio, hedge, arbitrage, fx-rates
+api_router.include_router(portfolio.router, dependencies=_authenticated)  # /omni/portfolio, hedge, fx-rates
 api_router.include_router(hive_trading.router, dependencies=_authenticated)  # /hive/trading: autonomous bots, registry, master halt
 api_router.include_router(lab_quant.router, dependencies=_authenticated)  # /lab/quant: backtests on the market history (Group 66)
 api_router.include_router(nalanda.router, dependencies=_authenticated)  # /nalanda: the tick lake and the hash-chained settlement warehouse (Group 67)

@@ -72,7 +72,7 @@ class LegReceipt(BaseModel):
 
 class MultiLegReceipt(BaseModel):
     group_id: UUID
-    strategy: Literal["arbitrage", "hedge"]
+    strategy: Literal["hedge"]  # the only multi-leg plan since Group 96 retired arbitrage
     status: Literal["COMPLETE", "LEGGED", "ABORTED"]  # LEGGED: something is open and the plan is incomplete
     message: str
     legs: list[LegReceipt]

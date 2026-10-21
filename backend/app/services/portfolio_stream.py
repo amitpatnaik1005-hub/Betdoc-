@@ -1,11 +1,10 @@
-"""The live portfolio over Redis pub/sub, five times a second, and the arbitrage scan once a second.
+"""The live portfolio over Redis pub/sub, five times a second (Group 96 retired the arbitrage scan).
 
 Keys (``PORTFOLIO_CHANNEL_PREFIX``, default ``betdoc:live_portfolio``):
     <p>:<user_id>          pub/sub  the user's portfolio: every open book marked to the live books
     <p>:last:<user_id>     string   the latest payload, so a new socket starts from it
     <p>:watchers           zset     user_id -> last heartbeat; only watched portfolios are computed
     <p>:leader             string   the API worker publishing right now (a renewed lease)
-    <p>:arbitrage          pub/sub  the scan, whenever it changes;  <p>:arbitrage:last  string
 
 One API worker at a time holds the lease and does the work, so N workers never publish N copies.
 A tick reads Redis only: the books Aryabhata keeps, the FX rates, and each user's open positions
@@ -16,7 +15,6 @@ dirty, or every ``PORTFOLIO_POSITIONS_REFRESH_SECONDS``). The Decimal maths runs
 from __future__ import annotations
 
 import asyncio
-import contextlib
 import json
 import logging
 import time
@@ -30,7 +28,7 @@ from redis.exceptions import RedisError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.core.config import Settings
-from app.services.portfolio_manager import MarketMeta, PortfolioManager, VenueSource, board_markets, portfolio_payload, scan_arbitrage
+from app.services.portfolio_manager import MarketMeta, PortfolioManager, VenueSource, board_markets, portfolio_payload
 from app.services.portfolio_positions import cached_open_bets
 
 logger = logging.getLogger("betdoc.portfolio")
@@ -43,14 +41,12 @@ _BACKOFF_MAX_SECONDS = 10.0
 
 
 class PortfolioKeys:
-    __slots__ = ("arbitrage", "arbitrage_last", "leader", "prefix", "watchers")
+    __slots__ = ("leader", "prefix", "watchers")
 
     def __init__(self, settings: Settings) -> None:
         self.prefix = settings.PORTFOLIO_CHANNEL_PREFIX
         self.watchers = f"{self.prefix}:watchers"
         self.leader = f"{self.prefix}:leader"
-        self.arbitrage = f"{self.prefix}:arbitrage"
-        self.arbitrage_last = f"{self.prefix}:arbitrage:last"
 
     def channel(self, user_id: uuid.UUID | str) -> str:
         return f"{self.prefix}:{user_id}"
@@ -86,9 +82,7 @@ class PortfolioPublisher:
         self.lease_ms = max(2_000, int(settings.PORTFOLIO_TICK_SECONDS * 15_000))
         self.seq = 0
         self.metas: dict[str, MarketMeta] = {}
-        self.arbs: list[dict[str, Any]] = []
-        self._arbs_raw = ""
-        self._scanned_at = 0.0
+        self._board_read_at: float | None = None
         self._renew = redis.register_script(_RENEW)
 
     async def run(self) -> None:
@@ -116,9 +110,9 @@ class PortfolioPublisher:
         return bool(await self.redis.set(self.keys.leader, self.token, nx=True, px=self.lease_ms))
 
     async def tick(self) -> int:
-        """One round: the scan when it is due, then every watched portfolio. Returns how many were sent."""
-        if time.monotonic() - self._scanned_at >= self.settings.ARB_SCAN_INTERVAL_SECONDS:
-            await self.scan()
+        """One round: the board's market names when they are due, then every watched portfolio. Returns how many were sent."""
+        if self._board_read_at is None or time.monotonic() - self._board_read_at >= self.settings.PORTFOLIO_BOARD_REFRESH_SECONDS:
+            await self.refresh_board()
         now = time.time()
         await self.redis.zremrangebyscore(self.keys.watchers, "-inf", now - self.settings.PORTFOLIO_WATCH_TTL_SECONDS)
         users: list[str] = await self.redis.zrangebyscore(self.keys.watchers, now - self.settings.PORTFOLIO_WATCH_TTL_SECONDS, "+inf")
@@ -134,7 +128,7 @@ class PortfolioPublisher:
         books = await self.manager.books([b.market_key for group in bets.values() for b in group])
         self.seq += 1
         seq, metas = self.seq, self.metas
-        payloads = await asyncio.to_thread(lambda: {user: _dumps(portfolio_payload(user, group, books, ctx, metas, (), seq)) for user, group in bets.items()})
+        payloads = await asyncio.to_thread(lambda: {user: _dumps(portfolio_payload(user, group, books, ctx, metas, seq)) for user, group in bets.items()})
         pipe = self.redis.pipeline(transaction=False)
         for user, raw in payloads.items():
             pipe.publish(self.keys.channel(user), raw)
@@ -142,26 +136,11 @@ class PortfolioPublisher:
         await pipe.execute()
         return len(payloads)
 
-    async def scan(self) -> list[dict[str, Any]]:
-        self._scanned_at = time.monotonic()
+    async def refresh_board(self) -> dict[str, MarketMeta]:
+        """Fixture names, kickoffs and quoted outcomes per market: the rows' labels and in-play flag."""
+        self._board_read_at = time.monotonic()
         self.metas = await board_markets(self.redis)
-        ctx = await self.manager.context()
-        live = [k for k, m in self.metas.items() if m.commence_time is not None and m.commence_time > ctx.now]
-        books = await self.manager.books(live)
-        metas = self.metas
-        self.arbs = await asyncio.to_thread(scan_arbitrage, metas, books, ctx, self.settings)
-        body = _dumps([{k: v for k, v in arb.items() if k != "detected_at"} for arb in self.arbs])
-        if body != self._arbs_raw:  # only a change is news: the browser keeps the last scan
-            self._arbs_raw = body
-            raw = _dumps({"type": "arbitrage", "ts": ctx.now.isoformat(), "arbs": self.arbs})
-            pipe = self.redis.pipeline(transaction=False)
-            pipe.publish(self.keys.arbitrage, raw)
-            pipe.set(self.keys.arbitrage_last, raw, ex=max(10, int(self.settings.ARB_SCAN_INTERVAL_SECONDS * 10)))
-            await pipe.execute()
-        else:
-            with contextlib.suppress(RedisError, OSError):
-                await self.redis.expire(self.keys.arbitrage_last, max(10, int(self.settings.ARB_SCAN_INTERVAL_SECONDS * 10)))
-        return self.arbs
+        return self.metas
 
 
 async def run_portfolio_publisher(

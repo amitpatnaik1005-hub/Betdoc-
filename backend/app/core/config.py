@@ -132,17 +132,14 @@ class Settings(BaseSettings):
     def sniper_sandbox_active(self) -> bool:
         return self.SNIPER_SANDBOX_ENABLED and self.ENVIRONMENT != "production"
 
-    # ---- Hedging, arbitrage, live portfolio (Group 64) -----------------------
+    # ---- Hedging, live portfolio (Group 64; arbitrage retired in Group 96) ----
     PORTFOLIO_STREAM_ENABLED: bool = True  # one API worker at a time (Redis leader lock) publishes every watched portfolio
     PORTFOLIO_CHANNEL_PREFIX: str = "betdoc:live_portfolio"  # pub/sub <prefix>:<user_id>
     PORTFOLIO_TICK_SECONDS: float = Field(default=0.2, ge=0.05, le=5)  # 5 updates a second
     PORTFOLIO_POSITIONS_REFRESH_SECONDS: float = Field(default=15.0, gt=0)  # open positions re-read from the DB at most this often (or on change)
     PORTFOLIO_WATCH_TTL_SECONDS: int = Field(default=30, ge=5)  # a socket heartbeats its user into the watch set
-    PORTFOLIO_PRICE_MAX_AGE_SECONDS: float = Field(default=120.0, gt=0)  # an older book price can't hedge or arb
-    ARB_SCAN_INTERVAL_SECONDS: float = Field(default=1.0, ge=0.2)
-    ARB_MIN_MARGIN_PCT: float = Field(default=0.1, ge=0, le=50)  # thinner arbs are noise (stale books, rounding)
-    ARB_REFERENCE_STAKE_INR: float = Field(default=10_000.0, gt=0)  # the scanner sizes every arb at this total
-    ARB_MAX_RESULTS: int = Field(default=25, ge=1, le=200)
+    PORTFOLIO_PRICE_MAX_AGE_SECONDS: float = Field(default=120.0, gt=0)  # an older book price can't hedge
+    PORTFOLIO_BOARD_REFRESH_SECONDS: float = Field(default=1.0, ge=0.2)  # the board's fixture names and kickoffs re-read this often
     # Exchange commission on net winnings, by bookmaker id. A venue row's own rate overrides it.
     EXCHANGE_COMMISSION_RATES: dict[str, float] = {
         "betfair": 0.05,
@@ -603,10 +600,10 @@ class Settings(BaseSettings):
     })
 
     # ---- The multi-sport engine: nine sport adapters, omni-provider line shopping (Group 79) ----
-    SPORTS_SCAN_ENABLED: bool = True  # the beat's consensus poll and arbitrage screen
+    SPORTS_SCAN_ENABLED: bool = True  # the beat's consensus poll and value-line screen
     SPORTS_PREFIX: str = "betdoc:sports"  # Redis: boards per feed key, the edge list, the live channels
     SPORTS_ODDS_POLL_SECONDS: float = Field(default=60.0, ge=10)  # poll_multi_sport_consensus_odds
-    SPORTS_ARB_SCREEN_SECONDS: float = Field(default=30.0, ge=5)  # screen_cross_provider_arbitrage
+    SPORTS_ARB_SCREEN_SECONDS: float = Field(default=30.0, ge=5)  # screen_cross_provider_arbitrage (historical name): the value-line screen
     SPORTS_FEED_MIN_INTERVAL_SECONDS: float = Field(default=900.0, ge=30)  # one feed key is fetched at most this often (quota)
     SPORTS_ODDS_REGIONS: str = "uk,eu,us,au"
     SPORTS_BOARD_TTL_SECONDS: int = Field(default=3600, ge=60)

@@ -145,7 +145,6 @@ def settings() -> Settings:
             "PORTFOLIO_CHANNEL_PREFIX": "test:live_portfolio",
             "FX_RATES_KEY": "test:fx:rates",
             "CFO_EXECUTION_MODE": "paper",
-            "ARB_MIN_MARGIN_PCT": 0.1,
             "BOOKMAKER_CURRENCIES": {"betfair_ex_uk": "INR"},  # this user's Betfair account is in rupees
         }
     )
@@ -407,6 +406,10 @@ async def test_the_publisher_streams_5x_a_second_without_polling_postgres(
     (market,) = messages[-1]["markets"]
     assert market["profitable"] is True and market["cash_out"] == "800.00"  # 1,000 * (3 * 0.6 - 1)
     assert json.loads(await redis.get(keys.last(user_id)))["markets"][0]["cash_out"] == "800.00"
+    # Group 96: no arbitrage scan rides along, in the frames or in Redis
+    assert all(m["type"] == "portfolio" and "arbs" not in m for m in messages)
+    assert not await redis.exists(f"{settings.PORTFOLIO_CHANNEL_PREFIX}:arbitrage:last")
+    assert not hasattr(publisher, "scan") and not hasattr(keys, "arbitrage")
 
     await mark_positions_dirty(redis, settings, user_id)  # an execution or settlement happened
     await publisher.tick()
