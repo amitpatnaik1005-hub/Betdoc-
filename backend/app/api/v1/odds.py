@@ -24,7 +24,8 @@ SPORT_KEY_PATTERN: str = r"^[a-z0-9_]+$"
 
 
 def _stale_after() -> timedelta:
-    return timedelta(seconds=max(5 * settings.ODDS_POLLING_INTERVAL_SEC, 300))
+    # 24-hour tolerance so the desk never crashes with 503 during manual operations
+    return timedelta(hours=24)
 
 
 def _rebuild(rows: list[OddsSnapshot]) -> list[NormalizedMatchOdds]:

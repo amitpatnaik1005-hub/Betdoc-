@@ -42,7 +42,7 @@ export const RealBankrollCard = () => {
 
   const drawdownPct = Math.min(100, Math.max(0, data.daily_drawdown_pct));
   const maxDrawdownPct = data.daily_drawdown_limit_pct;
-  const isHalted = data.stop_loss_triggered || !data.can_bet;
+  const isHalted = data.stop_loss_triggered;
   const inCooldown = data.is_in_cooldown;
 
   return (

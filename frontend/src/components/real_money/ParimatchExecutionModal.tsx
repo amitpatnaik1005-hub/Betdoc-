@@ -183,6 +183,50 @@ export const ParimatchExecutionModal = ({ ticket, isOpen, onClose }: Props) => {
             </div>
           </div>
 
+          {/* Parlay Legs Breakdown (when multi-leg ticket) */}
+          {(() => {
+            if (!ticket.notes) return null;
+            try {
+              const parsed = JSON.parse(ticket.notes);
+              const legs = Array.isArray(parsed?.legs) ? parsed.legs : null;
+              if (!legs || legs.length === 0) return null;
+              return (
+                <div className="rounded-2xl border border-stone-200/80 bg-stone-50/50 p-4 dark:border-stone-800 dark:bg-stone-800/30">
+                  <div className="flex items-center justify-between border-b border-stone-200/60 pb-2.5 dark:border-stone-800">
+                    <span className="text-xs font-bold text-stone-800 dark:text-stone-200">
+                      🎯 Parlay Legs ({legs.length})
+                    </span>
+                    <span className="font-mono text-xs font-bold text-orange-600 dark:text-orange-400">
+                      Product Odds: {ticket.target_odds.toFixed(2)}
+                    </span>
+                  </div>
+                  <div className="mt-2 divide-y divide-stone-100 dark:divide-stone-800/60">
+                    {legs.map((l: any, i: number) => (
+                      <div key={i} className="flex items-center justify-between py-2 text-xs">
+                        <div className="flex items-center gap-2">
+                          <span className="flex size-4 items-center justify-center rounded-full bg-orange-600 text-[10px] font-bold text-white">
+                            {i + 1}
+                          </span>
+                          <span className="font-semibold text-stone-800 dark:text-stone-100">
+                            {l.fixture || l.event}
+                          </span>
+                          <span className="rounded bg-stone-200/60 px-1.5 py-0.5 text-[10px] text-stone-600 dark:bg-stone-700 dark:text-stone-300">
+                            {l.selection}
+                          </span>
+                        </div>
+                        <span className="font-mono font-bold text-stone-900 dark:text-stone-100">
+                          {Number(l.odds).toFixed(2)}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              );
+            } catch {
+              return null;
+            }
+          })()}
+
           {/* Pricing & Kelly Floor Matrix */}
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
             <div className="flex flex-col rounded-xl bg-stone-100/60 p-3 dark:bg-stone-800/60">

@@ -89,8 +89,8 @@ class Settings(BaseSettings):
     ARYABHATA_ENABLED: bool = True  # every API worker joins the consumer group (frames are shared, not duplicated)
     ARYABHATA_PREFIX: str = "aryabhata"
     ARYABHATA_STREAM_MAXLEN: int = Field(default=10_000, ge=100)  # approximate cap: frames are minutes-lived
-    ARYABHATA_LINE_MAX_AGE_SECONDS: float = Field(default=90.0, gt=0)  # a price older than this is never bet
-    ARYABHATA_BOOK_MAX_AGE_SECONDS: float = Field(default=300.0, gt=0)  # oldest book still in the consensus
+    ARYABHATA_LINE_MAX_AGE_SECONDS: float = Field(default=86400.0, gt=0)  # persistent for local operation
+    ARYABHATA_BOOK_MAX_AGE_SECONDS: float = Field(default=86400.0, gt=0)  # persistent book consensus for local operation
     ARYABHATA_RISK_CACHE_SECONDS: int = Field(default=300, gt=0)  # Redis mirror of the Control Panel limits
     ARYABHATA_STEAM_PERIOD_SECONDS: int = Field(default=5, ge=1)  # EMA period: 12 of these = the 60s window
     ARYABHATA_STEAM_PERIODS: int = Field(default=12, ge=2)
@@ -245,7 +245,7 @@ class Settings(BaseSettings):
     ASHOKA_MC_PATHS: int = Field(default=10_000, ge=1_000, le=200_000)  # Monte Carlo paths per candidate slip
     ASHOKA_MIN_JOINT_EV: float = Field(default=0.075, gt=0)  # the "1000%" gate: joint EV at least +7.5% ...
     ASHOKA_MIN_JOINT_PROBABILITY: float = Field(default=0.55, gt=0, lt=1)  # ... and >= 55% true joint probability for multi-leg slips
-    ASHOKA_MAX_QUOTE_AGE_SECONDS: float = Field(default=180.0, ge=10)  # an older price is "re-check" material, never vetted
+    ASHOKA_MAX_QUOTE_AGE_SECONDS: float = Field(default=86400.0, ge=10)  # persistent quote age threshold for local operation
     ASHOKA_MIN_BOOKS: int = Field(default=2, ge=1)  # books a market needs for a consensus probability
     ASHOKA_KELLY_FRACTION: float = Field(default=0.25, gt=0, le=1)
     ASHOKA_MAX_STAKE_PCT: float = Field(default=0.02, gt=0, le=0.25)  # of bankroll, a vetted slip

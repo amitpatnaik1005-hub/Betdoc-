@@ -318,7 +318,37 @@ def format_clipboard_slip(
     floor: Decimal,
     stake: Decimal,
     edge_pct: float,
+    notes: str | None = None,
 ) -> str:
+    legs_section = ""
+    if notes:
+        try:
+            parsed = json.loads(notes)
+            if isinstance(parsed, dict) and "legs" in parsed and parsed["legs"]:
+                legs_list = parsed["legs"]
+                lines = [
+                    "",
+                    "PARLAY LEGS TO ADD ON PARIMATCH:",
+                    "──────────────────────────────────────────────────",
+                ]
+                for i, leg in enumerate(legs_list, 1):
+                    fix_name = leg.get("fixture") or leg.get("event") or "Match"
+                    sel = leg.get("selection") or "Selection"
+                    leg_odds = float(leg.get("odds", 0))
+                    lines.append(f"  [{i}] {fix_name} — Selection: {sel} @ {leg_odds:.2f}")
+                lines.extend([
+                    "──────────────────────────────────────────────────",
+                    "HOW TO PLACE ON PARIMATCH:",
+                    "  1. Go to https://parimatchs1.com/en/all-live",
+                    f"  2. Search & select each of the {len(legs_list)} matches above",
+                    "  3. Switch betslip type to 'Parlay' / 'Express'",
+                    f"  4. Enter Stake: ₹{stake:,.2f} (Total Odds: ≥ {odds:.2f})",
+                    "  5. Click Place Bet & enter your Bookmaker Slip ID here!",
+                ])
+                legs_section = "\n" + "\n".join(lines)
+        except Exception:
+            pass
+
     return (
         f"🎯 BETDOC REAL-MONEY EXECUTION TICKET (ASHVATTHAMA)\n"
         f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
@@ -329,7 +359,7 @@ def format_clipboard_slip(
         f"Recommended Stake: ₹{stake:,.2f} INR\n"
         f"Target Odds:      ≥ {odds:.2f} (Floor: {floor:.2f})\n"
         f"Quantitative Edge: +{edge_pct:.1f}%\n"
-        f"Direct URL:       https://parimatchs1.com/en/all-live\n"
+        f"Direct URL:       https://parimatchs1.com/en/all-live{legs_section}\n"
         f"Sniper:           ASHVATTHAMA | Vetted by KAUTILYA\n"
         f"Stop-Loss Shield: SHIVAJI ACTIVE\n"
         f"Engineered For:   {DEVELOPER_CREDIT}\n"
@@ -419,6 +449,7 @@ async def create_execution_ticket(
         floor=odds_floor,
         stake=recommended,
         edge_pct=edge_pct,
+        notes=req.notes,
     )
 
     ticket = RealBetTicket(
