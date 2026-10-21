@@ -1,18 +1,19 @@
 """
-Multi-Currency & FX Exchange Rate Service (Commander TODAR MAL, Group 80).
-Developed for Amit Ashok Kumar Patnaik | BetDoc Quantitative Sports Trading Fleet.
+TODAR MAL's two-currency engine (Group 80; narrowed to INR and USD in Group 98).
+Developed for Amit Ashok Kumar Patnaik | BetDoc.
 
-Every amount is kept in canonical INR and converted for display through INR: a pair's rate is
-``INR per unit of base / INR per unit of quote``. INR per unit of each supported currency (USD, EUR, GBP, USDT,
-BTC) is read, freshest source first:
+INR is canonical: every stored amount, stake, payout and Section 115BBJ / 194BA figure is in rupees. USD is a display
+conversion only, through INR: a pair's rate is ``INR per unit of base / INR per unit of quote``. INR per USD is read,
+freshest source first:
 
 1. the execution FX hash (``FX_RATES_KEY``, Group 70's ``PUT /omni/fx-rates``): an administrator's rate wins;
 2. TODAR MAL's Redis cache (``CURRENCY_CACHE_KEY``, ``fx:rates:latest``);
 3. the ``currency_exchange_rates`` table;
-4. a refresh: ECB reference rates (Frankfurter) for the fiat currencies, CoinGecko for USDT and BTC.
+4. a refresh: the ECB reference rate through Frankfurter.
 
 A rate older than ``CURRENCY_MAX_AGE_SECONDS`` is never used, and nothing falls back to a guessed constant: an
-amount that cannot be converted is refused (``CurrencyUnavailableError``) rather than shown at a made-up rate.
+amount that cannot be converted is refused (``CurrencyUnavailableError``) rather than shown at a made-up rate, and
+the UI shows rupees instead. Any other currency is refused outright (``UnsupportedCurrencyError``).
 TODAR MAL does not write the execution hash; legs priced for real money keep their own administrator-set rates.
 """
 
@@ -29,7 +30,7 @@ from typing import Any
 import httpx
 from redis.asyncio import Redis
 from redis.exceptions import RedisError
-from sqlalchemy import select
+from sqlalchemy import delete, or_, select
 from sqlalchemy.dialects import postgresql, sqlite
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -41,9 +42,14 @@ from app.services.fx_rates import FxRates
 logger = logging.getLogger("betdoc.currency_service")
 
 HOME = "INR"
-COINGECKO_IDS: dict[str, str] = {"USDT": "tether", "BTC": "bitcoin"}
-SYMBOLS: dict[str, str] = {"INR": "₹", "USD": "$", "EUR": "€", "GBP": "£", "USDT": "₮", "BTC": "₿"}
-DISPLAY_PLACES: dict[str, int] = {"BTC": 8, "USDT": 2}
+DISPLAY = "USD"
+SYMBOLS: dict[str, str] = {"INR": "₹", "USD": "$"}
+DISPLAY_PLACES: dict[str, int] = {"INR": 2, "USD": 2}
+ONLY_TWO = "Only INR and USD are supported"
+
+
+class UnsupportedCurrencyError(ValueError):
+    """A currency outside BetDoc's two (INR canonical, USD display)."""
 
 
 class CurrencyUnavailableError(RuntimeError):
@@ -107,7 +113,7 @@ class CurrencyService:
     def _check(self, currency: str) -> str:
         code = currency.strip().upper()
         if code not in self.supported:
-            raise ValueError(f"{currency!r} is not a supported currency ({', '.join(self.supported)})")
+            raise UnsupportedCurrencyError(f"{ONLY_TWO} (got {currency!r})")
         return code
 
     def _fresh(self, at: datetime, now: datetime) -> bool:
@@ -182,7 +188,7 @@ class CurrencyService:
         return round_display(Decimal(amount) * quote.rate, quote.quote), quote
 
     async def board(self, db: AsyncSession, now: datetime | None = None) -> dict[str, Any]:
-        """INR per unit of every supported currency (a missing one is reported, not guessed)."""
+        """INR per unit of INR and USD (a missing USD rate is reported, not guessed)."""
         moment = now or datetime.now(UTC)
         rates: dict[str, Any] = {}
         missing: dict[str, str] = {}
@@ -198,35 +204,20 @@ class CurrencyService:
 
     # ------------------------------------------------------------------ refreshing
     async def _fetch(self) -> dict[str, tuple[Decimal, str]]:
-        fiat = [c for c in self.supported if c not in COINGECKO_IDS and c != HOME]
-        crypto = [c for c in self.supported if c in COINGECKO_IDS]
-        found: dict[str, tuple[Decimal, str]] = {}
+        """INR per USD from the ECB reference rate; an empty result when Frankfurter does not answer (never a guess)."""
+        if DISPLAY not in self.supported:
+            return {}
         async with httpx.AsyncClient(timeout=self.settings.CURRENCY_HTTP_TIMEOUT_SECONDS, transport=self.transport,
                                      headers={"User-Agent": "BetDoc-TodarMal/1.0"}) as client:
-            if fiat:
-                try:
-                    resp = await client.get(f"{self.settings.CURRENCY_FIAT_URL.rstrip('/')}/latest", params={"from": HOME, "to": ",".join(fiat)})
-                    resp.raise_for_status()
-                    per_inr: Mapping[str, Any] = resp.json().get("rates", {})
-                    for code in fiat:
-                        units = _decimal(per_inr.get(code))
-                        if units is not None:
-                            found[code] = (Decimal(1) / units, "frankfurter:ecb")
-                except (httpx.HTTPError, ValueError, AttributeError) as exc:
-                    logger.warning("TODAR MAL: fiat rates unavailable (%s)", type(exc).__name__)
-            if crypto:
-                try:
-                    resp = await client.get(f"{self.settings.CURRENCY_CRYPTO_URL.rstrip('/')}/simple/price",
-                                            params={"ids": ",".join(COINGECKO_IDS[c] for c in crypto), "vs_currencies": "inr"})
-                    resp.raise_for_status()
-                    body: Mapping[str, Any] = resp.json()
-                    for code in crypto:
-                        inr = _decimal((body.get(COINGECKO_IDS[code]) or {}).get("inr"))
-                        if inr is not None:
-                            found[code] = (inr, "coingecko")
-                except (httpx.HTTPError, ValueError, AttributeError) as exc:
-                    logger.warning("TODAR MAL: crypto rates unavailable (%s)", type(exc).__name__)
-        return found
+            try:
+                resp = await client.get(f"{self.settings.CURRENCY_FIAT_URL.rstrip('/')}/latest", params={"from": HOME, "to": DISPLAY})
+                resp.raise_for_status()
+                per_inr: Mapping[str, Any] = resp.json().get("rates", {})
+            except (httpx.HTTPError, ValueError, AttributeError) as exc:
+                logger.warning("TODAR MAL: the USD reference rate is unavailable (%s); USD figures stay hidden until it returns", type(exc).__name__)
+                return {}
+        units = _decimal(per_inr.get(DISPLAY))
+        return {DISPLAY: (Decimal(1) / units, "frankfurter:ecb")} if units is not None else {}
 
     async def store(self, db: AsyncSession, rates: Mapping[str, tuple[Decimal, str]], now: datetime) -> dict[str, InrRate]:
         out: dict[str, InrRate] = {}
@@ -240,9 +231,15 @@ class CurrencyService:
                                                             set_={"rate": rate, "provider": provider[:64], "last_updated_at": now}))
                 cache[f"{base}_{quote}"] = json.dumps({"rate": str(rate), "as_of": now.isoformat(), "provider": provider[:64]})
             out[code] = InrRate(code, inr_per_unit, now, provider)
+        # Group 98: rates for currencies BetDoc no longer carries (EUR, GBP, USDT, BTC) are purged as each refresh lands
+        await db.execute(delete(CurrencyExchangeRate).where(or_(CurrencyExchangeRate.base_currency.not_in(self.supported),
+                                                                 CurrencyExchangeRate.quote_currency.not_in(self.supported))))
         await db.commit()
         if self.redis is not None and cache:
             try:
+                stale = [f for f in await self.redis.hkeys(self.settings.CURRENCY_CACHE_KEY) if f not in cache]
+                if stale:
+                    await self.redis.hdel(self.settings.CURRENCY_CACHE_KEY, *stale)
                 await self.redis.hset(self.settings.CURRENCY_CACHE_KEY, mapping=cache)
             except (RedisError, OSError):
                 logger.warning("TODAR MAL: the rate cache is unwritable; the table still holds the rates")

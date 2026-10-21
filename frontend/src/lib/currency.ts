@@ -1,22 +1,22 @@
 /**
- * TODAR MAL's currency desk and the Section 115BBJ estimator (backend `app/api/v1/currency_tax.py`).
- * Developed for Amit Ashok Kumar Patnaik. Moved out of the Paper Trading Sandbox when Group 97 retired it.
+ * TODAR MAL's two-currency engine and the Section 115BBJ estimator (backend `app/api/v1/currency_tax.py`).
+ * Developed for Amit Ashok Kumar Patnaik. Group 98: INR is canonical, USD a display conversion; nothing else.
  *
- * Money is INR on the wire; the display currency is converted with TODAR MAL's rate board, never a guessed constant.
+ * Money is INR on the wire; USD is converted with TODAR MAL's ECB rate, never a guessed constant: with no fresh rate
+ * the board reports USD missing and amounts stay in rupees.
  */
 import { apiClient } from "../api/client";
 import { invalidate, useResource } from "./resource";
 
-export const SUPPORTED_CURRENCIES = ["INR", "USD", "EUR", "GBP", "USDT", "BTC"] as const;
+export const SUPPORTED_CURRENCIES = ["INR", "USD"] as const;
 export type CurrencyCode = (typeof SUPPORTED_CURRENCIES)[number];
 export const CURRENCY_LABELS: Record<CurrencyCode, { symbol: string; name: string }> = {
-  INR: { symbol: "₹", name: "Indian Rupee (Parimatch primary)" },
-  USD: { symbol: "$", name: "US Dollar (Pinnacle benchmark)" },
-  EUR: { symbol: "€", name: "Euro (Betfair Exchange)" },
-  GBP: { symbol: "£", name: "British Pound" },
-  USDT: { symbol: "₮", name: "Tether (Stake crypto)" },
-  BTC: { symbol: "₿", name: "Bitcoin" },
+  INR: { symbol: "₹", name: "Indian Rupee (canonical)" },
+  USD: { symbol: "$", name: "US Dollar (display, ECB reference rate)" },
 };
+
+export const isCurrencyCode = (value: unknown): value is CurrencyCode =>
+  typeof value === "string" && (SUPPORTED_CURRENCIES as readonly string[]).includes(value);
 
 export interface FxBoard {
   base: "INR";

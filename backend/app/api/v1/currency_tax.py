@@ -1,9 +1,10 @@
-"""TODAR MAL's exchange rates and the Section 115BBJ estimator (Group 97: moved out of the retired Paper Trading Sandbox).
+"""TODAR MAL's two-currency engine (INR canonical, USD display) and the Section 115BBJ estimator (Groups 97-98).
 
 Developed for Amit Ashok Kumar Patnaik. Every route needs a signed-in user; forcing a provider refresh is admin-only.
 
-* ``GET  /currency/rate``, ``/currency/convert``, ``/currency/board``; ``POST /currency/refresh`` (admin): live FX,
-  never a guessed constant (503 when no fresh rate exists)
+* ``GET  /currency/rate``, ``/currency/convert``, ``/currency/board``; ``POST /currency/refresh`` (admin): INR and USD only
+  (any other code: 422 "Only INR and USD are supported"); the ECB reference rate, never a guessed constant (503 when no
+  fresh USD rate exists)
 * ``GET  /tax/estimate``: 30% TDS on one bet's net winnings (Section 115BBJ / 194BA)
 
 The real-money tax certificate stays at ``/real-money/tax-certificate``.
@@ -22,7 +23,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.deps import CurrentAdmin, CurrentUser, get_db
 from app.core.config import Settings, get_settings
 from app.schemas.currency_tax import ConversionRead, CurrencyBoardRead, CurrencyRateRead, TaxEstimateResponse
-from app.services.currency_service import CurrencyService, CurrencyUnavailableError
+from app.services.currency_service import ONLY_TWO, CurrencyService, CurrencyUnavailableError, UnsupportedCurrencyError
 from app.services.twin.vetting import developer_credit
 
 router = APIRouter(tags=["Currency & Tax (TODAR MAL)"])
@@ -39,16 +40,23 @@ def _fx_down(exc: CurrencyUnavailableError) -> HTTPException:
     return HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, str(exc))
 
 
+def _only_two(*codes: str) -> None:
+    """Refuse any code but INR and USD before anything is looked up."""
+    if any(c.strip().upper() not in ("INR", "USD") for c in codes):
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, ONLY_TWO)
+
+
 # ================================================================ currency
 @router.get("/currency/rate", response_model=CurrencyRateRead, summary="Get Live FX Rate")
 async def get_fx_rate(request: Request, db: Db, settings: AppSettings, current_user: CurrentUser,  # noqa: ARG001
                       base: Annotated[str, Query(min_length=3, max_length=8)] = "USD",
                       quote: Annotated[str, Query(min_length=3, max_length=8)] = "INR") -> CurrencyRateRead:
     """Quote units per one base unit, from a fresh rate (never a guessed constant: 503 when none is fresh)."""
+    _only_two(base, quote)
     try:
         rate = await CurrencyService(settings, _redis(request)).get_exchange_rate(db, base, quote, datetime.now(UTC))
-    except ValueError as exc:
-        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, str(exc)) from exc
+    except UnsupportedCurrencyError as exc:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, ONLY_TWO) from exc
     except CurrencyUnavailableError as exc:
         raise _fx_down(exc) from exc
     return CurrencyRateRead(base_currency=rate.base, quote_currency=rate.quote, rate=float(rate.rate), last_updated_at=rate.as_of,
@@ -60,10 +68,11 @@ async def convert(request: Request, db: Db, settings: AppSettings, current_user:
                   amount: Annotated[float, Query(ge=0, le=1e12)],
                   from_currency: Annotated[str, Query(alias="from", min_length=3, max_length=8)] = "INR",
                   to_currency: Annotated[str, Query(alias="to", min_length=3, max_length=8)] = "USD") -> ConversionRead:
+    _only_two(from_currency, to_currency)
     try:
         converted, rate = await CurrencyService(settings, _redis(request)).convert(db, Decimal(str(amount)), from_currency, to_currency, datetime.now(UTC))
-    except ValueError as exc:
-        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, str(exc)) from exc
+    except UnsupportedCurrencyError as exc:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, ONLY_TWO) from exc
     except CurrencyUnavailableError as exc:
         raise _fx_down(exc) from exc
     return ConversionRead(amount=amount, from_currency=rate.base, to_currency=rate.quote, converted=float(converted), rate=float(rate.rate),

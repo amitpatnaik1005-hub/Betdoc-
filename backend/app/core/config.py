@@ -634,13 +634,14 @@ class Settings(BaseSettings):
     KALSHI_BASE_URL: str = "https://api.elections.kalshi.com/trade-api/v2"
     MANIFOLD_BASE_URL: str = "https://api.manifold.markets/v0"
 
-    # ---- Multi-currency (TODAR MAL) and the Section 115BBJ ledger (Group 80; the Paper Trading Sandbox was retired in Group 97) ----
-    CURRENCY_SUPPORTED: List[str] = Field(default_factory=lambda: ["INR", "USD", "EUR", "GBP", "USDT", "BTC"])
+    # ---- TODAR MAL's two-currency engine and the Section 115BBJ ledger (Group 98: INR canonical, USD for display only) ----
+    # Every stored amount, stake, payout and TDS figure is INR; USD is a display conversion at the ECB reference rate.
+    # No fresh rate means no USD figure: nothing falls back to a guessed constant.
+    CURRENCY_SUPPORTED: List[str] = Field(default_factory=lambda: ["INR", "USD"])
     CURRENCY_CACHE_KEY: str = "fx:rates:latest"  # Redis hash: "<BASE>_<QUOTE>" -> {"rate", "as_of", "provider"}
     CURRENCY_MAX_AGE_SECONDS: int = Field(default=6 * 3600, ge=60)  # an older rate is refused, never shown as current
     CURRENCY_REFRESH_SECONDS: float = Field(default=900.0, ge=60)
-    CURRENCY_FIAT_URL: str = "https://api.frankfurter.app"  # ECB reference rates (USD, EUR, GBP vs INR)
-    CURRENCY_CRYPTO_URL: str = "https://api.coingecko.com/api/v3"  # USDT and BTC in INR
+    CURRENCY_FIAT_URL: str = "https://api.frankfurter.app"  # ECB reference rate (USD vs INR)
     CURRENCY_HTTP_TIMEOUT_SECONDS: float = Field(default=6.0, gt=0)
 
     # ---- Real-Money Live Desk, Parimatch execution gateway, SHIVAJI circuit breaker (Group 95) ----
@@ -778,6 +779,14 @@ class Settings(BaseSettings):
         if not v.get_secret_value().startswith(_ASYNC_DB_PREFIXES):
             raise ValueError("DATABASE_URL must use an async driver: postgresql+asyncpg:// (or sqlite+aiosqlite:// in tests)")
         return v
+
+    @field_validator("CURRENCY_SUPPORTED")
+    @classmethod
+    def validate_two_currencies(cls, v: list[str]) -> list[str]:
+        codes = [c.strip().upper() for c in v]
+        if "INR" not in codes or set(codes) - {"INR", "USD"}:
+            raise ValueError("CURRENCY_SUPPORTED: BetDoc runs on INR (canonical) and USD (display) only")
+        return list(dict.fromkeys(codes))
 
     @field_validator("QUOTA_GUARD_WARN_FRACTION")
     @classmethod

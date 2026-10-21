@@ -3,8 +3,8 @@ Currency, tax and leg-translation tests (Group 80's TODAR MAL pieces, kept when 
 Developed for Amit Ashok Kumar Patnaik | BetDoc.
 
 * the pure pieces: Section 115BBJ and the Indian financial year, Ashoka's leg translation (the real-money desk uses it);
-* TODAR MAL: rates from Frankfurter and CoinGecko (a mock transport) into the table and ``fx:rates:latest``, cross
-  rates through INR, the execution FX hash first, failing closed when no provider answers (SQLite and, with
+* TODAR MAL: INR per USD from Frankfurter (a mock transport) into the table and ``fx:rates:latest``; only INR and
+  USD (Group 98), the execution FX hash first, failing closed when no provider answers (SQLite and, with
   ``TEST_POSTGRES_URL``, PostgreSQL);
 * the API at its new home (``/currency``, ``/tax``) through ``httpx.ASGITransport(app=app)``; the Celery beat; the roster.
 """
@@ -25,7 +25,7 @@ import pytest
 import pytest_asyncio
 from redis.asyncio import Redis
 from redis.exceptions import RedisError
-from sqlalchemy import CheckConstraint, MetaData, Table, func, select
+from sqlalchemy import CheckConstraint, MetaData, Table, delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.pool import NullPool, StaticPool
 
@@ -40,7 +40,7 @@ from app.models.control_panel import SystemSettingsModel
 from app.models.tax_and_fx import CurrencyExchangeRate, TaxLedgerEntry
 from app.models.the_hive import LegendaryBot
 from app.services.commander_supervisor import PROBES
-from app.services.currency_service import CurrencyService, CurrencyUnavailableError
+from app.services.currency_service import CurrencyService, CurrencyUnavailableError, UnsupportedCurrencyError
 
 DEVELOPER = "Amit Ashok Kumar Patnaik"
 TEST_REDIS_URL = os.environ["TEST_REDIS_URL"]  # forced onto the isolated test database by tests/conftest.py
@@ -183,53 +183,57 @@ def test_ashoka_leg_translation() -> None:
         translate(None, "Match Odds", "OVER")
 
 
-def _fx_transport(calls: list[str], *, fiat: bool = True, crypto: bool = True) -> httpx.MockTransport:
+def _fx_transport(calls: list[str], *, up: bool = True) -> httpx.MockTransport:
     def handler(request: httpx.Request) -> httpx.Response:
         calls.append(request.url.host)
-        if request.url.host == "api.frankfurter.app":
-            if not fiat:
-                return httpx.Response(503)
-            assert request.url.params["from"] == "INR"
-            return httpx.Response(200, json={"base": "INR", "rates": {"USD": 0.012, "EUR": 0.0110, "GBP": 0.0095}})
-        if not crypto:
-            return httpx.Response(429)
-        return httpx.Response(200, json={"tether": {"inr": 83.9}, "bitcoin": {"inr": 5600000}})
+        assert request.url.host == "api.frankfurter.app"  # the ECB rate is the only provider (Group 98: no CoinGecko)
+        if not up:
+            return httpx.Response(503)
+        assert (request.url.params["from"], request.url.params["to"]) == ("INR", "USD")
+        # Frankfurter may answer with more than asked: anything but USD is ignored
+        return httpx.Response(200, json={"base": "INR", "rates": {"USD": 0.012, "EUR": 0.0110}})
     return httpx.MockTransport(handler)
 
 
-async def test_currency_service_refresh_cache_and_cross_rates(async_session: AsyncSession, redis: Redis) -> None:
+async def test_currency_service_refresh_cache_and_two_currencies(async_session: AsyncSession, redis: Redis) -> None:
     settings = get_settings()
     calls: list[str] = []
     svc = CurrencyService(settings, redis, transport=_fx_transport(calls))
     now = datetime.now(UTC)
-    usd = await svc.get_exchange_rate(async_session, "USD", "INR", now)  # nothing cached: one refresh from the providers
+    # Rates left by the multi-currency era are purged by the first refresh
+    async_session.add(CurrencyExchangeRate(base_currency="EUR", quote_currency="INR", rate=Decimal("91.0"), provider="frankfurter:ecb", last_updated_at=now))
+    await async_session.commit()
+    await redis.hset(settings.CURRENCY_CACHE_KEY, "BTC_INR", json.dumps({"rate": "5600000", "as_of": now.isoformat(), "provider": "coingecko"}))
+
+    usd = await svc.get_exchange_rate(async_session, "USD", "INR", now)  # nothing cached: one refresh from Frankfurter
     assert math.isclose(float(usd.rate), 1 / 0.012, rel_tol=1e-9) and usd.provider == "frankfurter:ecb"
-    assert sorted(set(calls)) == ["api.coingecko.com", "api.frankfurter.app"]
+    assert set(calls) == {"api.frankfurter.app"}
     cached = json.loads(await redis.hget(settings.CURRENCY_CACHE_KEY, "USD_INR"))
     assert settings.CURRENCY_CACHE_KEY == "fx:rates:latest" and Decimal(cached["rate"]) > 83
+    assert set(await redis.hkeys(settings.CURRENCY_CACHE_KEY)) == {"USD_INR", "INR_USD"}
+    rows = (await async_session.execute(select(CurrencyExchangeRate.base_currency, CurrencyExchangeRate.quote_currency))).all()
+    assert sorted(tuple(r) for r in rows) == [("INR", "USD"), ("USD", "INR")]  # USD both ways, nothing else
+
     calls.clear()
-    eur_usd = await svc.get_exchange_rate(async_session, "EUR", "USD", now)  # a cross rate through INR, from the cache
-    assert calls == [] and math.isclose(float(eur_usd.rate), 0.012 / 0.0110, rel_tol=1e-9)
-    btc, quote = await svc.convert(async_session, Decimal("1120000"), "INR", "BTC", now)
-    assert btc == Decimal("0.20000000") and quote.provider == "coingecko"
-    rows = (await async_session.execute(select(func.count()).select_from(CurrencyExchangeRate))).scalar_one()
-    assert rows == 10  # five currencies, both directions
+    usd_back, quote = await svc.convert(async_session, Decimal("1000"), "INR", "USD", now)
+    assert calls == [] and usd_back == Decimal("12.00") and quote.provider == "frankfurter:ecb"
     await redis.delete(settings.CURRENCY_CACHE_KEY)
-    from_table = await svc.get_exchange_rate(async_session, "GBP", "INR", now)
-    assert calls == [] and math.isclose(float(from_table.rate), 1 / 0.0095, rel_tol=1e-6)
+    from_table = await svc.get_exchange_rate(async_session, "USD", "INR", now)
+    assert calls == [] and math.isclose(float(from_table.rate), 1 / 0.012, rel_tol=1e-6)
     board = await svc.board(async_session, now)
-    assert set(board["rates"]) == {"INR", "USD", "EUR", "GBP", "USDT", "BTC"} and board["missing"] == {}
-    # the execution FX hash wins: the rates real money is converted with
+    assert set(board["rates"]) == {"INR", "USD"} and board["missing"] == {} and board["rates"]["USD"]["symbol"] == "$"
+    # the execution FX hash wins: the rate real money is converted with
     await redis.hset(settings.FX_RATES_KEY, "USD", json.dumps({"inr_per_unit": "84.25", "as_of": now.timestamp(), "source": "admin"}))
     execution = await svc.get_exchange_rate(async_session, "USD", "INR", now)
     assert execution.rate == Decimal("84.25") and execution.provider.startswith("execution:")
-    with pytest.raises(ValueError, match="not a supported currency"):
-        await svc.get_exchange_rate(async_session, "JPY", "INR", now)
+    for code in ("EUR", "GBP", "USDT", "BTC", "JPY"):
+        with pytest.raises(UnsupportedCurrencyError, match="Only INR and USD are supported"):
+            await svc.get_exchange_rate(async_session, code, "INR", now)
 
 
 async def test_currency_service_fails_closed(async_session: AsyncSession, redis: Redis) -> None:
     calls: list[str] = []
-    svc = CurrencyService(get_settings(), redis, transport=_fx_transport(calls, fiat=False, crypto=False))
+    svc = CurrencyService(get_settings(), redis, transport=_fx_transport(calls, up=False))
     with pytest.raises(CurrencyUnavailableError):
         await svc.get_exchange_rate(async_session, "USD", "INR")  # never a guessed constant
     assert calls and (await async_session.execute(select(func.count()).select_from(CurrencyExchangeRate))).scalar_one() == 0
@@ -277,21 +281,25 @@ async def test_currency_refresh_is_admin_only_and_fails_closed(api: dict[str, An
     client: httpx.AsyncClient = api["client"]
 
     async def fake_fetch(self: CurrencyService) -> dict[str, tuple[Decimal, str]]:
-        return {"USD": (Decimal("83.50"), "frankfurter:ecb"), "BTC": (Decimal("5600000"), "coingecko")}
+        return {"USD": (Decimal("83.50"), "frankfurter:ecb")}
 
     assert (await client.post("/api/v1/currency/refresh")).status_code == 403
     monkeypatch.setattr(CurrencyService, "_fetch", fake_fetch)
     api["as_role"]("ADMIN")
     board = (await client.post("/api/v1/currency/refresh")).json()
-    assert board["rates"]["USD"]["inr_per_unit"] == 83.5 and board["rates"]["BTC"]["symbol"] == "₿"
-    assert set(board["missing"]) == {"EUR", "GBP", "USDT"} and board["developer_credit"] == DEVELOPER
+    assert set(board["rates"]) == {"INR", "USD"} and board["rates"]["USD"]["inr_per_unit"] == 83.5
+    assert board["missing"] == {} and board["developer_credit"] == DEVELOPER
 
     async def nothing(self: CurrencyService) -> dict[str, tuple[Decimal, str]]:
         return {}
 
     monkeypatch.setattr(CurrencyService, "_fetch", nothing)
-    down = await client.get("/api/v1/currency/rate?base=EUR&quote=INR")
-    assert down.status_code == 503 and "EUR" in down.json()["detail"]
+    await api["redis"].delete(get_settings().CURRENCY_CACHE_KEY)
+    async with api["sessions"]() as s:
+        await s.execute(delete(CurrencyExchangeRate))
+        await s.commit()
+    down = await client.get("/api/v1/currency/rate?base=USD&quote=INR")
+    assert down.status_code == 503 and "USD" in down.json()["detail"]  # no fresh rate: refused, never guessed
 
 
 async def test_tds_estimator_lives_at_its_new_address(api: dict[str, Any]) -> None:

@@ -1,20 +1,20 @@
 /**
- * The display currency the whole app shows money in (INR on the wire, converted with TODAR MAL's rate board).
- * Developed for Amit Ashok Kumar Patnaik. Group 97 moved it out of the retired Paper Trading store; a choice saved
- * there is carried over once.
+ * The display currency the whole app shows money in: INR (canonical) or USD (display, at TODAR MAL's ECB rate).
+ * Developed for Amit Ashok Kumar Patnaik. Group 98: two currencies, one click between them. A choice saved before
+ * (including one from the retired Paper Trading store) is kept when it is INR or USD, else reset to INR.
  */
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
-import { SUPPORTED_CURRENCIES, type CurrencyCode } from "../lib/currency";
+import { isCurrencyCode, type CurrencyCode } from "../lib/currency";
 
 const LEGACY_KEY = "betdoc-paper-trading-storage";
 
-/** The display currency the retired paper store persisted, if any (storage can be unavailable: then INR). */
+/** The display currency the retired paper store persisted, if it is still one of the two (storage can be unavailable). */
 function legacyChoice(): CurrencyCode {
   try {
     const raw = typeof window !== "undefined" ? window.localStorage.getItem(LEGACY_KEY) : null;
     const saved: unknown = raw ? JSON.parse(raw)?.state?.displayCurrency : null;
-    return (SUPPORTED_CURRENCIES as readonly string[]).includes(saved as string) ? (saved as CurrencyCode) : "INR";
+    return isCurrencyCode(saved) ? saved : "INR";
   } catch {
     return "INR";
   }
@@ -23,14 +23,23 @@ function legacyChoice(): CurrencyCode {
 interface CurrencyState {
   displayCurrency: CurrencyCode;
   setDisplayCurrency: (currency: CurrencyCode) => void;
+  toggleCurrency: () => void;
 }
 
 export const useCurrencyStore = create<CurrencyState>()(
   persist(
     (set) => ({
       displayCurrency: legacyChoice(),
-      setDisplayCurrency: (currency) => set({ displayCurrency: currency }),
+      setDisplayCurrency: (currency) => set({ displayCurrency: isCurrencyCode(currency) ? currency : "INR" }),
+      toggleCurrency: () => set((s) => ({ displayCurrency: s.displayCurrency === "INR" ? "USD" : "INR" })),
     }),
-    { name: "betdoc-display-currency" },
+    {
+      name: "betdoc-display-currency",
+      // A stored EUR, GBP, USDT or BTC (from before Group 98) falls back to INR instead of breaking the display
+      merge: (persisted, current) => {
+        const saved = (persisted as Partial<CurrencyState> | undefined)?.displayCurrency;
+        return { ...current, displayCurrency: isCurrencyCode(saved) ? saved : "INR" };
+      },
+    },
   ),
 );

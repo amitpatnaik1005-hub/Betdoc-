@@ -1,11 +1,11 @@
 /**
- * Global Currency Selector (TODAR MAL, Group 80).
- * Developed for Amit Ashok Kumar Patnaik | BetDoc Fleet.
+ * The one-click display-currency toggle: ₹ INR (canonical) ⇄ $ USD (display) (TODAR MAL, Groups 80 and 98).
+ * Developed for Amit Ashok Kumar Patnaik | BetDoc.
  *
- * Picks the desk's display currency. Ledgers stay in INR (Parimatch's capital currency); figures are converted for
- * display with TODAR MAL's live rate board. A currency without a fresh rate is marked and shows rupees instead.
+ * Ledgers stay in INR; USD figures are converted with TODAR MAL's ECB reference rate. When that rate is not fresh the
+ * toggle says so and the app keeps showing rupees (never a guessed rate).
  */
-import { CURRENCY_LABELS, SUPPORTED_CURRENCIES, useFxBoard, type CurrencyCode } from "../../lib/currency";
+import { CURRENCY_LABELS, useFxBoard, type CurrencyCode } from "../../lib/currency";
 import { MOCK_AUTH } from "../../store/useAuthStore";
 import { useCurrencyStore } from "../../store/useCurrencyStore";
 
@@ -18,31 +18,36 @@ interface CurrencySelectorProps {
 
 export const CurrencySelector = ({ value, onSelect, label = "Display currency" }: CurrencySelectorProps) => {
   const display = useCurrencyStore((s) => s.displayCurrency);
-  const setDisplay = useCurrencyStore((s) => s.setDisplayCurrency);
+  const toggle = useCurrencyStore((s) => s.toggleCurrency);
   const board = useFxBoard(!MOCK_AUTH);
   const selected = value ?? display;
-  const missing = board.data?.missing ?? {};
+  const next: CurrencyCode = selected === "INR" ? "USD" : "INR";
+  const usdMissing = Boolean(board.data?.missing.USD);
 
-  const choose = (code: CurrencyCode) => {
-    if (onSelect) onSelect(code);
-    else setDisplay(code);
+  const handleToggle = () => {
+    if (onSelect) onSelect(next);
+    else toggle();
   };
 
+  const title = [
+    `${label}: ${CURRENCY_LABELS[selected].name}.`,
+    selected === "USD" && usdMissing ? "No fresh USD rate: amounts are shown in rupees until it returns." : null,
+    `Click for ${CURRENCY_LABELS[next].symbol} ${next}.`,
+  ].filter(Boolean).join(" ");
+
   return (
-    <label className="inline-flex items-center gap-1.5 rounded-full bg-stone-100 px-3 py-1.5 text-[11px] font-medium text-stone-600 dark:bg-stone-800 dark:text-stone-300" title={CURRENCY_LABELS[selected].name}>
-      <span className="material-symbols-outlined text-[15px] text-[#C89B3C] dark:text-[#E3BE63]" aria-hidden>currency_exchange</span>
-      <span className="sr-only">{label}</span>
-      <select
-        value={selected}
-        onChange={(e) => choose(e.target.value as CurrencyCode)}
-        className="cursor-pointer bg-transparent font-mono text-[11px] text-stone-800 focus:outline-none dark:text-stone-100"
-      >
-        {SUPPORTED_CURRENCIES.map((code) => (
-          <option key={code} value={code} className="bg-white text-stone-800 dark:bg-stone-900 dark:text-stone-100">
-            {CURRENCY_LABELS[code].symbol} {code}{missing[code] ? " (no rate)" : ""}
-          </option>
-        ))}
-      </select>
-    </label>
+    <button
+      type="button"
+      onClick={handleToggle}
+      aria-label={`${label}: ${selected}. Switch to ${next}`}
+      title={title}
+      className="inline-flex items-center gap-1.5 rounded-full bg-stone-100 px-3 py-1.5 text-[11px] font-semibold tracking-wide text-stone-700 transition-[background-color,transform] duration-200 hover:bg-stone-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color-mix(in_srgb,var(--accent)_50%,transparent)] active:scale-95 dark:bg-stone-800 dark:text-stone-200 dark:hover:bg-stone-700"
+    >
+      <span className="material-symbols-outlined text-[14px] text-[#C89B3C] dark:text-[#E3BE63]" aria-hidden>currency_exchange</span>
+      <span className="font-mono font-bold">{CURRENCY_LABELS[selected].symbol} {selected}</span>
+      <span className="text-[10px] font-medium text-stone-400 dark:text-stone-500">
+        {selected === "INR" ? "base" : usdMissing ? "no rate · ₹ shown" : "display"}
+      </span>
+    </button>
   );
 };

@@ -2,8 +2,8 @@
 TODAR MAL's exchange-rate refresh (Group 80; the paper settlement task beside it was retired in Group 97).
 Developed for Amit Ashok Kumar Patnaik.
 
-* ``currency.refresh_rates`` (every ``CURRENCY_REFRESH_SECONDS``, 15 min): the supported currencies' INR rates from
-  Frankfurter (ECB) and CoinGecko into the table and the ``fx:rates:latest`` cache.
+* ``currency.refresh_rates`` (every ``CURRENCY_REFRESH_SECONDS``, 15 min): INR per USD from the ECB reference rate
+  (Frankfurter) into the table and the ``fx:rates:latest`` cache (Group 98: INR and USD only).
 
 A Redis lock keeps one run at a time; a run the beat could not start in time expires unrun.
 """
