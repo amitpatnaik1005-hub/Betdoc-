@@ -7,6 +7,8 @@ Developed for Amit Ashok Kumar Patnaik.
     POST /backups/{id}/verify                           integrity check or dry-run restore (admin)
     POST /backups/{id}/pin                              pin or unpin: a pinned snapshot is never pruned (admin)
     POST /backups/prune                                 apply retention: delete old unpinned files (admin)
+    GET  /clv-warehouse                                 Group 93: the user's settled real slips, CLV, P&L (INR + USD), calibration
+    POST /clv-warehouse/scores                          record a final score and settle what it decides (admin)
 
 A snapshot holds every table, sensitive ones included (a restore needs them): it is only ever written sealed, and no
 endpoint returns its contents.
@@ -20,7 +22,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.deps import CurrentAdmin, get_db
+from app.api.deps import CurrentAdmin, CurrentUser, get_db
 from app.core.config import Settings, get_settings, settings
 from app.domain.archive.errors import ArchiveDomainError, TableNotFoundError
 from app.domain.archive.manager import DEFAULT_PAGE_LIMIT, MAX_PAGE_LIMIT, ArchiveManager
@@ -32,10 +34,14 @@ from app.schemas.archive import (
     BackupVaultDashboardResponse,
     BackupVerifyRequest,
     BackupVerifyResponse,
+    ClvWarehouseDashboardResponse,
+    ClvWarehouseScoreRecordedResponse,
     TableDataResponse,
     TableSummaryRead,
 )
+from app.schemas.ashoka import ScoreIn
 from app.services.backup_vault_service import BackupVaultService
+from app.services.clv_warehouse_service import ClvWarehouseService
 
 logger = logging.getLogger("betdoc.archive")
 
@@ -142,3 +148,39 @@ async def pin_backup(snapshot_id: UUID, payload: BackupPinRequest, request: Requ
 async def prune_backups(payload: BackupPruneRequest, request: Request, db: DbSession, vault: Vault, cfg: AppSettings, admin: CurrentAdmin) -> BackupVaultDashboardResponse:
     await vault.prune(db, payload.retention_count, by=admin.username)
     return await vault.dashboard(db, getattr(request.app.state, "redis", None), cfg)
+
+
+# ---------------------------------------------------------------- Group 93: historical match, score & CLV warehouse (TODAR MAL)
+_clv_warehouse = ClvWarehouseService()
+
+
+def get_clv_warehouse_service() -> ClvWarehouseService:
+    return _clv_warehouse
+
+
+ClvWarehouse = Annotated[ClvWarehouseService, Depends(get_clv_warehouse_service)]
+
+
+@router.get("/clv-warehouse", response_model=ClvWarehouseDashboardResponse)
+async def clv_warehouse(
+    request: Request,
+    db: DbSession,
+    warehouse: ClvWarehouse,
+    cfg: AppSettings,
+    user: CurrentUser,
+    bookmaker: Annotated[str | None, Query(max_length=16)] = None,
+    sport_key: Annotated[str | None, Query(max_length=64)] = None,
+    limit: Annotated[int | None, Query(ge=1, le=500)] = None,
+) -> ClvWarehouseDashboardResponse:
+    """The signed-in user's settled real slips: CLV, P&L and ROI in INR (USD when a fresh rate is measured), calibration, final scores."""
+    return await warehouse.dashboard(
+        db, getattr(request.app.state, "redis", None), cfg, user_id=user.id, bookmaker=bookmaker, sport_key=sport_key, limit=limit,
+    )
+
+
+@router.post("/clv-warehouse/scores", response_model=ClvWarehouseScoreRecordedResponse)
+async def record_warehouse_score(
+    payload: ScoreIn, request: Request, db: DbSession, warehouse: ClvWarehouse, cfg: AppSettings, admin: CurrentAdmin
+) -> ClvWarehouseScoreRecordedResponse:
+    """Record a final score (as POST /oracle/scores does) and settle every pending slip it decides (admin)."""
+    return await warehouse.record_score(db, getattr(request.app.state, "redis", None), cfg, payload, user_id=admin.id, recorded_by=admin.id)

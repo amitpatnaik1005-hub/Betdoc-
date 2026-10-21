@@ -763,6 +763,17 @@ class Settings(BaseSettings):
     omni_ws_flush_interval_seconds: float = Field(default=1.0, gt=0)
     omni_ws_batch_size: int = Field(default=500, gt=0)
 
+    # ---- Group 93: historical match, score & CLV warehouse (TODAR MAL) -----
+    # Edge tier from the mean CLV of settled slips: SHARP_ALPHA needs both the mean and the beat-close rate;
+    # under CLV_WAREHOUSE_MIN_SAMPLE measured slips the tier is shown but flagged provisional
+    CLV_WAREHOUSE_SHARP_ALPHA_MIN_PCT: float = Field(default=1.5, gt=0.0)
+    CLV_WAREHOUSE_SHARP_BEAT_RATE_MIN: float = Field(default=0.55, gt=0.0, lt=1.0)
+    CLV_WAREHOUSE_POSITIVE_MIN_PCT: float = Field(default=0.15, ge=0.0)  # mean CLV above this: POSITIVE_CLV
+    CLV_WAREHOUSE_ADVERSE_BELOW_PCT: float = Field(default=-0.25, le=0.0)  # mean CLV below this: ADVERSE_DRIFT
+    CLV_WAREHOUSE_MIN_SAMPLE: int = Field(default=30, ge=1)
+    CLV_WAREHOUSE_DEFAULT_LIMIT: int = Field(default=50, ge=1, le=500)  # settled slips listed
+    CLV_WAREHOUSE_RECENT_SCORES: int = Field(default=25, ge=1, le=200)  # final scores listed
+
     @property
     def celery_broker_url(self) -> SecretStr:
         return self.CELERY_BROKER_URL or self.REDIS_URL

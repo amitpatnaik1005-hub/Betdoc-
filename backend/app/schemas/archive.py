@@ -152,3 +152,110 @@ class BackupPruneRequest(ArchiveSchema):
     model_config = ConfigDict(extra="forbid")
 
     retention_count: int = Field(default_factory=_retention_default, ge=1, le=365)
+
+
+# ---------------------------------------------------------------- Group 93: historical match, score & CLV warehouse (TODAR MAL)
+ClvEdgeTierLiteral = Literal["SHARP_ALPHA", "POSITIVE_CLV", "NEUTRAL_LINE", "ADVERSE_DRIFT", "UNMEASURED"]
+
+
+class BookmakerClvBreakdownRead(ArchiveSchema):
+    bookmaker: str
+    settled_bets: int
+    win_rate_pct: float | None = None
+    total_staked_inr: float
+    total_staked_usd: float | None = None
+    net_pnl_inr: float
+    net_pnl_usd: float | None = None
+    roi_pct: float | None = None
+    clv_sample_count: int
+    avg_clv_pct: float | None = None
+    beat_close_rate_pct: float | None = None
+
+
+class SportClvBreakdownRead(ArchiveSchema):
+    sport_key: str  # "multi_sport" for a slip spanning sports, "unknown" when no leg names one
+    settled_bets: int
+    win_rate_pct: float | None = None
+    net_pnl_inr: float
+    net_pnl_usd: float | None = None
+    roi_pct: float | None = None
+    clv_sample_count: int
+    avg_clv_pct: float | None = None
+
+
+class HistoricalSettledBetArchiveRead(ArchiveSchema):
+    bet_id: UUID
+    booking_code: str | None = None
+    bookmaker: str
+    structure: str
+    status: str
+    sport_key: str
+    fixture_summary: str
+    market_summary: str
+    placed_odds: float | None = None
+    closing_odds: float | None = None
+    clv_pct: float | None = None
+    clv_sharp_pct: float | None = None
+    stake_inr: float
+    stake_usd: float | None = None
+    return_inr: float
+    return_usd: float | None = None
+    pnl_inr: float
+    pnl_usd: float | None = None
+    settlement_source: str | None = None
+    root_cause_tag: str | None = None
+    placed_at: datetime
+    settled_at: datetime | None = None
+
+
+class HistoricalFixtureScoreArchiveRead(ArchiveSchema):
+    fixture_id: str
+    home: str
+    away: str
+    sport_key: str | None = None
+    kickoff: datetime | None = None
+    home_goals: int | None = None
+    away_goals: int | None = None
+    status: str
+    source: str
+    recorded_at: datetime
+
+
+class ClvWarehouseDashboardResponse(ArchiveSchema):
+    settled_bets_count: int
+    pending_bets_count: int
+    won_bets_count: int
+    lost_bets_count: int
+    void_bets_count: int
+    win_rate_pct: float | None = None
+    total_staked_inr: float  # turnover of settled, non-void slips
+    total_staked_usd: float | None = None
+    total_return_inr: float
+    total_return_usd: float | None = None
+    net_pnl_inr: float
+    net_pnl_usd: float | None = None
+    roi_pct: float | None = None
+    clv_sample_count: int
+    avg_clv_pct: float | None = None
+    avg_clv_sharp_pct: float | None = None
+    beat_close_rate_pct: float | None = None
+    edge_tier: ClvEdgeTierLiteral
+    edge_tier_provisional: bool
+    edge_tier_min_sample: int
+    calibration_sample_count: int
+    mean_brier_score: float | None = None
+    mean_log_loss: float | None = None
+    archived_scores_count: int
+    inr_per_usd_rate: float | None = None  # None: no fresh measured rate, so no USD figures
+    architect: str
+    by_bookmaker: list[BookmakerClvBreakdownRead]
+    by_sport: list[SportClvBreakdownRead]
+    settled_bets: list[HistoricalSettledBetArchiveRead]
+    recent_scores: list[HistoricalFixtureScoreArchiveRead]
+
+
+class ClvWarehouseScoreRecordedResponse(ArchiveSchema):
+    fixture_id: str
+    settled_legs: int  # legs the score settled just now, across every user's pending slips
+    settled_bets: int
+    dashboard: ClvWarehouseDashboardResponse

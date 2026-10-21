@@ -5,6 +5,7 @@ import { runMutation, useResource } from '../lib/resource';
 import { CommanderHero, MOTIFS } from '../ui/hero';
 import { DivergingBars } from '../ui/charts';
 import { BackupRestoreVaultPanel } from '../components/archive/BackupRestoreVaultPanel';
+import { ClvHistoricalWarehousePanel } from '../components/archive/ClvHistoricalWarehousePanel';
 import { Async, Button, EmptyState, Field, KeyValues, Page, Panel, Pill, Select, StatusBadge, TextInput } from '../ui/kit';
 
 // ---------------------------------------------------------------------------
@@ -184,6 +185,7 @@ export const TheArchive = () => {
         </Async>
       </Panel>
       <BackupRestoreVaultPanel />
+      <ClvHistoricalWarehousePanel />
       <TableBrowser tables={tables} />
       <BacktestLedger />
       <Panel title="Retention notes" icon="info" className="lg:col-span-5">
