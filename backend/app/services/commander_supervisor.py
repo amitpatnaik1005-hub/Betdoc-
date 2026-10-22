@@ -37,6 +37,7 @@ from app.domain.math.models_v2.normal_distribution import NormalDistributionMode
 from app.domain.the_hive import HiveOrchestrator
 from app.models import BetLedger
 from app.models.competitive_intel import CompetitorBotModel
+from app.models.consultant import ConsultantVerdictModel
 from app.models.control_panel import SETTINGS_SINGLETON_ID, SystemSettingsModel
 from app.models.real_money import RealBetTicket, RealTicketStatus
 from app.models.risk import StopLossEventModel
@@ -199,12 +200,15 @@ async def _karna(db: AsyncSession, _: ProbeContext) -> tuple[BotStatus, dict[str
 
 
 async def _ashvatthama(db: AsyncSession, ctx: ProbeContext) -> tuple[BotStatus, dict[str, Any]]:
-    """The consultant and ticket router: real tickets placed and still open, and the live WebSocket lane."""
+    """The BetDoc Consultant (Group 105) and ticket router: verdicts signed in the last 24 hours, real tickets placed and
+    still open, and the live WebSocket lane."""
+    since = datetime.now(UTC) - timedelta(hours=24)
+    verdicts = await _count(db, select(func.count()).select_from(ConsultantVerdictModel).where(ConsultantVerdictModel.signed_at >= since))
     open_tickets = await _count(db, select(func.count()).where(RealBetTicket.status == RealTicketStatus.PLACED.value))
     clients = ctx.ws_clients()
-    summary = f"{_n(open_tickets, 'open real ticket')} · {_n(clients, 'live socket')}"
-    return (BotStatus.WORKING if open_tickets else BotStatus.ONLINE), {
-        "open_real_tickets": open_tickets, "live_clients": clients, "activity_summary": summary}
+    summary = f"{_n(verdicts, 'verdict')} signed in 24h · {_n(open_tickets, 'open real ticket')} · {_n(clients, 'live socket')}"
+    return (BotStatus.WORKING if open_tickets or verdicts else BotStatus.ONLINE), {
+        "verdicts_24h": verdicts, "open_real_tickets": open_tickets, "live_clients": clients, "activity_summary": summary}
 
 
 PROBES: dict[LegendaryBot, Probe] = {

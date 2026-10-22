@@ -127,6 +127,31 @@ def summary_text(label: str, best_book: str, best_odds: float, fair_odds: float 
     return " ".join(parts)[:600]
 
 
+async def measured_shares(db: AsyncSession, redis: Redis, settings: Settings, legs: Sequence[LegCandidate], now: datetime) -> dict[str, Shares]:
+    """leg id -> the measured shares on the leg's own market: the public splits evidence, else BetDoc's own recorded
+    bets (tickets only), else nothing. KARNA's board and the Consultant's TipMaster panel (Group 105) read the same."""
+    from app.domain.popular_picks.trends import crowd_shares  # noqa: PLC0415 - pulls in the trend scan
+    from app.services.twin.intel import read_intel  # noqa: PLC0415
+
+    try:
+        intel = await read_intel(redis, settings, {leg.fixture_id for leg in legs})
+    except (RedisError, OSError):
+        intel = {}
+    crowd = await crowd_shares(db, legs, now)
+    out: dict[str, Shares] = {}
+    for leg in legs:
+        splits = intel.get(leg.fixture_id).public_splits if intel.get(leg.fixture_id) is not None else None  # type: ignore[union-attr]
+        opening = None if splits is None else splits.opening_odds.get(leg.market.key, {}).get(leg.selection)
+        measured = None if splits is None else splits.splits.get(leg.market.key, {}).get(leg.selection)
+        if measured is not None:
+            out[leg.leg_id] = Shares(100.0 * measured.tickets_pct, None if measured.money_pct is None else 100.0 * measured.money_pct, opening, splits.source)  # type: ignore[union-attr]
+        elif leg.leg_id in crowd:
+            out[leg.leg_id] = Shares(100.0 * crowd[leg.leg_id], None, opening, OWN_BETS)
+        else:
+            out[leg.leg_id] = Shares(None, None, opening, None)
+    return out
+
+
 class CompetitiveIntelLiveService:
     """KARNA's live board. Developed for Amit Ashok Kumar Patnaik."""
 
@@ -140,27 +165,7 @@ class CompetitiveIntelLiveService:
             return None
 
     async def _shares(self, db: AsyncSession, redis: Redis, settings: Settings, legs: Sequence[LegCandidate], now: datetime) -> dict[str, Shares]:
-        """leg id -> the measured shares: the public splits evidence, else BetDoc's own recorded bets (tickets only)."""
-        from app.domain.popular_picks.trends import crowd_shares  # noqa: PLC0415 - pulls in the trend scan
-        from app.services.twin.intel import read_intel  # noqa: PLC0415
-
-        try:
-            intel = await read_intel(redis, settings, {leg.fixture_id for leg in legs})
-        except (RedisError, OSError):
-            intel = {}
-        crowd = await crowd_shares(db, legs, now)
-        out: dict[str, Shares] = {}
-        for leg in legs:
-            splits = intel.get(leg.fixture_id).public_splits if intel.get(leg.fixture_id) is not None else None  # type: ignore[union-attr]
-            opening = None if splits is None else splits.opening_odds.get(MARKET, {}).get(leg.selection)
-            measured = None if splits is None else splits.splits.get(MARKET, {}).get(leg.selection)
-            if measured is not None:
-                out[leg.leg_id] = Shares(100.0 * measured.tickets_pct, None if measured.money_pct is None else 100.0 * measured.money_pct, opening, splits.source)  # type: ignore[union-attr]
-            elif leg.leg_id in crowd:
-                out[leg.leg_id] = Shares(100.0 * crowd[leg.leg_id], None, opening, OWN_BETS)
-            else:
-                out[leg.leg_id] = Shares(None, None, opening, None)
-        return out
+        return await measured_shares(db, redis, settings, legs, now)
 
     async def sync_live_consensus(self, db: AsyncSession, redis: Redis | None, settings: Settings, now: datetime | None = None) -> dict[str, Any]:
         from app.services.ashoka_market import load_candidates, market_selection_label  # noqa: PLC0415 - the oracle engine is heavy

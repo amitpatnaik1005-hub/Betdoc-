@@ -3,8 +3,8 @@ from typing import Annotated
 from fastapi import APIRouter, HTTPException, Query, status
 
 from app.api.deps import CurrentUser, DbSession
-from app.domain.dashboard import TipMasterEngine, build_dashboard_summary, fetch_activity_feed
-from app.schemas.dashboard import ActivityEvent, DashboardSummary, TipRecommendation
+from app.domain.dashboard import build_dashboard_summary, fetch_activity_feed
+from app.schemas.dashboard import ActivityEvent, DashboardSummary
 
 router = APIRouter(tags=["dashboard"])
 
@@ -28,7 +28,3 @@ async def get_activity_feed(
 ) -> list[ActivityEvent]:
     return await fetch_activity_feed(current_user.id, db, limit)
 
-
-@router.get("/tips", response_model=list[TipRecommendation])
-async def get_tips(current_user: CurrentUser, db: DbSession) -> list[TipRecommendation]:
-    return await TipMasterEngine().generate_personalized_tips(current_user.id, db)

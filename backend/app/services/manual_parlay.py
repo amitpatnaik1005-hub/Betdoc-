@@ -212,29 +212,42 @@ async def inspect(sessions: async_sessionmaker[AsyncSession], redis: Redis, sett
 
 
 # ================================================================ the 1-click auto-fix (Group 104)
-async def auto_fix(sessions: async_sessionmaker[AsyncSession], redis: Redis, settings: Settings, user_id: uuid.UUID, *, leg_ids: Sequence[str], kind: str | None,
-                   skin: str, bankroll: Decimal | None, now: datetime) -> dict[str, Any]:
-    """Replace the slip's offending leg with the alternative the fortress rates highest.
+@dataclass(frozen=True, slots=True)
+class Cure:
+    """The auto-fix's search, recording nothing: the slip as it is, the leg it would replace and why, the alternatives
+    it tried, and the best of them when that one scores higher. The auto-fix inspects the cured slip for real; the
+    Consultant's Doctor (Group 105) prescribes it."""
+
+    current: Trial
+    replaced: dict[str, Any] | None  # {leg_id, label, fixture, reason}; None when nothing costs the slip
+    tried: list[dict[str, Any]]
+    best: Trial | None = None  # the cured slip's trial, only when it out-scores the slip as it is
+    leg_ids: list[str] | None = None  # the cured slip's legs, the replacement in the offender's place
+    replacement: dict[str, Any] | None = None  # the replacement leg's payload
+
+    @property
+    def before(self) -> dict[str, Any]:
+        return {"score": self.current.rating.score, "tier": self.current.rating.tier}
+
+
+async def find_cure(sessions: async_sessionmaker[AsyncSession], redis: Redis, settings: Settings, user_id: uuid.UUID | None, *, leg_ids: Sequence[str],
+                    kind: str | None, book: str | None, bankroll: Decimal | None, now: datetime) -> Cure:
+    """The offending leg and the alternative the fortress rates highest, every run a trial (nothing recorded).
 
     The offender (``choose_offender``): a second leg on one fixture, a negative-EV leg, the heaviest-margin leg, or the
     weakest leg of a vetoed slip. Its alternatives: legs on fixtures the slip does not touch, quoted at the account's
     book with positive EV there, the offender's sport first, best EV first; the top ``MANUAL_PARLAY_AUTOFIX_CANDIDATES``
-    each run through the fortress without being recorded. The best is kept only if it scores higher, and is then
-    inspected for real (its audit is what the slip records). Nothing is invented: every alternative is a quoted leg."""
-    if skin not in SKINS:
-        raise WorkbenchRefusal("UNKNOWN_SKIN", f"skin is one of {', '.join(SKINS)}", 422)
-    book = SKINS[skin][0]
+    each run through the fortress. The best is a cure only if it scores higher. Nothing is invented: every alternative
+    is a quoted leg."""
     leg_ids = list(dict.fromkeys(leg_ids))
     current = await trial(sessions, redis, settings, user_id, leg_ids=leg_ids, kind=kind, book=book, bankroll=bankroll, now=now)
     slip_legs = (current.audit.slip or {}).get("legs", [])
     evs = {leg["leg_id"]: leg.get("ev") for leg in slip_legs}
     margins = {row["leg_id"]: row.get("account_margin") for row in current.margins["legs"]}
     vetoed = any(row["status"] == "FAIL" for row in current.rating.breakdown)
-    before = {"score": current.rating.score, "tier": current.rating.tier}
     offender = choose_offender(leg_ids, evs, margins, {b.code for b in current.rating.badges}, vetoed)
     if offender is None:
-        return {"improved": False, "reason": "NOTHING_TO_FIX", "message": "No leg shares a fixture, is priced at a loss, or carries a heavy margin: nothing to fix.",
-                "before": before, "tried": []}
+        return Cure(current, None, [])
     offender_id, why = offender
     head = next((leg for leg in slip_legs if leg["leg_id"] == offender_id), {})
     sport = str(head.get("sport_key") or "").split("_", 1)[0]
@@ -255,7 +268,7 @@ async def auto_fix(sessions: async_sessionmaker[AsyncSession], redis: Redis, set
             pool.append((str(leg.sport_key or "").split("_", 1)[0] == sport, ev, leg, quote))
     pool.sort(key=lambda t: (not t[0], -t[1]))
     tried: list[dict[str, Any]] = []
-    best: tuple[float, list[str], dict[str, Any]] | None = None
+    best: tuple[Trial, list[str], dict[str, Any]] | None = None
     for _, _, leg, quote in pool[: settings.MANUAL_PARLAY_AUTOFIX_CANDIDATES]:
         swapped = [leg.leg_id if leg_id == offender_id else leg_id for leg_id in leg_ids]
         try:
@@ -264,15 +277,30 @@ async def auto_fix(sessions: async_sessionmaker[AsyncSession], redis: Redis, set
             continue
         view = ashoka_market.leg_payload(leg, quote, now)
         tried.append({"leg_id": leg.leg_id, "label": view["label"], "fixture": view["fixture"], "ev": view["ev"], "score": run.rating.score, "tier": run.rating.tier})
-        if best is None or run.rating.score > best[0]:
-            best = (run.rating.score, swapped, view)
+        if best is None or run.rating.score > best[0].rating.score:
+            best = (run, swapped, view)
     replaced = {"leg_id": offender_id, "label": head.get("label", offender_id), "fixture": head.get("fixture", offender_id.split("|", 1)[0]), "reason": why}
-    if best is None or best[0] <= current.rating.score:
-        message = "No quoted alternative rates higher than the slip as it is." if tried else "No positive-EV leg on another fixture is quoted at this book."
-        return {"improved": False, "reason": "NO_BETTER_LEG", "replaced": replaced, "before": before, "tried": tried, "message": message}
-    inspection = await inspect(sessions, redis, settings, user_id, leg_ids=best[1], kind=kind, skin=skin, bankroll=bankroll, now=now)
-    return {"improved": True, "replaced": replaced, "replacement": best[2], "before": before,
-            "after": {"score": inspection.payload["rating"]["score"], "tier": inspection.payload["rating"]["tier"]}, "tried": tried,
+    if best is None or best[0].rating.score <= current.rating.score:
+        return Cure(current, replaced, tried)
+    return Cure(current, replaced, tried, best[0], best[1], best[2])
+
+
+async def auto_fix(sessions: async_sessionmaker[AsyncSession], redis: Redis, settings: Settings, user_id: uuid.UUID, *, leg_ids: Sequence[str], kind: str | None,
+                   skin: str, bankroll: Decimal | None, now: datetime) -> dict[str, Any]:
+    """Replace the slip's offending leg with the alternative the fortress rates highest (``find_cure``), kept only if it
+    scores higher and then inspected for real: its audit is what the slip records."""
+    if skin not in SKINS:
+        raise WorkbenchRefusal("UNKNOWN_SKIN", f"skin is one of {', '.join(SKINS)}", 422)
+    cure = await find_cure(sessions, redis, settings, user_id, leg_ids=leg_ids, kind=kind, book=SKINS[skin][0], bankroll=bankroll, now=now)
+    if cure.replaced is None:
+        return {"improved": False, "reason": "NOTHING_TO_FIX", "message": "No leg shares a fixture, is priced at a loss, or carries a heavy margin: nothing to fix.",
+                "before": cure.before, "tried": []}
+    if cure.leg_ids is None:
+        message = "No quoted alternative rates higher than the slip as it is." if cure.tried else "No positive-EV leg on another fixture is quoted at this book."
+        return {"improved": False, "reason": "NO_BETTER_LEG", "replaced": cure.replaced, "before": cure.before, "tried": cure.tried, "message": message}
+    inspection = await inspect(sessions, redis, settings, user_id, leg_ids=cure.leg_ids, kind=kind, skin=skin, bankroll=bankroll, now=now)
+    return {"improved": True, "replaced": cure.replaced, "replacement": cure.replacement, "before": cure.before,
+            "after": {"score": inspection.payload["rating"]["score"], "tier": inspection.payload["rating"]["tier"]}, "tried": cure.tried,
             "inspection": inspection.payload}
 
 

@@ -1,5 +1,8 @@
 """ASHVATTHAMA, the consultant and bet-slip architect (Group 80; reshaped in Group 97). Developed for Amit Ashok Kumar Patnaik.
 
+Since Group 105 ASHVATTHAMA runs the BetDoc Consultant (``app.services.consultant``, ``/consultant``): the Doctor, the
+Lawyer and the Consultant on one slip, with TipMaster's crowd comparison, and a sealed verdict.
+
 BetDoc automates no bookmaker (Parimatch publishes no betting API): every real ticket is placed by hand. What remains
 here is where each venue's slip is placed, which the real-money desk's tickets carry. Group 97 retired the paper-mode
 fill simulator and the stand-alone live ticket with the Paper Trading Sandbox.

@@ -8,7 +8,8 @@ import { emergencyStop, resumeTrading, useControls, useDashboardSummary } from '
 import { avatarStatus, formatProbeLatency, useCommanders } from '../lib/commanders';
 import { formatAgo, formatINR, formatInt, formatPct, formatSignedINR, formatTime, humanize } from '../lib/format';
 import { invalidate, useResource } from '../lib/resource';
-import { useExecutionStore, isSelection } from '../store/useExecutionStore';
+import { TIER_STYLE } from '../lib/backtest_and_parlay';
+import { useVerdicts, VERDICT_STYLE } from '../lib/consultant';
 import { useSystemStore } from '../store/useSystemStore';
 import { toast } from '../store/useToastStore';
 import { useUIStore } from '../store/useUIStore';
@@ -50,24 +51,12 @@ interface ActivityEvent {
   metadata: Record<string, unknown>;
 }
 
-interface Tip {
-  tip_id: string;
-  match_ids: string[];
-  market_types: string[];
-  selections: string[];
-  recommended_structure: 'SINGLE' | 'PARLAY';
-  is_parlay: boolean;
-  confidence_score_pct: number;
-  rationale: string;
-  kelly_stake_pct: number;
-}
-
 // Routable sections by commander, for roster click-through.
 const COMMANDER_ROUTE: Record<string, string> = {
   KAUTILYA: '/command-center', ASHOKA: '/oracle', BAJIRAO: '/arena', VIDUR: '/hive', KUMBHA: '/vault',
   PANINI: '/lab', PRATAP: '/core', 'TODAR MAL': '/archive', CHANAKYA: '/vault',
   DRONA: '/lab', KARNA: '/hive', SHIVAJI: '/control-panel',
-  BHEESHMA: '/control-panel', ASHVATTHAMA: '/oracle',
+  BHEESHMA: '/control-panel', ASHVATTHAMA: '/consultant',
 };
 
 /** First numeric/text metric from a commander heartbeat, for the roster subtitle. */
@@ -254,45 +243,29 @@ const ActivityStream = () => {
   );
 };
 
-const TipMaster = () => {
-  const tips = useResource('dashboard:tips', () => apiClient.get<Tip[]>('/dashboard/tips'), { intervalMs: 60_000 });
-  const updateDraftField = useExecutionStore((s) => s.updateDraftField);
-  const openRight = useUIStore((s) => s.openRight);
-
-  const loadSingle = (tip: Tip) => {
-    const selection = tip.selections[0]?.toUpperCase() ?? '';
-    updateDraftField('draftMatchId', tip.match_ids[0] ?? '');
-    if (isSelection(selection)) updateDraftField('draftSelection', selection);
-    openRight();
-    toast.info('Tip added to your bet slip', 'Enter the current price, then execute.');
-  };
-
+// Group 105: TipMaster moved into the BetDoc Consultant, where the measured crowd is set against BetDoc's maths for the
+// slip on the board (its old picks drew their "sharp" probability from a hash). Here: the latest signed verdicts.
+const ConsultantDesk = () => {
+  const verdicts = useVerdicts(5);
+  const navigate = useNavigate();
   return (
-    <Panel title="Tip master" icon="tips_and_updates" className="lg:col-span-5" updatedAt={tips.updatedAt}>
+    <Panel title="BetDoc Consultant" icon="medical_services" className="lg:col-span-5" updatedAt={verdicts.updatedAt}
+           actions={<Button size="sm" variant="ghost" icon="arrow_forward" onClick={() => navigate('/consultant')}>Open</Button>}>
       <Async
-        resource={tips}
-        isEmpty={(rows) => rows.length === 0}
-        empty={<EmptyState icon="lightbulb" title="No tips right now" detail="Tips appear when the engine finds an edge in recent market ticks." />}
+        resource={verdicts}
+        isEmpty={(d) => d.verdicts.length === 0}
+        empty={<EmptyState icon="medical_services" title="No verdict yet" detail="ASHVATTHAMA's Doctor, Lawyer and Consultant examine the slip you build on the Oracle, with TipMaster's crowd comparison." />}
       >
-        {(rows) => (
-          <ul className="flex flex-col gap-3">
-            {rows.slice(0, 6).map((tip) => (
-              <li key={tip.tip_id} className="rounded-xl bg-stone-50 p-3 dark:bg-white/[0.03]">
+        {(d) => (
+          <ul className="flex flex-col gap-2.5">
+            {d.verdicts.map((v) => (
+              <li key={v.report_id} className="rounded-xl bg-stone-50 p-3 dark:bg-white/[0.03]">
                 <div className="flex items-center justify-between gap-2">
-                  <Pill tone={tip.is_parlay ? 'info' : 'accent'}>{tip.recommended_structure}</Pill>
-                  <span className="text-xs tabular-nums text-stone-500">
-                    {formatPct(tip.confidence_score_pct, 0)} confidence · Kelly {formatPct(tip.kelly_stake_pct, 2)}
-                  </span>
+                  <Pill tone={VERDICT_STYLE[v.verdict].tone} icon={VERDICT_STYLE[v.verdict].icon}>{v.title ?? v.verdict}</Pill>
+                  <span className="font-mono text-xs" style={{ color: TIER_STYLE[v.tier].color }}>{Math.round(v.slip_score)} {v.tier}</span>
                 </div>
-                <p className="mt-2 text-sm font-medium text-stone-800 dark:text-stone-100">
-                  {tip.selections.join(' + ')} <span className="text-stone-400">·</span> <span className="font-mono text-xs">{tip.match_ids.join(', ')}</span>
-                </p>
-                <p className="mt-1 text-xs leading-relaxed text-stone-500 dark:text-stone-400">{tip.rationale}</p>
-                {!tip.is_parlay && (
-                  <Button size="sm" variant="ghost" icon="receipt_long" className="mt-2 -ml-2" onClick={() => loadSingle(tip)}>
-                    Load into betslip
-                  </Button>
-                )}
+                <p className="mt-1.5 truncate text-xs text-stone-600 dark:text-stone-300">{v.legs.join(' + ')}</p>
+                <p className="mt-0.5 text-[11px] text-stone-400">{v.bookmaker ?? '—'} @ {v.odds ?? '—'} · {formatAgo(v.signed_at)}{v.seal_holds ? '' : ' · seal broken'}</p>
               </li>
             ))}
           </ul>
@@ -363,7 +336,7 @@ export const CommandCenter = () => {
       <TelemetryMatrix />
       <CommanderRoster />
       <ActivityStream />
-      <TipMaster />
+      <ConsultantDesk />
       <motion.div variants={CARD_VARIANTS} className="lg:col-span-12">
         <MarketBoard />
       </motion.div>

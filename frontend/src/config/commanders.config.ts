@@ -195,7 +195,7 @@ export const COMMANDER_REGISTRY: Readonly<Record<CommanderId, CommanderProfile>>
     id: "ASHVATTHAMA",
     name: "Ashvatthama",
     domain: "Consultant & Bet-Slip Ornament Architect",
-    routePrefixes: ["/consultant"],  // reserved: no page of its own; KUMBHA owns /vault, where real tickets are kept
+    routePrefixes: ["/consultant"],  // Group 105: the BetDoc Consultant (the Doctor, the Lawyer, the Consultant and TipMaster)
     networkProtocol: "HYBRID",
     theme: { primary: "#FB923C", glow: "rgba(251, 146, 60, 0.55)", accent: "#FFEDD5" },
     clearanceLevel: 6,

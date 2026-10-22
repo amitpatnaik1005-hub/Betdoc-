@@ -39,6 +39,7 @@ const TheWire = lazy(() => import('./pages/TheWire').then(m => ({ default: m.The
 const Core = lazy(() => import('./pages/Core').then(m => ({ default: m.Core })));
 const TheHive = lazy(() => import('./pages/TheHive').then(m => ({ default: m.TheHive })));
 const TheOracle = lazy(() => import('./pages/TheOracle').then(m => ({ default: m.TheOracle })));
+const TheConsultant = lazy(() => import('./pages/TheConsultant').then(m => ({ default: m.TheConsultant })));
 const TheArchive = lazy(() => import('./pages/TheArchive').then(m => ({ default: m.TheArchive })));
 const ControlPanel = lazy(() => import('./pages/ControlPanel').then(m => ({ default: m.ControlPanel })));
 
@@ -393,6 +394,7 @@ const NAV_ITEMS: readonly { to: string; label: string; icon: string; bot: Comman
   { to: '/command-center', label: 'Command Center', icon: 'dashboard',       bot: 'KAUTILYA' },
   { to: '/arena',          label: 'The Arena',      icon: 'sports_esports',  bot: 'BAJIRAO'  },
   { to: '/oracle',         label: 'Oracle',         icon: 'auto_awesome',    bot: 'ASHOKA'   },
+  { to: '/consultant',     label: 'BetDoc Consultant', icon: 'medical_services', bot: 'ASHVATTHAMA' },
   { to: '/lab',            label: 'The Lab',        icon: 'science',         bot: 'PANINI'   },
   { to: '/hive',           label: 'The Hive',       icon: 'hive',            bot: 'VIDUR'    },
   { to: '/vault',          label: 'The Vault',      icon: 'account_balance', bot: 'KUMBHA'   },
@@ -786,6 +788,12 @@ const App = () => {
         <Route path="/oracle" element={
           <AnimatedRoute>
             <TheOracle />
+          </AnimatedRoute>
+        } />
+        {/* Group 105: ASHVATTHAMA's BetDoc Consultant (the Doctor, the Lawyer, the Consultant and TipMaster on the slip) */}
+        <Route path="/consultant" element={
+          <AnimatedRoute>
+            <TheConsultant />
           </AnimatedRoute>
         } />
         {/* Group 96: Phantom was retired; its quant toolkit lives in The Lab */}

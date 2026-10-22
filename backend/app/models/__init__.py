@@ -245,3 +245,4 @@ from app.models.competitive_intel_live import BookmakerMarginBenchmark, Competit
 from app.models.emergency_kill_switch import EmergencyKillSwitchAuditModel, EmergencyKillSwitchStateModel  # noqa: E402,F401  (Group 86)
 from app.models.backup_vault import BackupRestoreAuditModel, BackupSnapshotManifestModel  # noqa: E402,F401  (Group 87)
 from app.models.pre_match_odds import PreMatchOddsSnapshotModel  # noqa: E402,F401  (Group 101)
+from app.models.consultant import ConsultantVerdictModel  # noqa: E402,F401  (Group 105)

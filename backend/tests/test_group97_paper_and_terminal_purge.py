@@ -29,6 +29,7 @@ from app.api.deps import get_current_user
 from app.api.v1.router import api_router
 from app.core.celery_app import celery_app
 from app.models import Base, User
+from app.models.consultant import ConsultantVerdictModel
 from app.models.real_money import RealBetTicket, RealTicketStatus
 from app.models.tax_and_fx import CurrencyExchangeRate, TaxLedgerEntry
 from app.models.the_hive import BotStatus, LegendaryBot
@@ -83,7 +84,8 @@ def test_paper_models_are_unmapped_and_the_tax_ledger_stands_alone() -> None:
 async def sessions() -> AsyncIterator[async_sessionmaker[AsyncSession]]:
     engine = create_async_engine("sqlite+aiosqlite:///:memory:", poolclass=StaticPool, connect_args={"check_same_thread": False})
     async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all, tables=[User.__table__, RealBetTicket.__table__, TaxLedgerEntry.__table__, CurrencyExchangeRate.__table__])
+        await conn.run_sync(Base.metadata.create_all, tables=[User.__table__, RealBetTicket.__table__, TaxLedgerEntry.__table__, CurrencyExchangeRate.__table__,
+                                                                  ConsultantVerdictModel.__table__])
     yield async_sessionmaker(engine, expire_on_commit=False)
     await engine.dispose()
 
@@ -116,7 +118,7 @@ async def test_ashvatthama_counts_placed_real_tickets(sessions: async_sessionmak
     ctx = ProbeContext(redis=None, vault_configured=True, ws_clients=lambda: 3)
     async with sessions() as db:
         status, metrics = await PROBES[LegendaryBot.ASHVATTHAMA](db, ctx)
-        assert (status, metrics["open_real_tickets"], metrics["activity_summary"]) == (BotStatus.ONLINE, 0, "0 open real tickets · 3 live sockets")
+        assert (status, metrics["open_real_tickets"], metrics["activity_summary"]) == (BotStatus.ONLINE, 0, "0 verdicts signed in 24h · 0 open real tickets · 3 live sockets")
 
         uid = await _user(db)
         common: dict[str, Any] = {

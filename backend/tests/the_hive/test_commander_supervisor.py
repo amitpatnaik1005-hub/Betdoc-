@@ -28,6 +28,7 @@ from app.domain.integration.models import PredictionRecord
 from app.domain.the_hive import HiveOrchestrator
 from app.models import BetLedger
 from app.models.competitive_intel import CompetitorBotModel
+from app.models.consultant import ConsultantVerdictModel
 from app.models.control_panel import SETTINGS_SINGLETON_ID, SystemSettingsModel
 from app.models.real_money import RealBetTicket
 from app.models.risk import StopLossEventModel
@@ -51,7 +52,7 @@ _TABLES: list[Table] = [
     for model in (
         BotProfileModel, HiveTaskModel, SystemSettingsModel, PredictionRecord, BetLedger, ExperimentModel,
         SmallcaseRegistryModel, StopLossEventModel, BacktestJobModel,
-        ResearchReportModel, CompetitorBotModel, RealBetTicket,
+        ResearchReportModel, CompetitorBotModel, RealBetTicket, ConsultantVerdictModel,
     )
 ]
 DEVELOPER = "Amit Ashok Kumar Patnaik"
@@ -161,7 +162,7 @@ async def test_summaries_state_the_measured_state(factory: async_sessionmaker[As
         assert halted.resource_metrics["activity_summary"] == "Trading halted · daily exposure cap is 0"
 
         router = await probe_single_commander(db, hive, ctx, LegendaryBot.ASHVATTHAMA)
-        assert router.resource_metrics["activity_summary"] == "0 open real tickets · 2 live sockets"
+        assert router.resource_metrics["activity_summary"] == "0 verdicts signed in 24h · 0 open real tickets · 2 live sockets"
 
 
 @pytest.mark.asyncio

@@ -408,6 +408,23 @@ class Settings(BaseSettings):
     # The Chef's Table (Group 104, 5(c)): Ashoka's best vetted slips re-rated through the fortress, served three ways
     CHEF_TABLE_CANDIDATES: int = Field(default=6, ge=3, le=20)
     CHEF_TABLE_CACHE_SECONDS: int = Field(default=180, ge=0, le=3600)
+    # The BetDoc Consultant (Group 105, ASHVATTHAMA, point b.6): the Doctor, the Lawyer and the Consultant on one slip.
+    # A book's rules are the user's to read: BetDoc has no copy of any bookmaker's terms. Each book's maximum payout per
+    # slip (INR) and the clause references below are what the user read on the book's own rules page; nothing is assumed.
+    CONSULTANT_MAX_PAYOUT_INR: dict[str, Decimal] = Field(default_factory=dict)  # canonical book -> maximum payout per slip
+    CONSULTANT_RULE_REFERENCES: dict[str, dict[str, str]] = Field(default_factory=dict)  # canonical book -> rule code -> clause reference
+    # Competitions that can hold a knockout tie (matched in the sport key or league name): extra time and penalties
+    # can decide them, and standard football markets settle on 90 minutes plus stoppage time
+    CONSULTANT_KNOCKOUT_KEYWORDS: list[str] = Field(default_factory=lambda: [
+        "cup", "champs_league", "champions league", "europa", "conference", "copa", "libertadores", "sudamericana", "pokal", "coppa", "playoff",
+    ])
+    # Limited-overs cricket: format -> sport-key fragments, and the ICC playing conditions' minimum overs a side for a result
+    CONSULTANT_CRICKET_FORMATS: dict[str, list[str]] = Field(default_factory=lambda: {
+        "T20": ["t20", "ipl", "big_bash", "psl", "caribbean", "blast"], "ODI": ["odi", "one_day", "icc_world_cup"],
+    })
+    CONSULTANT_CRICKET_MIN_OVERS: dict[str, int] = Field(default_factory=lambda: {"T20": 5, "ODI": 20})
+    CONSULTANT_PALPABLE_EDGE: float = Field(default=0.25, gt=0, lt=10)  # a leg this far over BetDoc's fair value risks the obvious-error rule
+    CONSULTANT_HISTORY_LIMIT: int = Field(default=20, ge=1, le=200)  # signed verdicts listed per request
     # the sports filter: label -> the feed's sport_key prefixes
     MANUAL_PARLAY_SPORTS: dict[str, tuple[str, ...]] = Field(default_factory=lambda: {
         "Football": ("soccer",), "Basketball": ("basketball",), "Tennis": ("tennis",), "Cricket": ("cricket",), "Ice Hockey": ("icehockey",),

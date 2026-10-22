@@ -39,7 +39,7 @@ class LegendaryBot(StrEnum):
     DRONA = "DRONA"  # Training: ML ops
     BHEESHMA = "BHEESHMA"  # Rules & compliance: rate limiting
     KARNA = "KARNA"  # Competitive intel: odds shopping
-    ASHVATTHAMA = "ASHVATTHAMA"  # Consultant & bet-slip architect: real tickets placed by hand (Group 97)
+    ASHVATTHAMA = "ASHVATTHAMA"  # Consultant & bet-slip architect: the BetDoc Consultant (Group 105), real tickets placed by hand (Group 97)
 
 
 class BotStatus(StrEnum):
