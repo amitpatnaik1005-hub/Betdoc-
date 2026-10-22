@@ -40,6 +40,7 @@ const Core = lazy(() => import('./pages/Core').then(m => ({ default: m.Core })))
 const TheHive = lazy(() => import('./pages/TheHive').then(m => ({ default: m.TheHive })));
 const TheOracle = lazy(() => import('./pages/TheOracle').then(m => ({ default: m.TheOracle })));
 const TheConsultant = lazy(() => import('./pages/TheConsultant').then(m => ({ default: m.TheConsultant })));
+const TheBetSlip = lazy(() => import('./pages/TheBetSlip').then(m => ({ default: m.TheBetSlip })));
 const TheArchive = lazy(() => import('./pages/TheArchive').then(m => ({ default: m.TheArchive })));
 const ControlPanel = lazy(() => import('./pages/ControlPanel').then(m => ({ default: m.ControlPanel })));
 
@@ -395,6 +396,7 @@ const NAV_ITEMS: readonly { to: string; label: string; icon: string; bot: Comman
   { to: '/arena',          label: 'The Arena',      icon: 'sports_esports',  bot: 'BAJIRAO'  },
   { to: '/oracle',         label: 'Oracle',         icon: 'auto_awesome',    bot: 'ASHOKA'   },
   { to: '/consultant',     label: 'BetDoc Consultant', icon: 'medical_services', bot: 'ASHVATTHAMA' },
+  { to: '/bet-slip',       label: 'Bet-Slip',       icon: 'confirmation_number', bot: 'ASHVATTHAMA' },
   { to: '/lab',            label: 'The Lab',        icon: 'science',         bot: 'PANINI'   },
   { to: '/hive',           label: 'The Hive',       icon: 'hive',            bot: 'VIDUR'    },
   { to: '/vault',          label: 'The Vault',      icon: 'account_balance', bot: 'KUMBHA'   },
@@ -794,6 +796,12 @@ const App = () => {
         <Route path="/consultant" element={
           <AnimatedRoute>
             <TheConsultant />
+          </AnimatedRoute>
+        } />
+        {/* Group 106: ASHVATTHAMA's Bet-Slip (the ticket of an approved, sealed verdict, and its six delivery channels) */}
+        <Route path="/bet-slip" element={
+          <AnimatedRoute>
+            <TheBetSlip />
           </AnimatedRoute>
         } />
         {/* Group 96: Phantom was retired; its quant toolkit lives in The Lab */}

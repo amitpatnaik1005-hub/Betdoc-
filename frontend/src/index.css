@@ -78,6 +78,33 @@
   }
 }
 
+/* Group 106, channel 2: the Bet-Slip print sheet (print, or save as a vector PDF). Only the ticket prints, on white. */
+@media print {
+  @page {
+    size: A4;
+    margin: 12mm;
+  }
+  body {
+    background: #ffffff !important;
+  }
+  body * {
+    visibility: hidden !important;
+  }
+  #betdoc-ticket,
+  #betdoc-ticket * {
+    visibility: visible !important;
+  }
+  #betdoc-ticket {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    box-shadow: none !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,

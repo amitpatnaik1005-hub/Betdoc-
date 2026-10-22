@@ -5,7 +5,7 @@ import { useResource } from "./resource";
 
 export const SEVERITIES = ["FATAL", "CRITICAL", "WARNING", "INFO"] as const;
 export type Severity = (typeof SEVERITIES)[number];
-export const CHANNELS = ["TELEGRAM", "DISCORD", "TWILIO", "PAGERDUTY"] as const;
+export const CHANNELS = ["TELEGRAM", "DISCORD", "TWILIO", "PAGERDUTY", "EMAIL"] as const;
 export type ChannelName = (typeof CHANNELS)[number];
 export const BROWSER = "BROWSER";
 
@@ -157,8 +157,8 @@ export const subscribeSentinel = (handler: (frame: LiveFrame) => void): (() => v
     if (data && typeof data === "object" && "type" in data) handler(data as LiveFrame);
   });
 
-export const CHANNEL_LABEL: Record<string, string> = { TELEGRAM: "Telegram", DISCORD: "Discord", TWILIO: "SMS / voice", PAGERDUTY: "PagerDuty", BROWSER: "Browser siren" };
-export const CHANNEL_ICON: Record<string, string> = { TELEGRAM: "send", DISCORD: "forum", TWILIO: "sms", PAGERDUTY: "notification_important", BROWSER: "campaign" };
+export const CHANNEL_LABEL: Record<string, string> = { TELEGRAM: "Telegram", DISCORD: "Discord", TWILIO: "SMS / voice", PAGERDUTY: "PagerDuty", EMAIL: "Email", BROWSER: "Browser siren" };
+export const CHANNEL_ICON: Record<string, string> = { TELEGRAM: "send", DISCORD: "forum", TWILIO: "sms", PAGERDUTY: "notification_important", EMAIL: "mail", BROWSER: "campaign" };
 export const ROW_LABEL: Record<string, string> = { FATAL: "Fatal", CRITICAL: "Critical", WARNING: "Warning", INFO: "Info", HYPE: "08:00 hype" };
 
 // ---------------------------------------------------------------- the HTML5 siren

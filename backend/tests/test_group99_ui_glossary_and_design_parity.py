@@ -60,6 +60,7 @@ def test_kit_exports_the_micro_guide_components() -> None:
     ("TheLab.tsx", ("EV", "OVERROUND")),
     ("TheVault.tsx", ("KELLY_STAKE", "EV")),
     ("TheConsultant.tsx", ("SLIP_SCORE", "EV", "OVERROUND", "KELLY_STAKE")),  # Group 105
+    ("TheBetSlip.tsx", ("SLIP_SCORE", "KELLY_STAKE")),  # Group 106
 ])
 def test_core_pages_open_with_a_guide(page: str, kpis: tuple[str, ...]) -> None:
     content = (FRONTEND / "pages" / page).read_text(encoding="utf-8")

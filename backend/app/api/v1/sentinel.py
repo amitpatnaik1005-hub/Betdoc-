@@ -37,6 +37,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.adapters.notifications.base import DispatcherConfigurationError, OutboundMessage
 from app.adapters.notifications.discord import validate_webhook_url
+from app.adapters.notifications.email import validate_address, validate_port
 from app.adapters.notifications.registry import CONFIG_FIELDS, CREDENTIAL_FIELDS, build, credentials_hint, decrypt
 from app.adapters.notifications.twilio import validate_number
 from app.api.deps import CurrentAdmin, CurrentUser
@@ -266,10 +267,16 @@ def _clean_config(channel: ChannelName, config: dict[str, Any]) -> dict[str, Any
                     raise ValueError(f"{name} must be a list")
                 if name in ("chat_ids", "admin_user_ids"):
                     clean[name] = [int(v) for v in value]
+                elif name == "to_addresses":
+                    clean[name] = [validate_address(str(v)) for v in value]
                 else:
                     clean[name] = [validate_number(str(v)) for v in value]
             elif name == "from_number":
                 clean[name] = validate_number(str(value)) if value else ""
+            elif name == "from_address":
+                clean[name] = validate_address(str(value)) if value else ""
+            elif name == "port":
+                clean[name] = str(validate_port(value)) if str(value).strip() else ""
             else:
                 clean[name] = str(value)[:64]
     except (ValueError, TypeError) as exc:

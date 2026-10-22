@@ -67,6 +67,7 @@ class AlertKind(StrEnum):
     CFO_REBALANCE = "CFO_REBALANCE"  # a venue rebalance plan with transfers was recorded
     WIRE_BREAKING_NEWS = "WIRE_BREAKING_NEWS"  # VIDUR read news at an alerting impact about a tracked fixture (Group 78)
     WIRE_STEAM_CATALYST = "WIRE_STEAM_CATALYST"  # the market followed a piece of news inside the catalyst window
+    BET_SLIP = "BET_SLIP"  # a Bet-Slip ticket sent to the admin's own Telegram, phone or inbox on request (Group 106)
 
 
 class SentinelAlert(BaseModel):

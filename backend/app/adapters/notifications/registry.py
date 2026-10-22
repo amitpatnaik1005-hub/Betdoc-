@@ -17,6 +17,7 @@ import httpx
 
 from app.adapters.notifications.base import DispatcherConfigurationError, NotificationDispatcher
 from app.adapters.notifications.discord import DiscordDispatcher
+from app.adapters.notifications.email import EmailDispatcher
 from app.adapters.notifications.pagerduty import PagerDutyDispatcher
 from app.adapters.notifications.telegram import TelegramDispatcher
 from app.adapters.notifications.twilio import TwilioDispatcher
@@ -28,18 +29,22 @@ CREDENTIAL_FIELDS: dict[ChannelName, tuple[str, ...]] = {
     ChannelName.DISCORD: ("webhook_url",),
     ChannelName.TWILIO: ("account_sid", "auth_token"),
     ChannelName.PAGERDUTY: ("routing_key",),
+    ChannelName.EMAIL: ("password",),  # the SMTP password (an app password for Gmail or Outlook)
 }
 REQUIRED_CREDENTIALS: dict[ChannelName, tuple[str, ...]] = {
     ChannelName.TELEGRAM: ("bot_token",),
     ChannelName.DISCORD: ("webhook_url",),
     ChannelName.TWILIO: ("account_sid", "auth_token"),
     ChannelName.PAGERDUTY: ("routing_key",),
+    ChannelName.EMAIL: ("password",),
 }
 CONFIG_FIELDS: dict[ChannelName, dict[str, type]] = {
     ChannelName.TELEGRAM: {"chat_ids": list, "admin_user_ids": list},  # alerts go to chat_ids; commands only from them (and these users)
     ChannelName.DISCORD: {"mention_on_fatal": bool},
     ChannelName.TWILIO: {"from_number": str, "to_numbers": list, "voice_on_fatal": bool},
     ChannelName.PAGERDUTY: {"source": str},
+    # SMTP: STARTTLS on ``port`` (587), or implicit TLS when ``use_ssl`` (465); the login is ``username`` (else ``from_address``)
+    ChannelName.EMAIL: {"host": str, "port": str, "username": str, "from_address": str, "to_addresses": list, "use_ssl": bool},
 }
 
 
@@ -67,6 +72,8 @@ def credentials_hint(channel: ChannelName, values: Mapping[str, str]) -> str:
         return f"webhook …{values.get('webhook_url', '')[-6:]}"
     if channel is ChannelName.TWILIO:
         return f"account {mask(values.get('account_sid', ''))}"
+    if channel is ChannelName.EMAIL:
+        return "SMTP password set" if values.get("password") else "no SMTP password"
     return f"key {mask(values.get('routing_key', ''))}"
 
 
@@ -116,6 +123,17 @@ def build(row: SentinelChannel, vault: VaultCrypto | None, http: httpx.AsyncClie
                 from_number=str(config.get("from_number", "")),
                 to_numbers=[str(n) for n in config.get("to_numbers") or []],
                 voice_on_fatal=bool(config.get("voice_on_fatal", True)),
+            )
+        if channel is ChannelName.EMAIL:
+            return EmailDispatcher(
+                http,
+                host=str(config.get("host", "")),
+                port=str(config.get("port") or ("465" if config.get("use_ssl") else "587")),
+                username=str(config.get("username", "")),
+                password=secrets.get("password"),
+                from_address=str(config.get("from_address", "")),
+                to_addresses=[str(a) for a in config.get("to_addresses") or []],
+                use_ssl=bool(config.get("use_ssl", False)),
             )
         return PagerDutyDispatcher(http, routing_key=secrets.get("routing_key"), source=str(config.get("source") or "betdoc"))
     except ValueError as exc:

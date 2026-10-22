@@ -425,6 +425,9 @@ class Settings(BaseSettings):
     CONSULTANT_CRICKET_MIN_OVERS: dict[str, int] = Field(default_factory=lambda: {"T20": 5, "ODI": 20})
     CONSULTANT_PALPABLE_EDGE: float = Field(default=0.25, gt=0, lt=10)  # a leg this far over BetDoc's fair value risks the obvious-error rule
     CONSULTANT_HISTORY_LIMIT: int = Field(default=20, ge=1, le=200)  # signed verdicts listed per request
+    # The Bet-Slip ornament (Group 106, points b.7 and b.12): the printable ticket of an approved, sealed verdict.
+    # Its prices are the ones signed; past this age the ticket says to re-check them at the book before placing.
+    BET_SLIP_FRESH_MINUTES: int = Field(default=30, ge=1, le=1440)
     # the sports filter: label -> the feed's sport_key prefixes
     MANUAL_PARLAY_SPORTS: dict[str, tuple[str, ...]] = Field(default_factory=lambda: {
         "Football": ("soccer",), "Basketball": ("basketball",), "Tennis": ("tennis",), "Cricket": ("cricket",), "Ice Hockey": ("icehockey",),

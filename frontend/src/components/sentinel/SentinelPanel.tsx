@@ -60,6 +60,13 @@ const FIELD_LABEL: Record<string, string> = {
   to_numbers: "Admin phone numbers",
   voice_on_fatal: "Phone call on FATAL",
   source: "Source name",
+  password: "SMTP password (an app password)",
+  host: "SMTP host",
+  port: "SMTP port (587 STARTTLS, 465 SSL)",
+  username: "SMTP login (blank: the from address)",
+  from_address: "From address",
+  to_addresses: "Admin email addresses",
+  use_ssl: "SSL on connect (port 465)",
 };
 const TIER_TONE: Record<HypeResult["tier"], Tone> = { BUSSIN: "good", PRIMED: "accent", VOLATILE: "warning", QUIET: "neutral" };
 

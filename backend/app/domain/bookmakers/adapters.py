@@ -233,7 +233,7 @@ def market_selection_label(market_key: str, selection: str, home: str, away: str
     return f"Draw No Bet: {_team(selection, home, away)}"
 
 
-def _search_codes(book: str, market_key: str, selection: str) -> str:
+def search_code(book: str, market_key: str, selection: str) -> str:
     """The short code each book's own slip and search use (1xBet: W1/X/W2, Parimatch: 1/X/2)."""
     from app.domain.oracle.markets import MarketKind, parse_market  # noqa: PLC0415
 
@@ -260,6 +260,6 @@ def slip_line(book: str, market_key: str, selection: str, home: str, away: str) 
     return {
         "fixture": fixture_name(home, away),
         "market": market_selection_label(market_key, selection, home, away),
-        "search_code": _search_codes(book, market_key, selection),
+        "search_code": search_code(book, market_key, selection),
         "bookmaker": ASHOKA_BOOKMAKERS.get(book, book),
     }

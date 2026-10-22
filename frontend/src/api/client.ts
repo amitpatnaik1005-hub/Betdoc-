@@ -178,6 +178,41 @@ async function request<T>(
   }
 }
 
+/** A file from the API (an authenticated GET): its bytes and the filename the server gave it. */
+async function download(endpoint: string): Promise<{ blob: Blob; filename: string | null }> {
+  const controller = new AbortController();
+  const timeoutId: number = window.setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  const token: string | null = readToken();
+  const headers: Record<string, string> = {};
+  if (token) headers.Authorization = `Bearer ${token}`;
+  try {
+    let response: Response;
+    try {
+      response = await fetch(`${BASE_URL}${endpoint}`, { method: "GET", headers, signal: controller.signal });
+    } catch (err: unknown) {
+      throw toTransportError(err);
+    }
+    if (response.status === 401 && token) {
+      onUnauthorized();
+      throw new ApiError("Session expired. Please sign in again.", 401);
+    }
+    if (!response.ok) {
+      let payload: unknown = null;
+      try {
+        payload = JSON.parse(await response.text());
+      } catch {
+        payload = null;
+      }
+      throw new ApiError(extractErrorMessage(payload, `Request failed (${response.status} ${response.statusText})`), response.status, extractReason(payload), extractDetail(payload));
+    }
+    const disposition = response.headers.get("Content-Disposition") ?? "";
+    const filename = /filename="([^"]+)"/.exec(disposition)?.[1] ?? null;
+    return { blob: await response.blob(), filename };
+  } finally {
+    window.clearTimeout(timeoutId);
+  }
+}
+
 type Query = Record<string, string | number | boolean | null | undefined>;
 
 /** `/vault/overview` + `{ currency: "INR", start: undefined }` -> `/vault/overview?currency=INR` */
@@ -215,6 +250,8 @@ export const apiClient = {
   async delete<T = unknown>(endpoint: string): Promise<T> {
     return request<T>("DELETE", endpoint);
   },
+
+  download,
 };
 
 /** Absolute ws(s):// URL for an API path, on the page's own origin (proxied like REST). */

@@ -1,6 +1,6 @@
 """The Sentinel (Group 68): outbound alert channels, the routing matrix, and the alert trail.
 
-* ``sentinel_channels``: one row per dispatcher (Telegram, Discord, Twilio, PagerDuty). Secrets (bot
+* ``sentinel_channels``: one row per dispatcher (Telegram, Discord, Twilio, PagerDuty, Email since Group 106). Secrets (bot
   token, webhook URL, auth token, routing key) are one JSON object encrypted with the master vault
   key (``app.core.security_vault``); the API only ever shows ``credentials_hint``. The non-secret
   half (chat ids, phone numbers, whether FATAL also places a voice call) is plain JSON.
@@ -46,6 +46,7 @@ class ChannelName(StrEnum):
     DISCORD = "DISCORD"
     TWILIO = "TWILIO"
     PAGERDUTY = "PAGERDUTY"
+    EMAIL = "EMAIL"  # SMTP to the admin addresses (Group 106: the Bet-Slip ticket, and any routed alert)
 
 
 class DeliveryStatus(StrEnum):

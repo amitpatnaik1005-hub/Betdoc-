@@ -124,7 +124,7 @@ def test_the_lawyer_raises_only_the_rules_these_legs_fall_under() -> None:
     passed, rain = pillars(["PASS"] * 15), pillars(["PASS", "FAIL"] + ["PASS"] * 13)
     league = dx.counsel([_leg("f1|Match Odds|HOME")], "1xbet", passed, _policy(), payout=D("2100"))
     assert [c.rule.code for c in league] == ["MAX_PAYOUT"]  # a league single: no extra time, no void-leg question
-    assert league[0].risk is dx.RiskLevel.LOW and "No maximum payout is recorded for 1xbet" in league[0].finding and league[0].reference is None
+    assert league[0].risk is dx.RiskLevel.LOW and "No maximum payout is recorded for 1xBet" in league[0].finding and league[0].reference is None
 
     cup = dx.counsel([_leg("f1|Match Odds|HOME", sport="soccer_fa_cup", league="FA Cup"), _leg("f2|Match Odds|AWAY")], "1xbet", passed, _policy(), payout=D("4000"))
     by = {c.rule.code: c for c in cup}

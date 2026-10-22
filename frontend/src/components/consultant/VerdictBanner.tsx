@@ -10,7 +10,7 @@ import { formatDateTime } from "../../lib/format";
 import { toast } from "../../store/useToastStore";
 import { Button } from "../../ui/kit";
 
-export const VerdictBanner = ({ report, onRecord }: { report: ConsultantReport; onRecord: () => void }) => {
+export const VerdictBanner = ({ report, onRecord, onTicket }: { report: ConsultantReport; onRecord: () => void; onTicket?: () => void }) => {
   const style = VERDICT_STYLE[report.verdict.status];
   const rx = report.doctor.prescription;
   const tier = TIER_STYLE[report.rating.tier];
@@ -51,7 +51,8 @@ export const VerdictBanner = ({ report, onRecord }: { report: ConsultantReport; 
             </div>
             <div className="text-[10px] text-stone-500">{tier.label}</div>
           </div>
-          <Button variant="primary" icon="receipt_long" onClick={onRecord}>Inspect and record in the workbench</Button>
+          {report.verdict.status === "APPROVED_GOLD" && onTicket && <Button variant="primary" icon="confirmation_number" onClick={onTicket}>Open the Bet-Slip ticket</Button>}
+          <Button variant={report.verdict.status === "APPROVED_GOLD" ? "secondary" : "primary"} icon="receipt_long" onClick={onRecord}>Inspect and record in the workbench</Button>
         </div>
       </div>
     </motion.section>

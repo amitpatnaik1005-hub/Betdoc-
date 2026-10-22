@@ -33,6 +33,7 @@ from enum import StrEnum
 from typing import Any
 
 from app.domain.backtesting import inplay_stoploss_math as slm
+from app.domain.bookmakers.adapters import ASHOKA_BOOKMAKERS
 from app.domain.competitive_intel import live_consensus_math as lcm
 from app.domain.oracle.markets import MarketKind, parse_market
 from app.domain.paper_trading.tax import CESS_RATE, section_115bbj
@@ -288,13 +289,13 @@ def counsel(legs: Sequence[Mapping[str, Any]], book: str | None, pillars: Sequen
             add("PALPABLE_ERROR", RiskLevel.HIGH, [str(leg["leg_id"])],
                 f"{leg.get('label')} pays {price if price is not None else '—'} against BetDoc's fair {1 / fair:.2f} ({ev:+.0%} EV): far enough over the "
                 "market for the book to call it an error.")
-    cap = policy.cap_for(book)
+    cap, name = policy.cap_for(book), ASHOKA_BOOKMAKERS.get(book or "", book or "this book")
     if cap is None:
-        add("MAX_PAYOUT", RiskLevel.LOW, [], f"No maximum payout is recorded for {book or 'this book'}: read its maximum-winnings rule before a long multiple.")
+        add("MAX_PAYOUT", RiskLevel.LOW, [], f"No maximum payout is recorded for {name}: read its maximum-winnings rule before a long multiple.")
     elif payout is not None and payout > cap:
-        add("MAX_PAYOUT", RiskLevel.HIGH, [], f"₹{payout:,} at KUMBHA's stake is over the ₹{cap:,} you recorded for {book}.")
+        add("MAX_PAYOUT", RiskLevel.HIGH, [], f"₹{payout:,} at KUMBHA's stake is over the ₹{cap:,} you recorded for {name}.")
     else:
-        add("MAX_PAYOUT", RiskLevel.LOW, [], f"₹{payout or 0:,} at KUMBHA's stake is inside the ₹{cap:,} you recorded for {book}.")
+        add("MAX_PAYOUT", RiskLevel.LOW, [], f"₹{payout or 0:,} at KUMBHA's stake is inside the ₹{cap:,} you recorded for {name}.")
     out.sort(key=lambda c: _RISK_ORDER[c.risk])
     return out
 

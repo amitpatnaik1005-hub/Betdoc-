@@ -183,7 +183,7 @@ export const TheConsultant = () => {
       </Panel>
       {report && (
         <>
-          <VerdictBanner report={report} onRecord={() => navigate("/oracle?tab=builder&mode=manual")} />
+          <VerdictBanner report={report} onRecord={() => navigate("/oracle?tab=builder&mode=manual")} onTicket={() => navigate(`/bet-slip?report=${report.report_id}`)} />
           <DoctorCard report={report} onApply={() => void apply()} applying={busy === "apply"} />
           <LawyerCard report={report} />
           <CapitalAdvisorCard report={report} />
