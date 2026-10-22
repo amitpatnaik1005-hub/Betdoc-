@@ -216,7 +216,25 @@ async def vet(
     sessions: async_sessionmaker[AsyncSession], redis: Redis, settings: Settings, *, user_id: uuid.UUID | None, leg_ids: Sequence[str],
     kind: str | None, bankroll: Decimal | None, now: datetime, books: Sequence[str] | None = None,
 ) -> TwinVettingAudit:
-    """``books``: price the slip at these books only (the manual workbench's account, Group 77); default the retail books."""
+    """The fortress run on a slip, recorded: the audit row, the in-play shield and XP it earns, and the vetted alert.
+    ``books``: price the slip at these books only (the manual workbench's account, Group 77); default the retail books."""
+    audit = await assess(sessions, redis, settings, user_id=user_id, leg_ids=leg_ids, kind=kind, bankroll=bankroll, now=now, books=books)
+    async with sessions() as session:
+        session.add(audit)
+        await session.commit()
+    await _shield_and_xp(sessions, settings, audit, now)
+    if audit.is_vetted:
+        await emit_alert(redis, settings, vetted_alert(audit))
+    logger.info("twin audit %s slip=%s book=%s passed=%d vetted=%s", audit.id, audit.slip_id, audit.bookmaker, audit.pillars_passed, audit.is_vetted)
+    return audit
+
+
+async def assess(
+    sessions: async_sessionmaker[AsyncSession], redis: Redis, settings: Settings, *, user_id: uuid.UUID | None, leg_ids: Sequence[str],
+    kind: str | None, bankroll: Decimal | None, now: datetime, books: Sequence[str] | None = None,
+) -> TwinVettingAudit:
+    """The fortress run on a slip without recording it (an unsaved audit): what a trial (Group 104's auto-fix and the
+    Chef's Table) asks, so trying alternatives leaves no audit rows, shields, XP or alerts behind."""
     leg_ids = list(dict.fromkeys(leg_ids))
     live, by_id = await _live_legs(redis, settings, leg_ids, now)
     retail, sharp = (tuple(books) if books else retail_books(settings)), sharp_books(settings)
@@ -256,7 +274,7 @@ async def vet(
     policy = fortress.FortressPolicy.from_settings(settings)
     verdict = fortress.run(inputs, policy, sharp, situations=nf.NeverForgetPolicy.from_settings(settings))
     sizing = verdict.sizing
-    audit = TwinVettingAudit(
+    return TwinVettingAudit(
         id=uuid.uuid4(), user_id=user_id, slip_id=slip.slip_id, kind=slip.kind.value, leg_ids=[leg.leg_id for leg in slip.legs], bookmaker=slip.book,
         total_odds=Decimal(str(slip.odds)).quantize(ODDS_Q, rounding=ROUND_DOWN), stake_inr=Decimal("0.00") if sizing is None else sizing.stake,
         bankroll_inr=wallet, kelly_fraction=0.0 if sizing is None else sizing.fraction, joint_ev=slip.sim.joint_ev, joint_probability=slip.sim.joint_probability,
@@ -264,14 +282,6 @@ async def vet(
         is_vetted=verdict.is_vetted, pillars=[p.as_dict() for p in verdict.pillars], rejection_reasons=list(verdict.reasons),
         slip=_slip_payload(slip, verdict, now), created_at=now,
     )
-    async with sessions() as session:
-        session.add(audit)
-        await session.commit()
-    await _shield_and_xp(sessions, settings, audit, now)
-    if verdict.is_vetted:
-        await emit_alert(redis, settings, vetted_alert(audit))
-    logger.info("twin audit %s slip=%s book=%s passed=%d vetted=%s", audit.id, audit.slip_id, audit.bookmaker, audit.pillars_passed, audit.is_vetted)
-    return audit
 
 
 async def _capital_state(sessions: async_sessionmaker[AsyncSession], redis: Redis, settings: Settings, user_id: uuid.UUID | None, wallet: Decimal | None,

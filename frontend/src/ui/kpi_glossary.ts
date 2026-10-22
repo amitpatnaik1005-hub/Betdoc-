@@ -32,11 +32,11 @@ export const KPI_GLOSSARY: Record<string, KpiDefinition> = {
   },
   SLIP_SCORE: {
     code: "SLIP_SCORE",
-    name: "Twin Fortress score (pillars passed of 15)",
-    shortDesc: "How many of the Digital Twin's 15 checks a slip passes",
+    name: "BetDoc Slip Score (0–100)",
+    shortDesc: "The 15-pillar fortress score plus badges, in four tiers",
     plainEnglish:
-      "The Digital Twin runs every slip through 15 pillars: model consensus, weather, travel, injuries, lineups, market moves, the sharp price, crowd traps, referee, motivation, liquidity, independence of the legs, sizing, the execution gate and the Never-Forget shield. Missing evidence never counts as a pass. A slip is vetted only when every enforced pillar passes.",
-    example: "13/15 with lineups not yet published: not vetted until the team sheets are out.",
+      "The Digital Twin runs every slip through 15 pillars: model consensus, weather, travel, injuries, lineups, market moves, the sharp price, crowd traps, referee, motivation, liquidity, independence of the legs, sizing, the execution gate and the Never-Forget shield. A pass counts 1, an advisory ½, missing evidence ¼ (never a pass), a fail 0; the share of 15 is the fortress score, and one failed pillar holds the slip at 54 at most. Badges add or take points for what the check measured: Vig Crusher +5, Zero-Correlation Shield +8, Score-Synced +10, Positive EV King +10, Same-Match Tax −18, Heavy Juice Trap −12. Tiers: Diamond Fortress 90+, Gold Grade 75+, Silver Caution 55+, Bronze / Danger Trap below.",
+    example: "12 pillars pass and 3 lack evidence: (12 + 3 × 0.25) ÷ 15 = 85. Two legs on different fixtures (+8) at a 3.5% margin (+5): 98, Diamond Fortress. Put the second leg on the same match instead: 85 − 18 + 5 = 72, Silver Caution.",
   },
   KELLY_STAKE: {
     code: "KELLY_STAKE",

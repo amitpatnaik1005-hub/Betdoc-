@@ -394,10 +394,20 @@ class Settings(BaseSettings):
 
     # ---- The manual parlay workbench: the cognitive rater over the 15 pillars (Group 77) ----
     MANUAL_PARLAY_PILLAR_CREDIT: dict[str, float] = Field(default_factory=lambda: {"PASS": 1.0, "ADVISORY": 0.5, "UNVERIFIED": 0.25, "FAIL": 0.0})
-    MANUAL_PARLAY_FAIL_CAP: float = Field(default=59.0, ge=0, le=100)  # one failed pillar: the score goes no higher (AVERAGE at most)
-    MANUAL_PARLAY_TIERS: dict[str, float] = Field(default_factory=lambda: {
-        "PERFECT": 95.0, "EXTRAORDINARY": 85.0, "BRILLIANT": 75.0, "GOOD": 60.0, "AVERAGE": 45.0, "POOR": 0.0,
+    MANUAL_PARLAY_FAIL_CAP: float = Field(default=54.0, ge=0, le=100)  # one failed pillar: the score goes no higher (BRONZE at most)
+    # The BetDoc Slip Score's tiers (Group 104, point b.5): DIAMOND FORTRESS, GOLD GRADE, SILVER CAUTION, BRONZE / DANGER TRAP
+    MANUAL_PARLAY_TIERS: dict[str, float] = Field(default_factory=lambda: {"DIAMOND": 90.0, "GOLD": 75.0, "SILVER": 55.0, "BRONZE": 0.0})
+    # Badges over the fortress score (Group 104): points each adds or takes, earned from what the inspection measured
+    MANUAL_PARLAY_BADGE_POINTS: dict[str, float] = Field(default_factory=lambda: {
+        "VIG_CRUSHER": 5.0, "ZERO_CORRELATION": 8.0, "SCORE_SYNCED": 10.0, "EV_KING": 10.0, "SAME_MATCH_TAX": -18.0, "HEAVY_JUICE": -12.0,
     })
+    MANUAL_PARLAY_VIG_CRUSHER_MAX: float = Field(default=0.04, gt=0, lt=1)  # the legs' mean margin at the account's book: at most this
+    MANUAL_PARLAY_HEAVY_JUICE_MIN: float = Field(default=0.075, gt=0, lt=1)  # ... at least this
+    MANUAL_PARLAY_EV_KING_MIN: float = Field(default=0.07, gt=0, lt=10)  # the slip's Monte Carlo joint EV: at least this
+    MANUAL_PARLAY_AUTOFIX_CANDIDATES: int = Field(default=4, ge=1, le=12)  # replacement legs the auto-fix tries (one fortress run each)
+    # The Chef's Table (Group 104, 5(c)): Ashoka's best vetted slips re-rated through the fortress, served three ways
+    CHEF_TABLE_CANDIDATES: int = Field(default=6, ge=3, le=20)
+    CHEF_TABLE_CACHE_SECONDS: int = Field(default=180, ge=0, le=3600)
     # the sports filter: label -> the feed's sport_key prefixes
     MANUAL_PARLAY_SPORTS: dict[str, tuple[str, ...]] = Field(default_factory=lambda: {
         "Football": ("soccer",), "Basketball": ("basketball",), "Tennis": ("tennis",), "Cricket": ("cricket",), "Ice Hockey": ("icehockey",),

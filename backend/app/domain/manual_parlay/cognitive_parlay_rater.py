@@ -10,7 +10,14 @@ the Never-Forget shield). The rater turns that audit into a score:
 ``MANUAL_PARLAY_PILLAR_CREDIT``. A pillar without evidence earns a little (it is unknown, not wrong) but never a
 pass. One failed pillar caps the score at ``MANUAL_PARLAY_FAIL_CAP``: a parlay a pillar vetoes (a negative-EV
 leg, correlated legs, a past trap) cannot rate well however the rest look. Tiers come from ``MANUAL_PARLAY_TIERS``
-(PERFECT 95, EXTRAORDINARY 85, BRILLIANT 75, GOOD 60, AVERAGE 45, POOR below).
+(Group 104: DIAMOND FORTRESS 90, GOLD GRADE 75, SILVER CAUTION 55, BRONZE / DANGER TRAP below).
+
+The BetDoc Slip Score (Group 104, point b.5) is that fortress score with badges on top, each earned from what the
+inspection measured and worth ``MANUAL_PARLAY_BADGE_POINTS``: Vig Crusher (the legs' mean margin at the account's book
+at most ``MANUAL_PARLAY_VIG_CRUSHER_MAX``), Heavy Juice Trap (at least ``MANUAL_PARLAY_HEAVY_JUICE_MIN``), Same-Match Tax
+(two legs on one fixture), Zero-Correlation Shield (two or more legs, the independence pillar passed), Score-Synced
+(every leg has a scoreline model and wins at its fixture's likeliest score) and Positive EV King (the Monte Carlo
+joint EV at least ``MANUAL_PARLAY_EV_KING_MIN``). The sum is clamped to 0-100 and a vetoed slip stays under the cap.
 
 Margins are measured, never assumed: a book's overround on a leg is ``sum(1 / odds) - 1`` over the market's
 selections it quotes, and the best-price line (each selection at the best book) is what line shopping achieves.
@@ -57,6 +64,17 @@ class RaterPolicy:
 
 
 @dataclass(frozen=True, slots=True)
+class Badge:
+    code: str
+    label: str
+    points: float
+    detail: str
+
+    def as_dict(self) -> dict[str, Any]:
+        return {"code": self.code, "label": self.label, "points": self.points, "positive": self.points > 0, "detail": self.detail}
+
+
+@dataclass(frozen=True, slots=True)
 class Rating:
     score: float
     tier: str
@@ -64,9 +82,12 @@ class Rating:
     breakdown: list[dict[str, Any]]
     advice: list[str]
     warnings: list[str]
+    fortress_score: float | None = None  # the 15 pillars' own score, before badges (None: no badges applied)
+    badges: tuple[Badge, ...] = ()
 
     def as_dict(self) -> dict[str, Any]:
-        return {"score": self.score, "tier": self.tier, "capped": self.capped, "breakdown": self.breakdown, "advice": self.advice, "warnings": self.warnings}
+        return {"score": self.score, "tier": self.tier, "capped": self.capped, "breakdown": self.breakdown, "advice": self.advice, "warnings": self.warnings,
+                "fortress_score": self.fortress_score, "badges": [b.as_dict() for b in self.badges]}
 
 
 def tier_for(score: float, policy: RaterPolicy) -> str:
@@ -97,6 +118,72 @@ def rate(pillars: Sequence[Mapping[str, Any]], policy: RaterPolicy) -> Rating:
     raw = round(100.0 * total / len(pillars), 2)
     score = min(raw, policy.fail_cap) if failed else raw
     return Rating(score, tier_for(score, policy), failed and raw > policy.fail_cap, breakdown, advice, warnings)
+
+
+# ================================================================ the Slip Score (Group 104)
+LABELS: dict[str, str] = {
+    "VIG_CRUSHER": "⚡ Vig Crusher", "HEAVY_JUICE": "🪤 Heavy Juice Trap", "SAME_MATCH_TAX": "⚠️ Same-Match Tax",
+    "ZERO_CORRELATION": "🛡️ Zero-Correlation Shield", "SCORE_SYNCED": "🎯 Score-Synced", "EV_KING": "💎 Positive EV King",
+}
+
+
+@dataclass(frozen=True, slots=True)
+class BadgePolicy:
+    points: Mapping[str, float]
+    vig_crusher_max: float
+    heavy_juice_min: float
+    ev_king_min: float
+
+    @classmethod
+    def from_settings(cls, settings: Any) -> BadgePolicy:
+        return cls({str(k).upper(): float(v) for k, v in settings.MANUAL_PARLAY_BADGE_POINTS.items()}, float(settings.MANUAL_PARLAY_VIG_CRUSHER_MAX),
+                   float(settings.MANUAL_PARLAY_HEAVY_JUICE_MIN), float(settings.MANUAL_PARLAY_EV_KING_MIN))
+
+
+@dataclass(frozen=True, slots=True)
+class SlipEvidence:
+    """What the inspection measured that the badges read, one entry per leg."""
+
+    fixtures: Sequence[str]
+    margins: Sequence[float | None]  # each leg's overround at the account's book (None: the book does not quote its whole market)
+    score_sync: Sequence[bool | None]  # wins (or half wins) at its fixture's likeliest score; None: no scoreline model
+    joint_ev: float | None
+
+
+def badges(pillars: Sequence[Mapping[str, Any]], evidence: SlipEvidence, policy: BadgePolicy) -> list[Badge]:
+    out: list[Badge] = []
+
+    def earn(code: str, detail: str) -> None:
+        if code in policy.points:
+            out.append(Badge(code, LABELS[code], policy.points[code], detail))
+
+    known = [m for m in evidence.margins if m is not None]
+    if known and len(known) == len(evidence.margins):
+        mean = sum(known) / len(known)
+        if mean <= policy.vig_crusher_max:
+            earn("VIG_CRUSHER", f"the legs' margin at this book averages {mean:.1%} (at most {policy.vig_crusher_max:.1%})")
+        elif mean >= policy.heavy_juice_min:
+            earn("HEAVY_JUICE", f"the legs' margin at this book averages {mean:.1%} (from {policy.heavy_juice_min:.1%} it is a trap)")
+    repeated = sorted({f for f in evidence.fixtures if list(evidence.fixtures).count(f) > 1})
+    independence = next((str(p.get("status", "")).upper() for p in pillars if p.get("key") == "independence"), None)
+    if repeated:
+        earn("SAME_MATCH_TAX", f"{len(repeated)} fixture{'s' if len(repeated) > 1 else ''} carr{'y' if len(repeated) > 1 else 'ies'} two or more legs: their results move together")
+    elif len(evidence.fixtures) >= 2 and independence == "PASS":
+        earn("ZERO_CORRELATION", "every leg on a different fixture, and the independence pillar passed")
+    if evidence.score_sync and all(s is True for s in evidence.score_sync):
+        earn("SCORE_SYNCED", "every leg wins at its fixture's likeliest score (the market-fitted Dixon-Coles matrix)")
+    if evidence.joint_ev is not None and evidence.joint_ev >= policy.ev_king_min:
+        earn("EV_KING", f"joint EV {evidence.joint_ev:+.1%} over the Monte Carlo paths (from {policy.ev_king_min:+.0%})")
+    return out
+
+
+def slip_score(rating: Rating, earned: Sequence[Badge], policy: RaterPolicy) -> Rating:
+    """The BetDoc Slip Score: the fortress score plus the badges' points, clamped to 0-100; a vetoed slip stays under the cap."""
+    failed = any(row["status"] == "FAIL" for row in rating.breakdown)
+    raw = max(0.0, min(100.0, rating.score + sum(b.points for b in earned)))
+    score = round(min(raw, policy.fail_cap) if failed else raw, 2)
+    return Rating(score, tier_for(score, policy), failed and raw > policy.fail_cap, rating.breakdown, rating.advice, rating.warnings,
+                  fortress_score=rating.score, badges=tuple(earned))
 
 
 # ================================================================ margins

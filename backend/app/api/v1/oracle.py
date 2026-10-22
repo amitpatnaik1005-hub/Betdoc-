@@ -4,6 +4,7 @@
     GET  /oracle/slips                      vetted slips from the live market, staked for a bankroll
     POST /oracle/slips/recheck              one slip re-priced against the latest feeds ("Re-check odds")
     GET  /oracle/board                      the match board: every priced fixture by sport, country and time window (Group 103)
+    GET  /oracle/chef-table                 the Chef's Table: three plates from the vetted slips, re-rated, with recipe cards (Group 104)
     POST /oracle/odds-check                 Parimatch vs 1xBet (and the rest) on prices the user typed in
     GET  /oracle/trending                   sharp steam parlays, public traps, AI hybrids
     GET  /oracle/bets                       the user's placed bets (active / settled / all), legs included
@@ -46,7 +47,7 @@ from app.models.cfo_vault import BankrollAccount
 from app.models.user_bets_ledger import PlacedStatus, UserPlacedBet, UserPlacedLeg
 from app.schemas.ashoka import CashoutRecord, CashoutRequest, OddsCheckRequest, PlaceBetRequest, ScoreIn, SlipLegsRequest
 from app.schemas.popular_picks import PopularParlayRead
-from app.services import ashoka_market, match_board_service
+from app.services import ashoka_market, chef_table, match_board_service
 from app.services import user_pnl_tracker as tracker
 from app.services.oracle_scores import poll_scores
 
@@ -115,6 +116,21 @@ async def match_board(
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, {"reason": "UNKNOWN_SPORT", "message": f"sport is one of {', '.join(settings.MANUAL_PARLAY_SPORTS)}"})
     try:
         return await match_board_service.match_board(_need_redis(request), db, settings, datetime.now(UTC), sport=sport, window=window)
+    except (RedisError, OSError, TimeoutError) as exc:
+        raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, {"reason": "NO_MARKET", "message": "The live market (Redis) is unavailable"}) from exc
+
+
+@router.get("/chef-table")
+async def chefs_table(
+    request: Request, user: CurrentUser, db: DbSession, sessions: Sessions, settings: AppSettings,
+    bankroll_inr: Annotated[Decimal | None, Query(gt=0)] = None, refresh: bool = False,
+) -> dict[str, Any]:
+    """Group 104 (5(c)): Ashoka's best vetted slips re-rated through the fortress into Slip Scores and served as the
+    parlay of the day, the safe fortress and the high-yield special, each leg with its recipe card."""
+    redis = _need_redis(request)
+    bankroll = await _bankroll(db, user.id, bankroll_inr)
+    try:
+        return await chef_table.chef_table(sessions, redis, settings, user.id, bankroll, datetime.now(UTC), refresh=refresh)
     except (RedisError, OSError, TimeoutError) as exc:
         raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, {"reason": "NO_MARKET", "message": "The live market (Redis) is unavailable"}) from exc
 

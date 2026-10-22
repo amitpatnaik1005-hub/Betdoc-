@@ -267,16 +267,16 @@ def pillars(statuses: list[str]) -> list[dict[str, Any]]:
 def test_the_rater_on_good_average_and_poor_parlays(settings: Settings) -> None:
     policy = rater.RaterPolicy.from_settings(settings)
     perfect = rater.rate(pillars(["PASS"] * 15), policy)
-    assert (perfect.score, perfect.tier, perfect.advice) == (100.0, "PERFECT", [])
+    assert (perfect.score, perfect.tier, perfect.advice) == (100.0, "DIAMOND", [])
     good = rater.rate(pillars(["PASS"] * 10 + ["UNVERIFIED"] * 5), policy)  # 10 + 5 x 0.25 = 11.25 of 15
-    assert good.score == 75.0 and good.tier == "BRILLIANT" and len(good.advice) == 5
+    assert good.score == 75.0 and good.tier == "GOLD" and len(good.advice) == 5
     average = rater.rate(pillars(["PASS"] * 6 + ["ADVISORY"] * 2 + ["UNVERIFIED"] * 7), policy)  # (6 + 1 + 1.75) / 15
-    assert average.score == pytest.approx(58.33, abs=0.01) and average.tier == "AVERAGE"
+    assert average.score == pytest.approx(58.33, abs=0.01) and average.tier == "SILVER"
     vetoed = rater.rate(pillars(["PASS"] * 11 + ["FAIL"] + ["PASS"] * 3), policy)  # 93.3 raw, but leg independence failed
-    assert vetoed.score == 59.0 and vetoed.tier == "AVERAGE" and vetoed.capped and vetoed.warnings == ["Correlation: reason 12"]
+    assert vetoed.score == 54.0 and vetoed.tier == "BRONZE" and vetoed.capped and vetoed.warnings == ["Correlation: reason 12"]
     poor = rater.rate(pillars(["FAIL"] * 3 + ["UNVERIFIED"] * 12), policy)
-    assert poor.score == 20.0 and poor.tier == "POOR" and any("Line-shop" in a or "no edge" in a for a in poor.advice)
-    assert [rater.tier_for(s, policy) for s in (95, 85, 75, 60, 45, 44.99)] == ["PERFECT", "EXTRAORDINARY", "BRILLIANT", "GOOD", "AVERAGE", "POOR"]
+    assert poor.score == 20.0 and poor.tier == "BRONZE" and any("Line-shop" in a or "no edge" in a for a in poor.advice)
+    assert [rater.tier_for(s, policy) for s in (90, 89.99, 75, 55, 54.99)] == ["DIAMOND", "GOLD", "GOLD", "SILVER", "BRONZE"]  # Group 104 tiers
 
 
 def test_chameleon_margins_are_measured_per_book() -> None:
@@ -388,7 +388,7 @@ async def test_board_inspect_submit_and_the_shield_firing_live(sessions: async_s
         refused = await client.post("/api/v1/manual-parlay/inspect", json={"leg_ids": [home["leg_id"]], "skin": "stake", "bankroll_inr": "100000"})
         assert refused.status_code == 409 and refused.json()["detail"]["reason"] == "NO_RETAIL_BOOK"  # Stake does not quote this leg
         inspected = (await client.post("/api/v1/manual-parlay/inspect", json={"leg_ids": [home["leg_id"]], "skin": "one_xbet", "bankroll_inr": "100000"})).json()
-        assert inspected["book"] == "1xbet" and inspected["audit"]["is_vetted"] is True and inspected["rating"]["tier"] in ("PERFECT", "EXTRAORDINARY")
+        assert inspected["book"] == "1xbet" and inspected["audit"]["is_vetted"] is True and inspected["rating"]["tier"] in ("DIAMOND", "GOLD")
         assert len(inspected["rating"]["breakdown"]) == 15 and inspected["margins"]["legs"][0]["account_margin"] == odds["margins"]["by_book"]["1xbet"]
         assert inspected["margins"]["parlay_overround"] == pytest.approx(odds["margins"]["by_book"]["1xbet"], abs=1e-6)
         assert 0.15 <= inspected["stop_loss"]["recommended_pct"] <= 0.40 and inspected["developer_credit"] == "Amit Ashok Kumar Patnaik"

@@ -9,12 +9,13 @@
  */
 import { useState } from "react";
 import { ApiError } from "../../../api/client";
-import { BOOKMAKER_THEMES, inspectParlay, type Inspection, STRUCTURES, TIER_STYLE } from "../../../lib/backtest_and_parlay";
+import { autoFixSlip, BOOKMAKER_THEMES, inspectParlay, type Inspection, STRUCTURES } from "../../../lib/backtest_and_parlay";
 import { useFxBoard } from "../../../lib/currency";
 import { formatINR } from "../../../lib/format";
 import { boosters as pickBoosters, type BoardFixture, priceFor } from "../../../lib/match_board";
-import { priceAt, slipSignature, toSlipLeg, useParlaySlipStore } from "../../../store/useParlaySlipStore";
+import { payingBook, priceAt, type SlipLeg, slipSignature, toSlipLeg, useParlaySlipStore } from "../../../store/useParlaySlipStore";
 import { toast } from "../../../store/useToastStore";
+import { SlipScoreMeter } from "../../builder/SlipScoreMeter";
 
 const CHIPS = [100, 200, 1000];
 const pct = (p: number, digits = 1) => `${(p * 100).toFixed(digits)}%`;
@@ -24,11 +25,12 @@ export const SlipRail = ({ fixtures, onRecord }: { fixtures: BoardFixture[]; onR
   const skin = useParlaySlipStore((s) => s.skin);
   const add = useParlaySlipStore((s) => s.add);
   const remove = useParlaySlipStore((s) => s.remove);
+  const replace = useParlaySlipStore((s) => s.replace);
   const clear = useParlaySlipStore((s) => s.clear);
   const theme = BOOKMAKER_THEMES[skin];
   const fx = useFxBoard();
   const [stake, setStake] = useState("");
-  const [busy, setBusy] = useState(false);
+  const [busy, setBusy] = useState<"inspect" | "fix" | null>(null);
   const [inspected, setInspected] = useState<{ sig: string; result: Inspection } | null>(null);
 
   const kind = STRUCTURES.find((s) => legs.length >= s.legs[0] && legs.length <= s.legs[1])?.kind ?? null;
@@ -46,13 +48,32 @@ export const SlipRail = ({ fixtures, onRecord }: { fixtures: BoardFixture[]; onR
   const kellyStake = inspection && Number(inspection.audit.stake_inr) > 0 ? inspection.audit.stake_inr : null;
 
   const inspect = async () => {
-    setBusy(true);
+    setBusy("inspect");
     try {
       setInspected({ sig, result: await inspectParlay({ leg_ids: legs.map((l) => l.leg_id), kind, skin }) });
     } catch (err) {
       toast.error("Inspection refused", err instanceof ApiError ? err.message : "No answer from the server");
     } finally {
-      setBusy(false);
+      setBusy(null);
+    }
+  };
+  const autoFix = async () => {
+    setBusy("fix");
+    try {
+      const r = await autoFixSlip({ leg_ids: legs.map((l) => l.leg_id), kind, skin });
+      if (r.improved && r.replaced && r.replacement && r.inspection) {
+        const fresh: SlipLeg = { leg_id: r.replacement.leg_id, fixture: r.replacement.fixture, label: r.replacement.label, market: r.replacement.market,
+                                 prices: r.replacement.prices, fair_probability: r.replacement.fair_probability };
+        replace(r.replaced.leg_id, fresh);
+        setInspected({ sig: slipSignature(legs.map((l) => (l.leg_id === r.replaced?.leg_id ? fresh : l)), skin, kind), result: r.inspection });
+        toast.success(`Slip score ${Math.round(r.before.score)} → ${Math.round(r.after?.score ?? r.before.score)}`, `Swapped ${r.replaced.label} for ${r.replacement.label}.`);
+      } else {
+        toast.info("Nothing swapped", r.message ?? "No alternative rates higher.");
+      }
+    } catch (err) {
+      toast.error("Auto-fix refused", err instanceof ApiError ? err.message : "No answer from the server");
+    } finally {
+      setBusy(null);
     }
   };
 
@@ -75,6 +96,7 @@ export const SlipRail = ({ fixtures, onRecord }: { fixtures: BoardFixture[]; onR
                 <span className="block truncate text-[10px]" style={{ color: "var(--wb-muted)" }}>{l.fixture} · {l.market}</span>
               </span>
               <span className="flex items-center gap-2">
+                {!theme.book && payingBook(l, null) && <span className="text-[10px]" style={{ color: "var(--wb-muted)" }}>@ {payingBook(l, null)}</span>}
                 <span className="font-mono font-bold">{prices[i]?.toFixed(2) ?? "—"}</span>
                 <button type="button" aria-label={`Remove ${l.label}`} onClick={() => remove(l.leg_id)}>✕</button>
               </span>
@@ -126,14 +148,17 @@ export const SlipRail = ({ fixtures, onRecord }: { fixtures: BoardFixture[]; onR
             </span>
           </div>
           {inspection && (
-            <p className="rounded-xl p-2 text-[11px]" style={{ border: `1px solid ${TIER_STYLE[inspection.rating.tier].color}` }}>
-              Slip score <strong>{inspection.rating.score}</strong> · {inspection.rating.tier} · {inspection.audit.pillars_passed} pillars passed{inspection.audit.is_vetted ? " · vetted" : ""}
-              {inspection.audit.joint_ev !== null ? ` · joint EV ${inspection.audit.joint_ev >= 0 ? "+" : ""}${pct(inspection.audit.joint_ev)}` : ""}
-            </p>
+            <>
+              <SlipScoreMeter rating={inspection.rating} onAutoFix={() => void autoFix()} fixing={busy === "fix"} />
+              <p className="text-[11px]" style={{ color: "var(--wb-muted)" }}>
+                {inspection.audit.pillars_passed}/15 pillars passed{inspection.audit.is_vetted ? " · vetted" : ""}
+                {inspection.audit.joint_ev !== null ? ` · joint EV ${inspection.audit.joint_ev >= 0 ? "+" : ""}${pct(inspection.audit.joint_ev)}` : ""}
+              </p>
+            </>
           )}
-          <button type="button" disabled={busy || !kind} onClick={() => void inspect()} className="w-full rounded-xl py-2.5 text-xs font-black disabled:opacity-50"
+          <button type="button" disabled={busy !== null || !kind} onClick={() => void inspect()} className="w-full rounded-xl py-2.5 text-xs font-black disabled:opacity-50"
                   style={{ background: "var(--wb-primary)", color: "var(--wb-on-primary)" }}>
-            {busy ? "Inspecting…" : inspection ? "Re-inspect against the 15 pillars" : "Inspect against the 15 pillars"}
+            {busy === "inspect" ? "Inspecting…" : inspection ? "Re-inspect against the 15 pillars" : "Inspect against the 15 pillars"}
           </button>
           <button type="button" onClick={onRecord} className="w-full rounded-xl py-2 text-xs font-bold" style={{ border: "1px solid var(--wb-primary)" }}>
             Placed it at the book? Record it in the workbench

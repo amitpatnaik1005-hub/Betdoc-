@@ -10,7 +10,8 @@ import { apiClient, readToken, wsUrl } from "../api/client";
 import { useResource } from "./resource";
 
 export type Skin = "parimatch" | "one_xbet" | "stake" | "betdoc";
-export type Tier = "PERFECT" | "EXTRAORDINARY" | "BRILLIANT" | "GOOD" | "AVERAGE" | "POOR";
+/** The BetDoc Slip Score's tiers (Group 104, point b.5; backend MANUAL_PARLAY_TIERS). */
+export type Tier = "DIAMOND" | "GOLD" | "SILVER" | "BRONZE";
 export type PillarStatus = "PASS" | "FAIL" | "UNVERIFIED" | "ADVISORY";
 
 export interface BookmakerTheme {
@@ -26,25 +27,44 @@ export interface BookmakerTheme {
   couponStyle: string; // how its betslip reads
 }
 
+// Group 104 (point b.5): Parimatch cyber-yellow on obsidian, 1xBet cerulean on deep navy, BetDoc best-price gold
+// with emerald (the book that pays most on each leg is named beside its price)
 export const BOOKMAKER_THEMES: Record<Skin, BookmakerTheme> = {
-  parimatch: { label: "Parimatch", book: "parimatch", primary: "#F8FF13", surface: "#121212", onPrimary: "#121212", text: "#FAFAFA", muted: "#A3A3A3", card: "#1E1E1E",
+  parimatch: { label: "Parimatch", book: "parimatch", primary: "#F8FF13", surface: "#0D0E12", onPrimary: "#0D0E12", text: "#FAFAFA", muted: "#A3A3A3", card: "#1A1B21",
                font: "'Inter', system-ui, sans-serif", couponStyle: "high-contrast yellow coupon, bold totals" },
-  one_xbet: { label: "1xBet", book: "1xbet", primary: "#007ACC", surface: "#163963", onPrimary: "#FFFFFF", text: "#F1F5F9", muted: "#A9C1DA", card: "#1D4A7D",
+  one_xbet: { label: "1xBet", book: "1xbet", primary: "#007ACC", surface: "#0A2540", onPrimary: "#FFFFFF", text: "#FFFFFF", muted: "#A9C1DA", card: "#123A63",
               font: "'Roboto', system-ui, sans-serif", couponStyle: "navy betslip, accumulator badge" },
   stake: { label: "Stake", book: "stake", primary: "#00E701", surface: "#1A2C38", onPrimary: "#0B1620", text: "#E8EEF2", muted: "#8DA2B3", card: "#213743",
            font: "'Inter', system-ui, sans-serif", couponStyle: "minimal slate slip" },
-  betdoc: { label: "BetDoc", book: null, primary: "#10B981", surface: "#030712", onPrimary: "#030712", text: "#F9FAFB", muted: "#9CA3AF", card: "#111827",
-            font: "'JetBrains Mono', ui-monospace, monospace", couponStyle: "quant ledger: emerald and amber, monospace" },
+  betdoc: { label: "BetDoc best price", book: null, primary: "#C89B3C", surface: "#030712", onPrimary: "#030712", text: "#F9FAFB", muted: "#9CA3AF", card: "#111827",
+            font: "'JetBrains Mono', ui-monospace, monospace", couponStyle: "quant ledger: gold and emerald, monospace, the paying book on each leg" },
 };
 
-export const TIER_STYLE: Record<Tier, { color: string; glow: string }> = {
-  PERFECT: { color: "#FACC15", glow: "0 0 24px rgba(250, 204, 21, 0.65)" },
-  EXTRAORDINARY: { color: "#A78BFA", glow: "0 0 20px rgba(167, 139, 250, 0.55)" },
-  BRILLIANT: { color: "#F59E0B", glow: "0 0 18px rgba(245, 158, 11, 0.5)" },
-  GOOD: { color: "#10B981", glow: "0 0 14px rgba(16, 185, 129, 0.4)" },
-  AVERAGE: { color: "#94A3B8", glow: "none" },
-  POOR: { color: "#F43F5E", glow: "none" },
+export const TIER_STYLE: Record<Tier, { color: string; glow: string; label: string; meaning: string }> = {
+  DIAMOND: { color: "#22D3EE", glow: "0 0 24px rgba(34, 211, 238, 0.6)", label: "🏆 DIAMOND FORTRESS", meaning: "Chef's masterpiece" },
+  GOLD: { color: "#FBBF24", glow: "0 0 18px rgba(251, 191, 36, 0.5)", label: "🥇 GOLD GRADE", meaning: "Sharp contender" },
+  SILVER: { color: "#CBD5E1", glow: "none", label: "🥈 SILVER CAUTION", meaning: "Playable with fixes" },
+  BRONZE: { color: "#F43F5E", glow: "none", label: "🚨 BRONZE / DANGER TRAP", meaning: "Bookmaker donation" },
 };
+
+export interface SlipBadge {
+  code: "VIG_CRUSHER" | "HEAVY_JUICE" | "SAME_MATCH_TAX" | "ZERO_CORRELATION" | "SCORE_SYNCED" | "EV_KING";
+  label: string;
+  points: number;
+  positive: boolean;
+  detail: string;
+}
+
+/** A leg against its fixture's market-fitted scorelines (three-way football); null where no scoreline model exists. */
+export interface ScorelineLink {
+  likeliest_score: string;
+  likeliest_probability: number;
+  expected_goals: [number, number];
+  result_at_likeliest: string;
+  synced: boolean;
+  leg_probability: number;
+  push_probability: number;
+}
 
 // the structures a manual slip may take, by leg count
 export const STRUCTURES: { kind: string; label: string; legs: [number, number]; lines: string }[] = [
@@ -134,11 +154,13 @@ export interface Inspection {
     rejection_reasons: string[];
     slip: { legs: { fixture: string; label: string; prices: Record<string, number> }[] };
   };
-  rating: { score: number; tier: Tier; capped: boolean; breakdown: PillarRow[]; advice: string[]; warnings: string[] };
+  /** The BetDoc Slip Score: the fortress's 15-pillar score plus the badges' points, 0-100 (Group 104). */
+  rating: { score: number; tier: Tier; capped: boolean; breakdown: PillarRow[]; advice: string[]; warnings: string[]; fortress_score: number | null; badges: SlipBadge[] };
   margins: { legs: (Margins & { leg_id: string; selection: string; account_margin: number | null })[]; account_book: string; parlay_overround: number | null };
   skin: Skin;
   book: string | null;
   stop_loss: { recommended_pct: number; min_pct: number; max_pct: number; floor_inr_at_twin_stake: string; basis: string };
+  score_sync: Record<string, ScorelineLink | null>;
   developer_credit: string;
 }
 
@@ -199,6 +221,30 @@ export const useBoard = (sport: string | null) =>
 export const useAccounts = () => useResource("parlay:accounts", () => apiClient.get<Accounts>("/manual-parlay/accounts"), { intervalMs: 300_000 });
 export const useShields = () => useResource("parlay:shields", () => apiClient.get<{ shields: Shield[] }>("/manual-parlay/live-shields", { active_only: false }), { intervalMs: 15_000 });
 export const inspectParlay = (body: { leg_ids: string[]; kind: string | null; skin: Skin; bankroll_inr?: string }) => apiClient.post<Inspection>("/manual-parlay/inspect", body);
+
+export interface AutoFixLeg {
+  leg_id: string;
+  fixture: string;
+  label: string;
+  market: string;
+  fair_probability: number;
+  ev: number | null;
+  prices: Record<string, number>;
+}
+
+/** Group 104's 1-click auto-fix: the offending leg swapped for the quoted alternative the fortress rates highest. */
+export interface AutoFix {
+  improved: boolean;
+  reason?: "NOTHING_TO_FIX" | "NO_BETTER_LEG";
+  message?: string;
+  replaced?: { leg_id: string; label: string; fixture: string; reason: string };
+  replacement?: AutoFixLeg;
+  before: { score: number; tier: Tier };
+  after?: { score: number; tier: Tier };
+  tried: { leg_id: string; label: string; fixture: string; ev: number | null; score: number; tier: Tier }[];
+  inspection?: Inspection;
+}
+export const autoFixSlip = (body: { leg_ids: string[]; kind: string | null; skin: Skin; bankroll_inr?: string }) => apiClient.post<AutoFix>("/manual-parlay/auto-fix", body);
 export const submitParlay = (body: { audit_id: string; skin: Skin; stake_inr: string; placed_odds?: string; booking_code?: string; stop_loss_pct: number }) =>
   apiClient.post<{ bet_id: string; shield: { armed: boolean; reason?: string; message?: string } }>("/manual-parlay/submit", body);
 export const emergencyCashout = (shieldId: string, amount?: string) =>

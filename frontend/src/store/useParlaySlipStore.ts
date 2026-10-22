@@ -28,6 +28,13 @@ export const priceAt = (leg: Pick<SlipLeg, "prices">, book: string | null): numb
   return values.length ? Math.max(...values) : null;
 };
 
+/** The book that pays the shown price: the skin's own, or (BetDoc best price) whichever retail book pays most. */
+export const payingBook = (leg: Pick<SlipLeg, "prices">, book: string | null): string | null => {
+  if (book) return leg.prices[book] !== undefined ? book : null;
+  const best = Object.entries(leg.prices).filter(([b]) => RETAIL.includes(b)).sort((a, b) => b[1] - a[1])[0];
+  return best ? best[0] : null;
+};
+
 export const toSlipLeg = (card: Pick<FixtureCard, "home" | "away">, market: string, s: SelectionCard): SlipLeg => ({
   leg_id: s.leg_id, fixture: `${card.home} v ${card.away}`, label: s.label, market, prices: s.prices, fair_probability: s.fair_probability,
 });
@@ -39,6 +46,8 @@ interface ParlaySlipState {
   addMany: (legs: SlipLeg[]) => void;
   toggle: (leg: SlipLeg) => void;
   remove: (legId: string) => void;
+  /** Swap one leg for another in place (the auto-fix keeps the slip's order). */
+  replace: (legId: string, leg: SlipLeg) => void;
   clear: () => void;
   setSkin: (skin: Skin) => void;
 }
@@ -54,6 +63,7 @@ export const useParlaySlipStore = create<ParlaySlipState>()(
       addMany: (legs) => set((s) => ({ legs: [...s.legs, ...legs.filter((l) => !s.legs.some((x) => x.leg_id === l.leg_id))] })),
       toggle: (leg) => set((s) => ({ legs: s.legs.some((l) => l.leg_id === leg.leg_id) ? s.legs.filter((l) => l.leg_id !== leg.leg_id) : [...s.legs, leg] })),
       remove: (legId) => set((s) => ({ legs: s.legs.filter((l) => l.leg_id !== legId) })),
+      replace: (legId, leg) => set((s) => ({ legs: s.legs.map((l) => (l.leg_id === legId ? leg : l)).filter((l, i, all) => all.findIndex((x) => x.leg_id === l.leg_id) === i) })),
       clear: () => set({ legs: [] }),
       setSkin: (skin) => set({ skin: isSkin(skin) ? skin : "betdoc" }),
     }),

@@ -11,7 +11,7 @@ import { TwinFortressPanel } from '../components/oracle/DigitalTwinCard';
 import { SettlementFeedbackPanel } from '../components/oracle/SettlementFeedbackPanel';
 import { ModelRecalibrationPanel } from '../components/oracle/ModelRecalibrationPanel';
 import { NeverForgetLearningJournal } from '../components/oracle/NeverForgetLearningJournal';
-import { ManualParlayWorkbench } from '../components/parlay/ManualParlayWorkbench';
+import { BetBuilder } from '../components/builder/BetBuilder';
 import { MatchBoard } from '../components/oracle/board/MatchBoard';
 import { SportsEngineDesk } from '../components/oracle/SportsEngineDesk';
 import { ashokaHeadline, useSlips } from '../lib/oracle';
@@ -296,13 +296,14 @@ const GoldenAlpha = ({ bets }: { bets: ValueBetFlag[] }) => {
 // ---------------------------------------------------------------------------
 // NAMED EXPORT: THE ORACLE
 // ---------------------------------------------------------------------------
-type OracleTab = 'board' | 'desk' | 'engine';
+type OracleTab = 'board' | 'builder' | 'desk' | 'engine';
 const ORACLE_TABS: { value: OracleTab; label: string; icon: string }[] = [
   { value: 'board', label: 'Match board', icon: 'stadium' },
+  { value: 'builder', label: 'Bet builder', icon: 'construction' },
   { value: 'desk', label: 'Vetted slips & desk', icon: 'verified' },
   { value: 'engine', label: 'Sports engine', icon: 'sports' },
 ];
-const isOracleTab = (v: string | null): v is OracleTab => v === 'board' || v === 'desk' || v === 'engine';
+const isOracleTab = (v: string | null): v is OracleTab => v === 'board' || v === 'builder' || v === 'desk' || v === 'engine';
 
 export const TheOracle = () => {
   // Group 103: the Sports Engine joined The Oracle; /sports redirects here with ?tab=engine
@@ -311,7 +312,7 @@ export const TheOracle = () => {
   const tab: OracleTab = isOracleTab(tabParam) ? tabParam : 'board';
   const setTab = (next: OracleTab) => setParams((prev) => { const p = new URLSearchParams(prev); p.set('tab', next); return p; }, { replace: true });
   const recordInWorkbench = () => {
-    setTab('desk');
+    setParams((prev) => { const p = new URLSearchParams(prev); p.set('tab', 'builder'); p.set('mode', 'manual'); return p; }, { replace: true });
     window.setTimeout(() => document.getElementById('parlay-workbench')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 120);
   };
   const odds = useLiveOdds();
@@ -376,6 +377,23 @@ export const TheOracle = () => {
         </>
       )}
 
+      {tab === 'builder' && (
+        <>
+          <ComponentGuideBanner
+            className="lg:col-span-12"
+            moduleName="The Oracle · Bet builder"
+            purpose="Three ways to a slip, all rated the same way: the BetDoc Slip Score (0-100) is the 15-pillar fortress's score plus badges earned from what it measured. Nothing is placed from here."
+            steps={[
+              "5(a) Auto parlays and 5(c) the Chef's Table are fully automatic: load a slip with one click",
+              "5(b) the manual workbench is the only place to pick legs by hand; Inspect gives the Slip Score, tier and badges",
+              "A trap or a loser? 1-click auto-fix swaps the offending leg for the quoted alternative the fortress rates highest",
+            ]}
+            kpiCodes={["SLIP_SCORE", "EV", "OVERROUND"]}
+          />
+          <BetBuilder slips={slips.data} />
+        </>
+      )}
+
       {tab === 'engine' && (
         <>
           <ComponentGuideBanner
@@ -411,7 +429,6 @@ export const TheOracle = () => {
       <SettlementFeedbackPanel />
       <ModelRecalibrationPanel />
       <NeverForgetLearningJournal />
-      <ManualParlayWorkbench />
       <CashoutPanel />
       <TrendingFeed />
       <MyBets />

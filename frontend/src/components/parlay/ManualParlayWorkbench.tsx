@@ -15,14 +15,15 @@ import { type CSSProperties, type DragEvent, useState } from "react";
 import { ApiError } from "../../api/client";
 import { formatDateTime, formatINR } from "../../lib/format";
 import {
-  BOOKMAKER_THEMES, emergencyCashout, inspectParlay, STRUCTURES, submitParlay, TIER_STYLE, useAccounts, useBoard, useShields, useShieldStream,
+  autoFixSlip, BOOKMAKER_THEMES, emergencyCashout, inspectParlay, STRUCTURES, submitParlay, TIER_STYLE, useAccounts, useBoard, useShields, useShieldStream,
   type FixtureCard, type Inspection, type PillarRow, type Shield, type Skin,
 } from "../../lib/backtest_and_parlay";
 import { invalidate } from "../../lib/resource";
-import { priceAt, type SlipLeg, slipSignature, toSlipLeg, useParlaySlipStore } from "../../store/useParlaySlipStore";
+import { payingBook, priceAt, type SlipLeg, slipSignature, toSlipLeg, useParlaySlipStore } from "../../store/useParlaySlipStore";
 import { toast } from "../../store/useToastStore";
 import { Async, Button, EmptyState, Field, Meter, NumberInput, Panel, Pill, Select, TextInput } from "../../ui/kit";
 import { boardTargets } from "../../lib/prediction";
+import { SlipScoreMeter } from "../builder/SlipScoreMeter";
 import { ScoreBackedLegs } from "../prediction/ScoreBackedLegs";
 
 const refusal = (err: unknown): string => (err instanceof ApiError ? err.message : "No answer from the server");
@@ -192,20 +193,22 @@ const ShieldRow = ({ shield, live }: { shield: Shield; live: Shield["frame"] | u
   );
 };
 
-export const ManualParlayWorkbench = () => {
+/** ``embedded``: inside the Bet Builder (Group 104), which frames it; standalone it is its own panel. */
+export const ManualParlayWorkbench = ({ embedded = false }: { embedded?: boolean }) => {
   // Group 103: the slip and the skin are The Oracle's (shared with the match board)
   const skin = useParlaySlipStore((s) => s.skin);
   const setSkin = useParlaySlipStore((s) => s.setSkin);
   const slip = useParlaySlipStore((s) => s.legs);
   const addLeg = useParlaySlipStore((s) => s.add);
   const removeLeg = useParlaySlipStore((s) => s.remove);
+  const replaceLeg = useParlaySlipStore((s) => s.replace);
   const clearSlip = useParlaySlipStore((s) => s.clear);
   const [sport, setSport] = useState<string | null>(null);
   const [kind, setKind] = useState<string | null>(null);
   const [stopLoss, setStopLoss] = useState(0.25);
   // An inspection holds only for the exact legs, structure and skin it rated
   const [inspected, setInspected] = useState<{ sig: string; result: Inspection } | null>(null);
-  const [busy, setBusy] = useState<"inspect" | "submit" | null>(null);
+  const [busy, setBusy] = useState<"inspect" | "submit" | "fix" | null>(null);
   const [placed, setPlaced] = useState({ stake: "", odds: "", code: "" });
   const [over, setOver] = useState(false);
   const [scoresId, setScoresId] = useState<string | null>(null);
@@ -245,6 +248,30 @@ export const ManualParlayWorkbench = () => {
       setBusy(null);
     }
   };
+  // Group 104: the 1-click auto-fix (the offending leg swapped for the quoted alternative the fortress rates highest)
+  const autoFix = async () => {
+    setBusy("fix");
+    try {
+      const r = await autoFixSlip({ leg_ids: slip.map((l) => l.leg_id), kind: chosen, skin });
+      if (r.improved && r.replaced && r.replacement && r.inspection) {
+        const fresh: SlipLeg = { leg_id: r.replacement.leg_id, fixture: r.replacement.fixture, label: r.replacement.label, market: r.replacement.market,
+                                 prices: r.replacement.prices, fair_probability: r.replacement.fair_probability };
+        const next = slip.map((l) => (l.leg_id === r.replaced?.leg_id ? fresh : l));
+        replaceLeg(r.replaced.leg_id, fresh);
+        setInspected({ sig: slipSignature(next, skin, chosen), result: r.inspection });
+        setStopLoss(r.inspection.stop_loss.recommended_pct);
+        setPlaced((p) => ({ ...p, odds: r.inspection?.audit.total_odds ?? p.odds, stake: Number(r.inspection?.audit.stake_inr) > 0 ? (r.inspection?.audit.stake_inr ?? p.stake) : p.stake }));
+        toast.success(`Slip score ${Math.round(r.before.score)} → ${Math.round(r.after?.score ?? r.before.score)}`,
+                      `Swapped ${r.replaced.label} (${r.replaced.reason}) for ${r.replacement.label}, the best of ${r.tried.length} tried.`);
+      } else {
+        toast.info("Nothing swapped", r.message ?? "No alternative rates higher.");
+      }
+    } catch (err) {
+      toast.error("Auto-fix refused", refusal(err));
+    } finally {
+      setBusy(null);
+    }
+  };
   const submit = async () => {
     if (!inspection) return;
     setBusy("submit");
@@ -263,8 +290,7 @@ export const ManualParlayWorkbench = () => {
 
   const style = { "--wb-primary": theme.primary, "--wb-on-primary": theme.onPrimary, "--wb-card": theme.card, "--wb-muted": theme.muted, background: theme.surface, color: theme.text, fontFamily: theme.font } as CSSProperties;
   const tier = inspection ? TIER_STYLE[inspection.rating.tier] : null;
-  return (
-    <Panel title="Manual parlay workbench" icon="construction" className="lg:col-span-12" subtitle="Build a parlay by hand, rate it against the 15 pillars, and let the stop-loss shield watch it">
+  const body = (
       <div id="parlay-workbench" className="flex scroll-mt-24 flex-col gap-4 rounded-3xl p-4 transition-colors duration-300" style={style}>
         <header className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex flex-wrap gap-1.5" role="radiogroup" aria-label="Betting account">
@@ -342,6 +368,7 @@ export const ManualParlayWorkbench = () => {
                 <li key={l.leg_id} className="flex items-center justify-between gap-2 text-xs">
                   <span className="min-w-0 truncate">{l.fixture} · {l.label}</span>
                   <span className="flex items-center gap-2">
+                    {!theme.book && payingBook(l, null) && <span className="text-[10px]" style={{ color: theme.muted }}>@ {payingBook(l, null)}</span>}
                     <span className="font-mono font-bold" style={{ color: theme.primary }}>{prices[i] ?? "—"}</span>
                     <button type="button" aria-label={`remove ${l.label}`} onClick={() => removeLeg(l.leg_id)}>✕</button>
                   </span>
@@ -368,11 +395,8 @@ export const ManualParlayWorkbench = () => {
 
         {inspection && tier && (
           <section className="flex flex-col gap-3 rounded-2xl p-3" style={{ background: theme.card }} aria-label="Cognitive rating">
-            <div className="flex flex-wrap items-center gap-4">
-              <div className="flex h-24 w-24 shrink-0 flex-col items-center justify-center rounded-full" style={{ border: `3px solid ${tier.color}`, boxShadow: tier.glow }}>
-                <span className="font-mono text-2xl font-bold" style={{ color: tier.color }}>{Math.round(inspection.rating.score)}</span>
-                <span className="text-[10px] font-bold tracking-wide" style={{ color: tier.color }}>{inspection.rating.tier}</span>
-              </div>
+            <div className="flex flex-wrap items-start gap-4">
+              <div className="w-full sm:w-80"><SlipScoreMeter rating={inspection.rating} onAutoFix={() => void autoFix()} fixing={busy === "fix"} /></div>
               <Radar rows={inspection.rating.breakdown} color={tier.color} />
               <div className="flex min-w-[14rem] flex-1 flex-col gap-1 text-xs">
                 <p>
@@ -387,6 +411,19 @@ export const ManualParlayWorkbench = () => {
               </div>
             </div>
             {inspection.rating.warnings.map((w) => <p key={w} className="text-xs font-semibold text-amber-400">{w}</p>)}
+            {Object.values(inspection.score_sync).some((v) => v !== null) && (
+              <ul className="flex flex-wrap gap-1.5 text-[11px]" aria-label="Score sync">
+                {slip.map((l) => {
+                  const sync = inspection.score_sync[l.leg_id];
+                  return sync ? (
+                    <li key={l.leg_id} className="rounded-lg px-2 py-0.5" title={`${(sync.leg_probability * 100).toFixed(1)}% under the fitted scorelines`}
+                        style={{ border: `1px solid ${sync.synced ? "#22C55E" : theme.muted}` }}>
+                      {sync.synced ? "🎯" : "·"} {l.label}: {sync.result_at_likeliest.toLowerCase().replace("_", " ")} at {sync.likeliest_score}
+                    </li>
+                  ) : null;
+                })}
+              </ul>
+            )}
             {inspection.rating.advice.length > 0 && (
               <ul className="ml-4 list-disc text-xs leading-relaxed">{inspection.rating.advice.slice(0, 8).map((a) => <li key={a}>{a}</li>)}</ul>
             )}
@@ -421,6 +458,10 @@ export const ManualParlayWorkbench = () => {
           </p>
         </section>
       </div>
+  );
+  return embedded ? body : (
+    <Panel title="Manual parlay workbench" icon="construction" className="lg:col-span-12" subtitle="Build a parlay by hand, rate it against the 15 pillars, and let the stop-loss shield watch it">
+      {body}
     </Panel>
   );
 };

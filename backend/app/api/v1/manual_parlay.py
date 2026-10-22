@@ -2,7 +2,8 @@
 
     GET  /manual-parlay/board                           match KPI cards (?sport=Football ...), counts per sport
     GET  /manual-parlay/accounts                        the account books' balances as last recorded in the Vault (admin)
-    POST /manual-parlay/inspect                         the parlay through the 15-pillar fortress at the skin's book: score, tier, advice, margins, stop-loss
+    POST /manual-parlay/inspect                         the parlay through the 15-pillar fortress at the skin's book: the Slip Score (badges, tier), advice, margins, stop-loss
+    POST /manual-parlay/auto-fix                        Group 104: the offending leg swapped for the alternative the fortress rates highest
     POST /manual-parlay/submit                          the inspected slip into Ashoka's ledger, stop-loss shield armed
     GET  /manual-parlay/live-shields                    your shields (?active_only=false for the fired ones too)
     POST /manual-parlay/emergency-cashout/{shield_id}   issue the cashout ticket now, or record the cashout you took
@@ -78,6 +79,19 @@ async def inspect(body: InspectRequest, request: Request, user: CurrentUser, ses
     except (workbench.WorkbenchRefusal, vetting.TwinRefusal, ValueError) as exc:
         raise _refused(exc) from exc
     return result.payload
+
+
+@router.post("/auto-fix")
+async def auto_fix(body: InspectRequest, request: Request, user: CurrentUser, sessions: Sessions, settings: AppSettings) -> dict[str, Any]:
+    """Group 104's 1-click auto-fix: the slip's offending leg swapped for the quoted alternative the fortress rates
+    highest (tried without recording), kept only if it scores higher, then inspected for real."""
+    if len(body.leg_ids) > settings.MANUAL_PARLAY_MAX_LEGS:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, {"reason": "TOO_MANY_LEGS", "message": f"at most {settings.MANUAL_PARLAY_MAX_LEGS} legs"})
+    try:
+        return await workbench.auto_fix(sessions, _need_redis(request), settings, user.id, leg_ids=body.leg_ids, kind=body.kind, skin=body.skin,
+                                        bankroll=body.bankroll_inr, now=datetime.now(UTC))
+    except (workbench.WorkbenchRefusal, vetting.TwinRefusal, ValueError) as exc:
+        raise _refused(exc) from exc
 
 
 @router.post("/submit", status_code=status.HTTP_201_CREATED)
