@@ -26,7 +26,8 @@ import {
 } from "../../lib/portfolio";
 import { invalidate } from "../../lib/resource";
 import { newIdempotencyKey } from "../../store/useExecutionStore";
-import { Button, CARD_VARIANTS, ConfirmButton, EmptyState, LiveDot, Panel, Pill, SPRING, SURFACE, Skeleton } from "../../ui/kit";
+import { Button, ConfirmButton, EmptyState, LiveDot, Panel, Pill, SURFACE, Skeleton } from "../../ui/kit";
+import { CARD_VARIANTS, SPRING } from "../../ui/motion";
 
 const cx = (...parts: (string | false | null | undefined)[]): string => parts.filter(Boolean).join(" ");
 const signed = (value: string | number | null | undefined): string => {

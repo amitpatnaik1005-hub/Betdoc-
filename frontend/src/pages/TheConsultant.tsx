@@ -20,7 +20,8 @@ import { applyPrescription, type ConsultantReport, consultSlip, toSlipLeg } from
 import { invalidate } from "../lib/resource";
 import { priceAt, slipSignature, useParlaySlipStore } from "../store/useParlaySlipStore";
 import { toast } from "../store/useToastStore";
-import { CommanderHero, MOTIFS } from "../ui/hero";
+import { CommanderHero } from "../ui/hero";
+import { MOTIFS } from "../ui/motifs";
 import { Button, ComponentGuideBanner, EmptyState, Page, Panel, Pill, Select } from "../ui/kit";
 
 const refusal = (err: unknown): string => (err instanceof ApiError ? err.message : "No answer from the server");

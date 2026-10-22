@@ -10,7 +10,8 @@ import {
   useLocation,
 } from 'react-router-dom';
 
-import { BRAND, AnimatedGlyph, type GlyphMotion, BetdocLogo as BrandLogo } from './ui/brand';
+import { AnimatedGlyph, type GlyphMotion, BetdocLogo as BrandLogo } from './ui/brand';
+import { BRAND } from './ui/tokens';
 import { useUIStore } from './store/useUIStore';
 import { ScoutOracleFlexiDock } from './components/oracle/ScoutOracleFlexiDock';
 import { toggleScoutDock } from './store/useScoutDockStore';
@@ -18,7 +19,8 @@ import LoginForm from './components/LoginForm';
 import { RouteErrorBoundary } from './components/RouteErrorBoundary';
 import { Toaster } from './components/Toaster';
 import { MobileBottomNav } from './components/layout/MobileBottomNav';
-import { CommandPalette, type PaletteCommand, useNavigateCommands } from './components/CommandPalette';
+import { CommandPalette, type PaletteCommand } from './components/CommandPalette';
+import { useNavigateCommands } from './lib/commands';
 import { MOCK_AUTH, useAuthStore } from './store/useAuthStore';
 import { useMarketStore } from './store/useMarketStore';
 import { useSystemStore } from './store/useSystemStore';

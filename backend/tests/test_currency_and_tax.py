@@ -32,8 +32,8 @@ from sqlalchemy.pool import NullPool, StaticPool
 from app.api.deps import get_current_user, get_db
 from app.core.celery_app import celery_app
 from app.core.config import get_settings
-from app.domain.paper_trading.legs import LegTranslationError, translate
-from app.domain.paper_trading.tax import financial_year, section_115bbj
+from app.domain.wagering.legs import LegTranslationError, translate
+from app.domain.wagering.tax import financial_year, section_115bbj
 from app.main import app
 from app.models import User
 from app.models.control_panel import SystemSettingsModel
@@ -324,6 +324,6 @@ def test_celery_beat_and_tasks_registered() -> None:
 
 def test_ashvatthama_closes_the_roster() -> None:
     roster = [bot.value for bot in LegendaryBot]
-    # 15 since Group 97 retired ARJUNA (Group 96 retired GARUDA); ASHVATTHAMA is still the last commander
-    assert len(roster) == 15 and roster[-1] == "ASHVATTHAMA" and not {"DEVRAYA", "GARUDA", "ARJUNA"} & set(roster)
+    # 14 since Group 103 retired ARYABHATA into ASHOKA (Group 97 retired ARJUNA, Group 96 GARUDA); ASHVATTHAMA is still the last commander
+    assert len(roster) == 14 and roster[-1] == "ASHVATTHAMA" and not {"DEVRAYA", "GARUDA", "ARJUNA", "ARYABHATA"} & set(roster)
     assert LegendaryBot.ASHVATTHAMA in PROBES and set(PROBES) == set(LegendaryBot)

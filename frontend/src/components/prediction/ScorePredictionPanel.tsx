@@ -11,7 +11,8 @@ import { formatDateTime, formatRatioPct } from "../../lib/format";
 import { usePreMatchFixtures } from "../../lib/pre_match";
 import { type CricketPrediction, type FootballPrediction, predictCricket, predictFootballFromXg, predictStoredFixture } from "../../lib/prediction";
 import { runMutation } from "../../lib/resource";
-import { Button, EmptyState, Field, KeyValues, num, NumberInput, Panel, Segmented, Select, TextInput, Toggle } from "../../ui/kit";
+import { Button, EmptyState, Field, KeyValues, NumberInput, Panel, Segmented, Select, TextInput, Toggle } from "../../ui/kit";
+import { num } from "../../ui/num";
 import { CricketInningsCard } from "./CricketInningsCard";
 import { FootballScoreHeatmap } from "./FootballScoreHeatmap";
 

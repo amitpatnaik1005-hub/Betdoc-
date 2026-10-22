@@ -7,7 +7,7 @@ import { type ScoutAction, type ScoutSource, useScoutStore } from '../../store/u
 import { useUIStore } from '../../store/useUIStore';
 import { useExecutionStore } from '../../store/useExecutionStore';
 import { useCommanderStore } from '../../store/useCommanderStore';
-import { BRAND, SURFACE } from '../../ui/brand';
+import { BRAND, SURFACE } from '../../ui/tokens';
 
 const SCOUT_FEED_CARD = `w-full rounded-2xl px-4 py-3 text-stone-700 dark:text-stone-200 ${SURFACE.card}`;
 const SCOUT_USER_CARD = 'max-w-[80%] rounded-2xl bg-stone-900 px-4 py-2.5 text-white dark:bg-white/[0.1] dark:ring-1 dark:ring-inset dark:ring-white/10';

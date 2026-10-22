@@ -4,7 +4,8 @@ import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { apiClient } from "../../api/client";
 import { formatInt } from "../../lib/format";
 import { runMutation } from "../../lib/resource";
-import { LiveDot, Pill, SPRING, type Tone } from "../../ui/kit";
+import { LiveDot, Pill, type Tone } from "../../ui/kit";
+import { SPRING } from "../../ui/motion";
 import { type FleetRole, type FleetSource, cx, groupLabel, seconds } from "./types";
 
 // --------------------------------------------------------------------------- switch

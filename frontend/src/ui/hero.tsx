@@ -4,7 +4,8 @@ import { BotAvatar } from "../components/bots/BotAvatar";
 import { COMMANDER_REGISTRY, type CommanderId } from "../config/commanders.config";
 import { avatarStatus, formatProbeLatency, probeCommandersNow, useCommanders } from "../lib/commanders";
 import { formatAgo } from "../lib/format";
-import { CARD_VARIANTS, SPRING, StatusBadge } from "./kit";
+import { StatusBadge } from "./kit";
+import { CARD_VARIANTS, SPRING } from "./motion";
 
 interface CommanderHeroProps {
   commander: CommanderId;
@@ -117,97 +118,3 @@ export const CommanderHero = ({ commander, headline, detail, motif, actions, sta
     </motion.section>
   );
 };
-
-// --------------------------------------------------------------------------- motifs
-// Faint section emblems drawn in currentColor (the commander's primary).
-export const MOTIFS = {
-  rings: (
-    <svg viewBox="0 0 400 400" fill="none" className="size-full">
-      {[180, 130, 80].map((r, i) => (
-        <circle key={r} cx="200" cy="200" r={r} stroke="currentColor" strokeWidth={1.2 - i * 0.3} strokeDasharray="6 10" />
-      ))}
-    </svg>
-  ),
-  radar: (
-    <svg viewBox="0 0 400 400" fill="none" className="size-full">
-      {[170, 120, 70].map((r) => (
-        <circle key={r} cx="200" cy="200" r={r} stroke="currentColor" strokeWidth="1" strokeDasharray="4 12" />
-      ))}
-      <line x1="200" y1="20" x2="200" y2="380" stroke="currentColor" strokeWidth="0.6" />
-      <line x1="20" y1="200" x2="380" y2="200" stroke="currentColor" strokeWidth="0.6" />
-    </svg>
-  ),
-  constellation: (
-    <svg viewBox="0 0 400 400" fill="none" className="size-full">
-      {[[80, 120], [200, 60], [320, 140], [260, 260], [120, 300], [200, 200]].map(([x, y], i, pts) => (
-        <g key={i}>
-          <circle cx={x} cy={y} r="6" fill="currentColor" />
-          <line x1={x} y1={y} x2={pts[(i + 2) % pts.length][0]} y2={pts[(i + 2) % pts.length][1]} stroke="currentColor" strokeWidth="1" />
-        </g>
-      ))}
-    </svg>
-  ),
-  hex: (
-    <svg viewBox="0 0 400 400" fill="none" className="size-full">
-      {[0, 1, 2, 3].flatMap((row) =>
-        [0, 1, 2, 3].map((col) => {
-          const x = 70 + col * 80 + (row % 2) * 40;
-          const y = 70 + row * 70;
-          const pts = Array.from({ length: 6 }, (_, k) => {
-            const a = (Math.PI / 3) * k + Math.PI / 6;
-            return `${x + 34 * Math.cos(a)},${y + 34 * Math.sin(a)}`;
-          }).join(" ");
-          return <polygon key={`${row}-${col}`} points={pts} stroke="currentColor" strokeWidth="1.2" />;
-        }),
-      )}
-    </svg>
-  ),
-  vault: (
-    <svg viewBox="0 0 400 400" fill="none" className="size-full">
-      <circle cx="200" cy="200" r="150" stroke="currentColor" strokeWidth="2" />
-      <circle cx="200" cy="200" r="110" stroke="currentColor" strokeWidth="1" strokeDasharray="3 8" />
-      {Array.from({ length: 12 }, (_, i) => {
-        const a = (i / 12) * Math.PI * 2;
-        return <line key={i} x1={200 + 120 * Math.cos(a)} y1={200 + 120 * Math.sin(a)} x2={200 + 150 * Math.cos(a)} y2={200 + 150 * Math.sin(a)} stroke="currentColor" strokeWidth="2" />;
-      })}
-      <circle cx="200" cy="200" r="30" stroke="currentColor" strokeWidth="2" />
-    </svg>
-  ),
-  waves: (
-    <svg viewBox="0 0 400 400" fill="none" className="size-full">
-      {[0, 1, 2, 3, 4].map((i) => (
-        <path key={i} d={`M0 ${120 + i * 40} Q100 ${80 + i * 40} 200 ${120 + i * 40} T400 ${120 + i * 40}`} stroke="currentColor" strokeWidth="1.2" />
-      ))}
-    </svg>
-  ),
-  stack: (
-    <svg viewBox="0 0 400 400" fill="none" className="size-full">
-      {[0, 1, 2, 3].map((i) => (
-        <ellipse key={i} cx="200" cy={110 + i * 60} rx="130" ry="34" stroke="currentColor" strokeWidth="1.4" />
-      ))}
-      <line x1="70" y1="110" x2="70" y2="290" stroke="currentColor" strokeWidth="1.4" />
-      <line x1="330" y1="110" x2="330" y2="290" stroke="currentColor" strokeWidth="1.4" />
-    </svg>
-  ),
-  circuit: (
-    <svg viewBox="0 0 400 400" fill="none" className="size-full">
-      <rect x="140" y="140" width="120" height="120" rx="12" stroke="currentColor" strokeWidth="2" />
-      {[160, 200, 240].flatMap((p) => [
-        <line key={`t${p}`} x1={p} y1="140" x2={p} y2="60" stroke="currentColor" strokeWidth="1.2" />,
-        <line key={`b${p}`} x1={p} y1="260" x2={p} y2="340" stroke="currentColor" strokeWidth="1.2" />,
-        <line key={`l${p}`} x1="140" y1={p} x2="60" y2={p} stroke="currentColor" strokeWidth="1.2" />,
-        <line key={`r${p}`} x1="260" y1={p} x2="340" y2={p} stroke="currentColor" strokeWidth="1.2" />,
-      ])}
-    </svg>
-  ),
-  sliders: (
-    <svg viewBox="0 0 400 400" fill="none" className="size-full">
-      {[100, 200, 300].map((x, i) => (
-        <g key={x}>
-          <line x1={x} y1="60" x2={x} y2="340" stroke="currentColor" strokeWidth="1.4" />
-          <rect x={x - 18} y={100 + i * 70} width="36" height="24" rx="6" stroke="currentColor" strokeWidth="2" />
-        </g>
-      ))}
-    </svg>
-  ),
-} as const;

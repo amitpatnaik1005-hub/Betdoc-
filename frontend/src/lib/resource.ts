@@ -7,7 +7,7 @@
  * - `intervalMs` polls as a safety net while mounted and the tab is visible; realtime events do the
  *   fast path.
  */
-import { useCallback, useEffect, useRef } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef } from "react";
 import { create } from "zustand";
 import { toast } from "../store/useToastStore";
 
@@ -76,7 +76,9 @@ export function useResource<T>(
 ): ResourceResult<T> {
   const { intervalMs } = options;
   const fetcherRef = useRef(fetcher);
-  fetcherRef.current = fetcher;
+  useLayoutEffect(() => {
+    fetcherRef.current = fetcher;  // the latest fetcher, before any effect below reads it
+  });
 
   useEffect(() => {
     if (!key) return;

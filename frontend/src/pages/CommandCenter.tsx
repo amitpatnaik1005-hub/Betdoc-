@@ -14,8 +14,10 @@ import { useVerdicts, VERDICT_STYLE } from '../lib/consultant';
 import { useSystemStore } from '../store/useSystemStore';
 import { toast } from '../store/useToastStore';
 import { useUIStore } from '../store/useUIStore';
-import { CommanderHero, MOTIFS } from '../ui/hero';
-import { AnimatedNumber, Async, Button, CARD_VARIANTS, ConfirmButton, EmptyState, Page, Panel, Pill, Stat, StatGrid, StatusBadge, type Tone } from '../ui/kit';
+import { CommanderHero } from '../ui/hero';
+import { MOTIFS } from '../ui/motifs';
+import { AnimatedNumber, Async, Button, ComponentGuideBanner, ConfirmButton, EmptyState, Page, Panel, Pill, Stat, StatGrid, StatusBadge, type Tone } from '../ui/kit';
+import { CARD_VARIANTS } from '../ui/motion';
 
 // ---------------------------------------------------------------------------
 // CONTRACTS
@@ -333,6 +335,17 @@ export const CommandCenter = () => {
             )}
           </>
         }
+      />
+      <ComponentGuideBanner
+        className="lg:col-span-12"
+        moduleName="Command Center"
+        purpose="KAUTILYA's overview of the whole desk: the commanders' live telemetry, the activity stream, the Consultant's latest signed verdicts, the live market board and the Pocket Twin. The emergency stop is here."
+        steps={[
+          "Check the telemetry matrix and the commanders: a red status means a feed or a worker needs attention",
+          "Read the activity stream and the Consultant's latest signed verdicts",
+          "Halt everything with Emergency stop when something is wrong; link Telegram in Pocket Twin to run the desk from a phone",
+        ]}
+        kpiCodes={["SLIP_SCORE"]}
       />
       <TelemetryMatrix />
       <CommanderRoster />

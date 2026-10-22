@@ -255,7 +255,7 @@ def _clean_config(channel: ChannelName, config: dict[str, Any]) -> dict[str, Any
     fields = CONFIG_FIELDS[channel]
     unknown = sorted(set(config) - set(fields))
     if unknown:
-        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, {"reason": "UNKNOWN_FIELDS", "message": f"Unknown settings: {', '.join(unknown)}"})
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, {"reason": "UNKNOWN_FIELDS", "message": f"Unknown settings: {', '.join(unknown)}"})
     clean: dict[str, Any] = {}
     try:
         for name, value in config.items():
@@ -287,7 +287,7 @@ def _clean_config(channel: ChannelName, config: dict[str, Any]) -> dict[str, Any
             else:
                 clean[name] = str(value)[:64]
     except (ValueError, TypeError) as exc:
-        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, {"reason": "BAD_SETTING", "message": str(exc)}) from exc
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, {"reason": "BAD_SETTING", "message": str(exc)}) from exc
     return clean
 
 
@@ -322,13 +322,13 @@ async def set_credentials(name: str, payload: ChannelCredentials, request: Reque
         raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, {"reason": "NO_VAULT", "message": "MASTER_VAULT_KEY is not configured"})
     unknown = sorted(set(payload.values) - set(CREDENTIAL_FIELDS[channel]))
     if unknown:
-        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, {"reason": "UNKNOWN_FIELDS", "message": f"Unknown credentials: {', '.join(unknown)}"})
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, {"reason": "UNKNOWN_FIELDS", "message": f"Unknown credentials: {', '.join(unknown)}"})
     incoming = {k: v.strip() for k, v in payload.values.items()}
     if channel is ChannelName.DISCORD and incoming.get("webhook_url"):
         try:
             validate_webhook_url(incoming["webhook_url"])
         except DispatcherConfigurationError as exc:
-            raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, {"reason": "BAD_WEBHOOK", "message": str(exc)}) from exc
+            raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, {"reason": "BAD_WEBHOOK", "message": str(exc)}) from exc
     async with sessions() as session:
         row = await _row(session, channel)
         current = decrypt(row, vault)
@@ -393,7 +393,7 @@ async def routing(user: CurrentUser, sessions: Sessions) -> dict[str, Any]:  # n
 async def update_routing(payload: RoutingUpdate, request: Request, admin: CurrentAdmin, sessions: Sessions, settings: AppSettings) -> dict[str, Any]:
     problems = validate(payload.matrix)
     if problems:
-        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, {"reason": "BAD_MATRIX", "message": "; ".join(problems)})
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, {"reason": "BAD_MATRIX", "message": "; ".join(problems)})
     async with sessions() as session:
         row = await session.get(SentinelRouting, 1)
         if row is None:

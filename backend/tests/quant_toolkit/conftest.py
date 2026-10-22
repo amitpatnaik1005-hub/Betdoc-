@@ -16,7 +16,7 @@ from sqlalchemy.pool import StaticPool
 
 from app.api.deps import CurrentUser, get_db
 from app.api.v1.the_lab import router as lab_router
-from app.domain.phantom.manager import PhantomManager
+from app.domain.quant_toolkit.manager import QuantToolkitManager
 from app.models import Base
 from app.models.phantom import PhantomCalculationLogModel
 
@@ -63,8 +63,8 @@ async def db_session(session_factory: async_sessionmaker[AsyncSession]) -> Async
 
 
 @pytest.fixture
-def manager() -> PhantomManager:
-    return PhantomManager()
+def manager() -> QuantToolkitManager:
+    return QuantToolkitManager()
 
 
 @pytest_asyncio.fixture

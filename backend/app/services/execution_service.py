@@ -37,11 +37,11 @@ def _sanitize(value: Decimal, field: str) -> Decimal:
         q = value.quantize(SCALE, rounding=ROUND_HALF_EVEN)
     except InvalidOperation:
         raise HTTPException(
-            status.HTTP_422_UNPROCESSABLE_ENTITY, f"Invalid numeric value for {field}"
+            status.HTTP_422_UNPROCESSABLE_CONTENT, f"Invalid numeric value for {field}"
         )
     if not q.is_finite() or abs(q) > NUMERIC_16_4_MAX:
         raise HTTPException(
-            status.HTTP_422_UNPROCESSABLE_ENTITY, f"{field} exceeds Numeric(16,4) bounds"
+            status.HTTP_422_UNPROCESSABLE_CONTENT, f"{field} exceeds Numeric(16,4) bounds"
         )
     return q
 

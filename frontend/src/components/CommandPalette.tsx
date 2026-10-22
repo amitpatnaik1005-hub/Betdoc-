@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import { useNavigate } from "react-router-dom";
 
 export interface PaletteCommand {
   id: string;
@@ -34,10 +33,17 @@ export const CommandPalette = ({ commands }: { commands: PaletteCommand[] }) => 
     };
   }, []);
 
-  useEffect(() => {
+  const [wasOpen, setWasOpen] = useState(open);
+  if (open !== wasOpen) {  // opening starts from an empty query, decided while rendering the open palette
+    setWasOpen(open);
     if (open) {
       setQuery("");
       setIndex(0);
+    }
+  }
+
+  useEffect(() => {
+    if (open) {
       window.setTimeout(() => inputRef.current?.focus(), 10);
     }
   }, [open]);
@@ -123,12 +129,3 @@ export const CommandPalette = ({ commands }: { commands: PaletteCommand[] }) => 
     </AnimatePresence>
   );
 };
-
-/** Navigation entries for every section, shared by the palette. */
-export function useNavigateCommands(items: readonly { to: string; label: string; icon: string }[]): PaletteCommand[] {
-  const navigate = useNavigate();
-  return useMemo(
-    () => items.map((i) => ({ id: `nav:${i.to}`, label: i.label, icon: i.icon, group: "Navigate" as const, run: () => navigate(i.to) })),
-    [items, navigate],
-  );
-}

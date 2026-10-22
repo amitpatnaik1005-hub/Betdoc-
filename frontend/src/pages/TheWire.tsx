@@ -20,7 +20,8 @@ import { RefereeBoard } from '../components/wire/RefereeBoard';
 import { TacticalAudioAlert } from '../components/wire/TacticalAudioAlert';
 import { WireIntelligenceBoard } from '../components/wire/WireIntelligenceBoard';
 import { useTacticalAudio } from '../lib/the_wire_audio';
-import { CommanderHero, MOTIFS } from '../ui/hero';
+import { CommanderHero } from '../ui/hero';
+import { MOTIFS } from '../ui/motifs';
 import { Async, Button, ComponentGuideBanner, EmptyState, Page, Panel, Pill, StatusBadge } from '../ui/kit';
 
 // ---------------------------------------------------------------------------

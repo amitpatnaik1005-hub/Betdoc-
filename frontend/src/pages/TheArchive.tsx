@@ -2,11 +2,12 @@ import { useState, type FormEvent } from 'react';
 import { apiClient } from '../api/client';
 import { downloadCsv, formatAgo, formatDate, formatInt, formatPct } from '../lib/format';
 import { runMutation, useResource } from '../lib/resource';
-import { CommanderHero, MOTIFS } from '../ui/hero';
+import { CommanderHero } from '../ui/hero';
+import { MOTIFS } from '../ui/motifs';
 import { DivergingBars } from '../ui/charts';
 import { BackupRestoreVaultPanel } from '../components/archive/BackupRestoreVaultPanel';
 import { ClvHistoricalWarehousePanel } from '../components/archive/ClvHistoricalWarehousePanel';
-import { Async, Button, EmptyState, Field, KeyValues, Page, Panel, Pill, Select, StatusBadge, TextInput } from '../ui/kit';
+import { Async, Button, ComponentGuideBanner, EmptyState, Field, KeyValues, Page, Panel, Pill, Select, StatusBadge, TextInput } from '../ui/kit';
 
 // ---------------------------------------------------------------------------
 // CONTRACTS
@@ -88,9 +89,9 @@ const TableBrowser = ({ tables }: { tables: ReturnType<typeof useResource<TableS
 const BacktestLedger = () => {
   const backtests = useResource('core:backtests', () => apiClient.get<Backtest[]>('/core/backtests', { limit: 25 }), { intervalMs: 10_000 });
   const smallcases = useResource('core:smallcases', () => apiClient.get<Smallcase[]>('/core/smallcases'));
-  const today = new Date().toISOString().slice(0, 10);
-  const monthAgo = new Date(Date.now() - 30 * 86_400_000).toISOString().slice(0, 10);
-  const [form, setForm] = useState({ smallcase: '', start: monthAgo, end: today });
+  const [form, setForm] = useState(() => ({  // the last 30 days, read once when the form opens
+    smallcase: '', start: new Date(Date.now() - 30 * 86_400_000).toISOString().slice(0, 10), end: new Date().toISOString().slice(0, 10),
+  }));
   const [busy, setBusy] = useState(false);
   const names = new Map((smallcases.data ?? []).map((s) => [s.id, s.name]));
   const smallcaseId = form.smallcase || smallcases.data?.[0]?.id || '';
@@ -163,6 +164,17 @@ export const TheArchive = () => {
             <Button icon="refresh" onClick={() => { void overview.refresh(); void tables.refresh(); }}>Re-inventory</Button>
           </>
         }
+      />
+      <ComponentGuideBanner
+        className="lg:col-span-12"
+        moduleName="The Archive"
+        purpose="TODAR MAL's read-only warehouse: every table's size and integrity, synthetic Monte Carlo markets, the backtest ledger, the vault's posture and the retention notes. Credential tables are never browsable, sensitive columns are redacted, and every read is logged."
+        steps={[
+          "Check the warehouse: its tables, records and probe latency",
+          "Browse a table (read-only, redacted) or backtest a smallcase over a date range",
+          "Read the vault's posture and the retention notes",
+        ]}
+        kpiCodes={["CLV"]}
       />
       <Panel title="Vault posture" icon="lock" className="lg:col-span-5" updatedAt={overview.updatedAt}>
         <Async resource={overview}>

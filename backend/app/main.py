@@ -170,18 +170,9 @@ app.add_middleware(
     allow_headers=["Authorization", "Content-Type"],
 )
 
-from fastapi import Request
-from fastapi.encoders import jsonable_encoder
-from fastapi.exceptions import RequestValidationError
-from fastapi.responses import JSONResponse
+from app.api import validation
 
-@app.exception_handler(RequestValidationError)
-async def validation_exception_handler(_: Request, exc: RequestValidationError) -> JSONResponse:
-    errors = [{k: v for k, v in err.items() if k != "input"} for err in exc.errors()]
-    return JSONResponse(
-        status_code=422,
-        content={"detail": jsonable_encoder(errors)},
-    )
+validation.install(app)  # a clean 422 for every malformed request, NaN and Infinity included (app/api/validation.py)
 
 
 @app.get("/health")

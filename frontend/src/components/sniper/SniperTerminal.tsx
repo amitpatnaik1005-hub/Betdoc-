@@ -17,7 +17,8 @@ import { type CatalogSync, type Execution, type FeedLine, type Venue, useDeadLet
 import { OmniSocket, type OmniSocketStatus } from "../../services/OmniGateway";
 import { subscribeChannel } from "../../services/realtime";
 import { useAuthStore } from "../../store/useAuthStore";
-import { Async, Button, CARD_VARIANTS, ConfirmButton, EmptyState, LiveDot, Panel, Pill, SPRING, Segmented } from "../../ui/kit";
+import { Async, Button, ConfirmButton, EmptyState, LiveDot, Panel, Pill, Segmented } from "../../ui/kit";
+import { CARD_VARIANTS, SPRING } from "../../ui/motion";
 
 const cx = (...parts: (string | false | null | undefined)[]): string => parts.filter(Boolean).join(" ");
 const MAX_LINES = 300;

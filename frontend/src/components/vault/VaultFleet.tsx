@@ -23,25 +23,9 @@ import {
   useVaultProviders,
   useVaultStatus,
 } from "../../lib/vault";
-import {
-  Async,
-  Button,
-  type Column,
-  DataTable,
-  EmptyState,
-  Field,
-  KeyValues,
-  Meter,
-  NumberInput,
-  Panel,
-  Pill,
-  SPRING,
-  Segmented,
-  TextInput,
-  Toggle,
-  type Tone,
-  num,
-} from "../../ui/kit";
+import { Async, Button, type Column, DataTable, EmptyState, Field, KeyValues, Meter, NumberInput, Panel, Pill, Segmented, TextInput, Toggle, type Tone } from "../../ui/kit";
+import { SPRING } from "../../ui/motion";
+import { num } from "../../ui/num";
 
 const DEFAULT_PATH = "D:\\confidential\\API Keys & TARGET URL (Read me).md";
 const MAX_BYTES = 1_000_000;

@@ -1,4 +1,4 @@
-"""PhantomManager: The Lab's (PANINI) parameter-driven quant toolkit: dutching, matched betting,
+"""QuantToolkitManager: The Lab's (PANINI) parameter-driven quant toolkit: dutching, matched betting,
 Avellaneda-Stoikov market making and cointegration signals. Every run is logged to ``phantom_calculations``.
 Group 96 retired arbitrage detection and the Phantom section; the engines moved to /lab/quant-toolkit.
 
@@ -18,7 +18,7 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.domain.phantom.errors import PhantomDomainError
+from app.domain.quant_toolkit.errors import QuantToolkitError
 from app.models.phantom import CalcType, PhantomCalculationLogModel
 
 logger = logging.getLogger("betdoc.lab.quant")
@@ -51,12 +51,12 @@ def _is_number(value: Any) -> bool:
 def _require_finite(**values: Any) -> None:
     for name, value in values.items():
         if not _is_number(value) or not math.isfinite(value):
-            raise PhantomDomainError(f"{name} must be a finite number.", field=name)
+            raise QuantToolkitError(f"{name} must be a finite number.", field=name)
 
 
 def _require_finite_list(name: str, values: Any) -> list[float]:
     if not isinstance(values, (list, tuple)):
-        raise PhantomDomainError(f"{name} must be a list of numbers.", field=name)
+        raise QuantToolkitError(f"{name} must be a list of numbers.", field=name)
     for index, value in enumerate(values):
         _require_finite(**{f"{name}[{index}]": value})
     return [float(v) for v in values]
@@ -65,18 +65,18 @@ def _require_finite_list(name: str, values: Any) -> list[float]:
 def _require_decimal_odds(name: str, values: Sequence[float]) -> None:
     for index, value in enumerate(values):
         if value <= 1.0:
-            raise PhantomDomainError(f"{name}[{index}] must be decimal odds greater than 1.", field=name)
+            raise QuantToolkitError(f"{name}[{index}] must be decimal odds greater than 1.", field=name)
 
 
 def _require_commission_pct(name: str, value: float) -> None:
     if not 0.0 <= value < 100.0:
-        raise PhantomDomainError(f"{name} must be in the range [0, 100).", field=name)
+        raise QuantToolkitError(f"{name} must be in the range [0, 100).", field=name)
 
 
 def _require_finite_outputs(**values: float) -> None:
     for name, value in values.items():
         if not math.isfinite(value):
-            raise PhantomDomainError(f"{name} overflowed to a non-finite value; inputs are out of range.", field=name)
+            raise QuantToolkitError(f"{name} overflowed to a non-finite value; inputs are out of range.", field=name)
 
 
 def _money(value: float) -> float:
@@ -87,16 +87,16 @@ def _dumps(payload: Any, label: str) -> str:
     try:
         encoded = json.dumps(payload, allow_nan=False, separators=(",", ":"))
     except (TypeError, ValueError) as exc:
-        raise PhantomDomainError(f"{label} is not JSON-serialisable.") from exc
+        raise QuantToolkitError(f"{label} is not JSON-serialisable.") from exc
     if len(encoded) > JSON_COLUMN_MAX_LENGTH:
-        raise PhantomDomainError(f"{label} exceeds {JSON_COLUMN_MAX_LENGTH} characters.")
+        raise QuantToolkitError(f"{label} exceeds {JSON_COLUMN_MAX_LENGTH} characters.")
     return encoded
 
 
 # --------------------------------------------------------------------------- manager
 
 
-class PhantomManager:
+class QuantToolkitManager:
     async def _persist(self, db: AsyncSession, instance: Any, label: str) -> Any:
         db.add(instance)
         try:
@@ -104,7 +104,7 @@ class PhantomManager:
         except IntegrityError as exc:
             await db.rollback()
             logger.warning("[PANINI]: %s rejected by storage constraints.", label)
-            raise PhantomDomainError(f"{label} rejected by storage constraints.") from exc
+            raise QuantToolkitError(f"{label} rejected by storage constraints.") from exc
         await db.refresh(instance)
         return instance
 
@@ -125,16 +125,16 @@ class PhantomManager:
     ) -> dict[str, Any]:
         odds_list = _require_finite_list("odds", odds)
         if len(odds_list) < 2:
-            raise PhantomDomainError("odds must contain at least two selections.", field="odds")
+            raise QuantToolkitError("odds must contain at least two selections.", field="odds")
         _require_decimal_odds("odds", odds_list)
         _require_finite(target_total_stake=target_total_stake)
         if target_total_stake <= 0:
-            raise PhantomDomainError("target_total_stake must be greater than zero.")
+            raise QuantToolkitError("target_total_stake must be greater than zero.")
 
         implied_probs = [1.0 / o for o in odds_list]
         total_implied = sum(implied_probs)
         if total_implied <= 0:
-            raise PhantomDomainError("Total implied probability must be positive.")
+            raise QuantToolkitError("Total implied probability must be positive.")
         stakes = [round((imp / total_implied) * target_total_stake, MONEY_DECIMALS) for imp in implied_probs]
         guaranteed_return = round(target_total_stake / total_implied, MONEY_DECIMALS)
         leg_returns = [_money(stake * o) for stake, o in zip(stakes, odds_list, strict=True)]
@@ -170,18 +170,18 @@ class PhantomManager:
         try:
             resolved_mode = MatchedBettingMode(mode)
         except ValueError as exc:
-            raise PhantomDomainError(f"Unsupported matched betting mode {mode!r}.") from exc
+            raise QuantToolkitError(f"Unsupported matched betting mode {mode!r}.") from exc
         _require_finite(
             back_stake=back_stake, back_odds=back_odds, lay_odds=lay_odds, lay_commission_pct=lay_commission_pct
         )
         if back_stake <= 0:
-            raise PhantomDomainError("back_stake must be greater than zero.")
+            raise QuantToolkitError("back_stake must be greater than zero.")
         if back_odds <= 1.0:
-            raise PhantomDomainError("back_odds must be decimal odds greater than 1.")
+            raise QuantToolkitError("back_odds must be decimal odds greater than 1.")
         if lay_odds == 1.0:
-            raise PhantomDomainError("lay_odds of 1.0 causes division by zero.")
+            raise QuantToolkitError("lay_odds of 1.0 causes division by zero.")
         if lay_odds < 1.0:
-            raise PhantomDomainError("lay_odds must be decimal odds greater than 1.")
+            raise QuantToolkitError("lay_odds must be decimal odds greater than 1.")
         _require_commission_pct("lay_commission_pct", lay_commission_pct)
 
         commission = lay_commission_pct / 100.0
@@ -195,7 +195,7 @@ class PhantomManager:
             denominator = lay_odds - 1.0
             numerator = back_stake * (back_odds - 1.0)
         if denominator <= 0:
-            raise PhantomDomainError(f"{resolved_mode.value} lay stake denominator is not positive.")
+            raise QuantToolkitError(f"{resolved_mode.value} lay stake denominator is not positive.")
 
         lay_stake = round(numerator / denominator, MONEY_DECIMALS)
         back_win_profit = _money((back_stake * (back_odds - 1.0)) - (lay_stake * (lay_odds - 1.0)))
@@ -254,15 +254,15 @@ class PhantomManager:
             liquidity_k=liquidity_k,
         )
         if gamma == 0:
-            raise PhantomDomainError("gamma of 0 causes division by zero.")
+            raise QuantToolkitError("gamma of 0 causes division by zero.")
         if gamma < 0:
-            raise PhantomDomainError("gamma (risk aversion) must be greater than zero.")
+            raise QuantToolkitError("gamma (risk aversion) must be greater than zero.")
         if liquidity_k == 0:
-            raise PhantomDomainError("liquidity_k of 0 causes division by zero.")
+            raise QuantToolkitError("liquidity_k of 0 causes division by zero.")
         if liquidity_k < 0:
-            raise PhantomDomainError("liquidity_k must be greater than zero.")
+            raise QuantToolkitError("liquidity_k must be greater than zero.")
         if volatility_sigma < 0:
-            raise PhantomDomainError("volatility_sigma must not be negative.")
+            raise QuantToolkitError("volatility_sigma must not be negative.")
 
         try:
             dt = max(0.0, time_horizon_t - current_time_t)
@@ -270,7 +270,7 @@ class PhantomManager:
             reservation_price = mid_price - (inventory * variance_term)
             spread = variance_term + ((2.0 / gamma) * math.log1p(gamma / liquidity_k))
         except (OverflowError, ZeroDivisionError, ValueError) as exc:
-            raise PhantomDomainError("Market-maker inputs overflow the model.") from exc
+            raise QuantToolkitError("Market-maker inputs overflow the model.") from exc
         _require_finite_outputs(reservation_price=reservation_price, optimal_spread=spread)
 
         optimal_ask = round(reservation_price + (spread / 2.0), MONEY_DECIMALS)
@@ -325,7 +325,7 @@ class PhantomManager:
             stop_loss_threshold=stop_loss_threshold,
         )
         if not 0 <= exit_threshold < entry_threshold < stop_loss_threshold:
-            raise PhantomDomainError("Thresholds must satisfy 0 <= exit < entry < stop_loss.")
+            raise QuantToolkitError("Thresholds must satisfy 0 <= exit < entry < stop_loss.")
 
         abs_z = abs(current_z_score)
         if abs_z >= stop_loss_threshold:
@@ -368,9 +368,6 @@ class PhantomManager:
             try:
                 kind = CalcType(calc_type.strip().upper())
             except ValueError as exc:
-                raise PhantomDomainError(f"calc_type must be one of {', '.join(m.value for m in CalcType)}.", field="calc_type") from exc
+                raise QuantToolkitError(f"calc_type must be one of {', '.join(m.value for m in CalcType)}.", field="calc_type") from exc
             stmt = stmt.where(PhantomCalculationLogModel.calc_type == kind.value)
         return list((await db.execute(stmt)).scalars().all())
-
-
-PhantomQuantManager = PhantomManager

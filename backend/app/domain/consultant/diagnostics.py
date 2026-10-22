@@ -36,7 +36,7 @@ from app.domain.backtesting import inplay_stoploss_math as slm
 from app.domain.bookmakers.adapters import ASHOKA_BOOKMAKERS
 from app.domain.competitive_intel import live_consensus_math as lcm
 from app.domain.oracle.markets import MarketKind, parse_market
-from app.domain.paper_trading.tax import CESS_RATE, section_115bbj
+from app.domain.wagering.tax import CESS_RATE, section_115bbj
 from app.models.consultant import VerdictStatus
 
 CENT = Decimal("0.01")

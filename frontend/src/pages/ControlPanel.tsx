@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useState, type FormEvent } from 'react';
+import { lazy, Suspense, useState, type FormEvent } from 'react';
 import { apiClient } from '../api/client';
 import { StakeCapPanel } from '../components/arena/StakeCapPanel';
 import { RiskManagement } from '../components/cfo/RiskManagement';
@@ -12,8 +12,10 @@ import { type ControlSettings, emergencyStop, resumeTrading, useControls, useExc
 import { formatAgo, formatINR, formatRatioPct, humanize } from '../lib/format';
 import { runMutation, useResource } from '../lib/resource';
 import { useSystemStore } from '../store/useSystemStore';
-import { CommanderHero, MOTIFS } from '../ui/hero';
-import { Async, Button, ConfirmButton, EmptyState, Field, KeyValues, NumberInput, Page, Panel, Segmented, Pill, Select, Skeleton, StatusBadge, TextInput, Toggle, num } from '../ui/kit';
+import { CommanderHero } from '../ui/hero';
+import { MOTIFS } from '../ui/motifs';
+import { Async, Button, ComponentGuideBanner, ConfirmButton, EmptyState, Field, KeyValues, NumberInput, Page, Panel, Pill, Segmented, Select, Skeleton, StatusBadge, TextInput, Toggle } from '../ui/kit';
+import { num } from '../ui/num';
 
 // ---------------------------------------------------------------------------
 // CONTRACTS
@@ -48,17 +50,19 @@ const EXCHANGES = ['Pinnacle', 'Betfair'] as const;
 // ---------------------------------------------------------------------------
 // GLOBAL OVERRIDES (risk limits + automation)
 // ---------------------------------------------------------------------------
+const UNSEEN = Symbol("unseen");  // a draft's source before the first render applied it
+
 const GlobalOverrides = ({ settings }: { settings: ControlSettings }) => {
-  const [d, setD] = useState({
-    max_bet_size: String(settings.max_bet_size), max_daily_exposure: String(settings.max_daily_exposure), global_stop_loss: String(settings.global_stop_loss),
-    default_kelly_fraction: String(settings.default_kelly_fraction), research_frequency_minutes: String(settings.research_frequency_minutes), bots_enabled: settings.bots_enabled,
+  const fromSettings = (s: ControlSettings) => ({
+    max_bet_size: String(s.max_bet_size), max_daily_exposure: String(s.max_daily_exposure), global_stop_loss: String(s.global_stop_loss),
+    default_kelly_fraction: String(s.default_kelly_fraction), research_frequency_minutes: String(s.research_frequency_minutes), bots_enabled: s.bots_enabled,
   });
-  useEffect(() => {
-    setD({
-      max_bet_size: String(settings.max_bet_size), max_daily_exposure: String(settings.max_daily_exposure), global_stop_loss: String(settings.global_stop_loss),
-      default_kelly_fraction: String(settings.default_kelly_fraction), research_frequency_minutes: String(settings.research_frequency_minutes), bots_enabled: settings.bots_enabled,
-    });
-  }, [settings]);
+  const [d, setD] = useState(() => fromSettings(settings));
+  const [source, setSource] = useState(settings);
+  if (settings !== source) {  // fresh limits from the server replace the draft (as they arrive, not in an effect after)
+    setSource(settings);
+    setD(fromSettings(settings));
+  }
 
   const save = (e: FormEvent) => {
     e.preventDefault();
@@ -222,7 +226,12 @@ const SportsEngine = () => {
   const [json, setJson] = useState('');
   const [calc, setCalc] = useState<Record<string, string>>({ resources: '62.5', target: '280', home_rating: '112', away_rating: '108', home_pace: '99', away_pace: '101', league_pace: '100', serve: '0.64', elo: '1850', opp_elo: '1780' });
   const [result, setResult] = useState<Record<string, unknown> | null>(null);
-  useEffect(() => { if (cfg.data) setJson(JSON.stringify(cfg.data.config, null, 2)); setResult(null); }, [cfg.data]);
+  const [loaded, setLoaded] = useState<SportConfig | undefined | typeof UNSEEN>(UNSEEN);
+  if (cfg.data !== loaded) {  // a sport's stored config fills the editor, and clears the last calculation
+    setLoaded(cfg.data);
+    if (cfg.data) setJson(JSON.stringify(cfg.data.config, null, 2));
+    setResult(null);
+  }
 
   const saveConfig = () => {
     let parsed: unknown;
@@ -354,6 +363,17 @@ export const ControlPanel = () => {
             </ConfirmButton>
           )
         }
+      />
+      <ComponentGuideBanner
+        className="lg:col-span-12"
+        moduleName="Control Panel"
+        purpose="The limits every order is checked against, the provider keys (write-only, encrypted at rest), each sport engine's stored parameters, and the operations desks: vault and fleet, routing, risk, portfolio, Hive bots, Quant Lab, Nalanda and the Sentinel."
+        steps={[
+          "Set the global limits (max bet, daily exposure, stop-loss, Kelly fraction): they apply on the next order",
+          "Store provider keys and tune each sport engine's parameters",
+          "Open a tab for the vault and fleet, order routing, risk, the Sentinel's alert channels and the other desks",
+        ]}
+        kpiCodes={["KELLY_STAKE"]}
       />
       <div className="lg:col-span-12">
         <Segmented<ControlTab> options={TABS} value={tab} onChange={setTab} label="Control Panel sections" />

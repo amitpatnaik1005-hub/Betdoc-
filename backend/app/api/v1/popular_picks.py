@@ -92,5 +92,5 @@ async def submit_external(payload: ExternalParlaySubmit, request: Request, admin
     try:
         row = await manager.submit_external(db, redis, get_settings(), payload)
     except PopularPicksDomainError as exc:
-        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=exc.message) from exc
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=exc.message) from exc
     return PopularParlayRead.model_validate(row)

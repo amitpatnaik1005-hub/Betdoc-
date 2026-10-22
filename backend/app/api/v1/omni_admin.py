@@ -200,7 +200,7 @@ def _assert_scheme(url: str, settings: Settings) -> None:
     allowed = {"https", "http"} if settings.omni_allow_insecure_http else {"https"}
     scheme = url.split(":", 1)[0].lower()
     if scheme not in allowed:
-        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=f"base_url scheme must be one of {sorted(allowed)}")
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=f"base_url scheme must be one of {sorted(allowed)}")
 
 
 # ---------------------------------------------------------------- routes
@@ -214,7 +214,7 @@ async def create_provider(
     base_url = str(payload.base_url).rstrip("/")
     _assert_scheme(base_url, settings)
     if payload.queue_name is not None and payload.queue_name not in settings.omni_queues:
-        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="queue_name is not a configured queue")
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail="queue_name is not a configured queue")
 
     plain = payload.api_key.get_secret_value() if payload.api_key is not None else None
     provider = OmniProviderConfig(

@@ -16,7 +16,8 @@ import {
   useRoutedOrders,
   useVenueBreakers,
 } from "../../lib/router";
-import { Async, Button, ConfirmButton, EmptyState, Field, LiveDot, NumberInput, Panel, Pill, SPRING, Segmented, TextInput, type Tone } from "../../ui/kit";
+import { Async, Button, ConfirmButton, EmptyState, Field, LiveDot, NumberInput, Panel, Pill, Segmented, TextInput, type Tone } from "../../ui/kit";
+import { SPRING } from "../../ui/motion";
 
 const INVALIDATE = ["router", "vault"];
 

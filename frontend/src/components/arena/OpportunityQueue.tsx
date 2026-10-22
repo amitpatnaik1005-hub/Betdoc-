@@ -11,7 +11,8 @@ import { formatDateTime, formatINR, formatOdds, humanize } from "../../lib/forma
 import { type ArenaSignal, MAX_VISIBLE, type RiskConfig, type StakeBinding, useArenaStore } from "../../store/useArenaStore";
 import { useBetslipStore } from "../../store/useBetslipStore";
 import { SlideOverBetslip } from "../betslip/SlideOverBetslip";
-import { CARD_VARIANTS, LiveDot, SPRING } from "../../ui/kit";
+import { LiveDot } from "../../ui/kit";
+import { CARD_VARIANTS, SPRING } from "../../ui/motion";
 
 const PRUNE_INTERVAL_MS = 250;
 const EASE_OUT = [0.22, 1, 0.36, 1] as const;

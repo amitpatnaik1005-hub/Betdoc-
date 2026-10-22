@@ -12,6 +12,7 @@ index that is 0 or the one the developer's own ``backend/.env`` uses refuses to 
 so a test can never write to the Redis the running stack reads.
 """
 
+import base64
 import os
 import secrets
 from collections.abc import Iterator
@@ -33,11 +34,17 @@ for _key, _value in dotenv_values(_ENV_TEST_FILE).items():
     if _value is not None and _key not in _REDIS_VARIABLES:
         os.environ.setdefault(_key, _value)
 
-_GENERATED_SECRETS = ("MASTER_VAULT_KEY", "OMNI_ADMIN_TOKEN")
+# Group 110: the application's own required secrets are generated too, so the suite runs on a clean checkout and never
+# borrows the developer's real ones from backend/.env (an environment variable wins over the .env file in Settings)
+_GENERATED_SECRETS = ("MASTER_VAULT_KEY", "OMNI_ADMIN_TOKEN", "SECRET_KEY", "INGESTION_API_KEY")
 _SECRET_BYTES = 48
 
 for _name in _GENERATED_SECRETS:
     os.environ.setdefault(_name, secrets.token_urlsafe(_SECRET_BYTES))
+os.environ.setdefault("ENCRYPTION_KEY", base64.urlsafe_b64encode(secrets.token_bytes(32)).decode())  # a Fernet key
+# Tests build their own engines (SQLite, or TEST_POSTGRES_URL); the app's default engine points at a database that does not
+# exist, so a test that forgets to override it fails instead of reaching the developer's database
+os.environ.setdefault("DATABASE_URL", "postgresql+asyncpg://betdoc_test@127.0.0.1:5432/betdoc_test_isolated")
 
 
 def _redis_index(url: str) -> int:

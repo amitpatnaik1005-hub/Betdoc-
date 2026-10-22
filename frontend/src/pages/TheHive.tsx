@@ -7,8 +7,9 @@ import { formatAgo, formatTime, humanize } from '../lib/format';
 import { invalidate, runMutation, useResource } from '../lib/resource';
 import { subscribeChannel } from '../services/realtime';
 import { toast } from '../store/useToastStore';
-import { CommanderHero, MOTIFS } from '../ui/hero';
-import { Async, Button, ConfirmButton, EmptyState, Field, NumberInput, Page, Panel, Pill, Select, StatusBadge, TextInput } from '../ui/kit';
+import { CommanderHero } from '../ui/hero';
+import { MOTIFS } from '../ui/motifs';
+import { Async, Button, ComponentGuideBanner, ConfirmButton, EmptyState, Field, NumberInput, Page, Panel, Pill, Select, StatusBadge, TextInput } from '../ui/kit';
 import { Markdown } from '../ui/markdown';
 
 // ---------------------------------------------------------------------------
@@ -236,6 +237,16 @@ export const TheHive = () => {
             <Button icon="refresh" onClick={() => void tasks.refresh()}>Refresh board</Button>
           </>
         }
+      />
+      <ComponentGuideBanner
+        className="lg:col-span-12"
+        moduleName="The Hive"
+        purpose="The commanders' task DAG: tasks are claimed by priority, wait for their parents, retry, and cascade-fail to their children; beside it KARNA's competitor feature catalogue and the live data firehose."
+        steps={[
+          "Create a task with its priority and the parents it waits for",
+          "Watch the DAG board: claimed, blocked, retried or failed, live",
+          "Read KARNA's competitor catalogue and the data firehose",
+        ]}
       />
 
       <Panel title="Task DAG board" icon="view_kanban" className="lg:col-span-8" updatedAt={tasks.updatedAt} bodyClassName="p-3">

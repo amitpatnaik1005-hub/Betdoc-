@@ -89,7 +89,7 @@ async def set_fx_rate(payload: FxRateUpdate, request: Request, admin: CurrentAdm
     try:
         rate = await FxRates(_redis(request), settings).publish(payload.currency, payload.inr_per_unit, payload.source)
     except ValueError as exc:
-        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, {"reason": "INVALID_RATE", "message": str(exc)}) from exc
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, {"reason": "INVALID_RATE", "message": str(exc)}) from exc
     except (FxUnavailableError, RedisError, OSError) as exc:
         raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, {"reason": "FX_UNAVAILABLE", "message": "Rates are stored in Redis, which is unavailable"}) from exc
     return rate.as_dict(time.time())

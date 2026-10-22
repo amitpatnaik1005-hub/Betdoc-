@@ -4,7 +4,8 @@ import { AnimatePresence, motion } from "framer-motion";
 import { formatInt, formatTime } from "../../lib/format";
 import { subscribeChannel } from "../../services/realtime";
 import { useMarketStore } from "../../store/useMarketStore";
-import { EmptyState, LiveDot, Panel, SPRING } from "../../ui/kit";
+import { EmptyState, LiveDot, Panel } from "../../ui/kit";
+import { SPRING } from "../../ui/motion";
 import { cx } from "./types";
 
 interface HorizonEntry {

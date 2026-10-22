@@ -14,7 +14,8 @@ import { formatDateTime } from "../lib/format";
 import { invalidate } from "../lib/resource";
 import { inr, recordBooking, useTicket, useTickets } from "../lib/slip_ornament";
 import { toast } from "../store/useToastStore";
-import { CommanderHero, MOTIFS } from "../ui/hero";
+import { CommanderHero } from "../ui/hero";
+import { MOTIFS } from "../ui/motifs";
 import { Async, Button, ComponentGuideBanner, EmptyState, Page, Panel, Pill } from "../ui/kit";
 
 const refusal = (err: unknown): string => (err instanceof ApiError ? err.message : "No answer from the server");

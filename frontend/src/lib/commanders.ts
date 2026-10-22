@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 import { apiClient } from "../api/client";
 import { COMMANDER_LIST, COMMANDER_REGISTRY, type CommanderId, type CommanderProfile } from "../config/commanders.config";
 import type { BotStatus as AvatarStatus } from "../components/bots/BotAvatar";
@@ -75,6 +76,18 @@ export function probeCommandersNow(botName?: CommanderId) {
   );
 }
 
+const NOW_TICK_MS = 5_000;
+
+/** The time, re-read every few seconds: freshness is judged against it without calling Date.now() during render. */
+function useNow(everyMs: number): number {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const id = window.setInterval(() => setNow(Date.now()), everyMs);
+    return () => window.clearInterval(id);
+  }, [everyMs]);
+  return now;
+}
+
 export function useCommanders() {
   const bots = useResource("commanders:bots", () => apiClient.get<BotProfile[]>("/hive/bots"), { intervalMs: 30_000 });
   const rtStatuses = useCommanderStore((s) => s.liveStatuses);
@@ -83,7 +96,7 @@ export function useCommanders() {
   const lastSweepAt = useCommanderStore((s) => s.lastSweepAt);
 
   const byName = new Map((bots.data ?? []).map((b) => [b.bot_name, b]));
-  const now = Date.now();
+  const now = useNow(NOW_TICK_MS);
   const sweptMs = lastSweepAt ? Date.parse(lastSweepAt) : Number.NaN;
   const pushFresh = Number.isFinite(sweptMs) && now - sweptMs < STALE_AFTER_MS;
 

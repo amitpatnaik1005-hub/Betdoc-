@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent } from 'react';
+import { useState, type FormEvent } from 'react';
 import { apiClient } from '../api/client';
 import { useDashboardSummary } from '../lib/api';
 import { downloadCsv, formatDate, formatDateTime, formatINR, formatINRCompact, formatOdds, formatPct, formatRatioPct, formatSignedINR } from '../lib/format';
@@ -9,9 +9,11 @@ import { RealHistoryTable } from '../components/real_money/RealHistoryTable';
 import { LiveSmallcaseTickerBar } from '../components/smallcase/LiveSmallcaseTickerBar';
 import { SmallcaseComponentsPanel } from '../components/smallcase/SmallcaseComponentsPanel';
 import { TaxCertificateModal } from '../components/real_money/TaxCertificateModal';
-import { CommanderHero, MOTIFS } from '../ui/hero';
+import { CommanderHero } from '../ui/hero';
+import { MOTIFS } from '../ui/motifs';
 import { DivergingBars, LineChart } from '../ui/charts';
-import { AnimatedNumber, Async, Button, type Column, ComponentGuideBanner, ConfirmButton, DataTable, EmptyState, Field, KeyValues, num, NumberInput, Page, Panel, Segmented, Stat, StatusBadge, TextInput, Toggle } from '../ui/kit';
+import { AnimatedNumber, Async, Button, type Column, ComponentGuideBanner, ConfirmButton, DataTable, EmptyState, Field, KeyValues, NumberInput, Page, Panel, Segmented, Stat, StatusBadge, TextInput, Toggle } from '../ui/kit';
+import { num } from '../ui/num';
 
 // ---------------------------------------------------------------------------
 // CONTRACTS
@@ -145,13 +147,13 @@ const StopLossPanel = () => {
   const status = useResource(bankroll > 0 ? `capital:stop-loss:${Math.round(bankroll)}` : null, () => apiClient.get<StopLossStatus>('/capital/stop-loss/status', { bankroll }), { intervalMs: 30_000 });
   const config = useResource('capital:stop-loss-config', () => apiClient.get<StopLossConfig>('/capital/stop-loss/config'));
   const [draft, setDraft] = useState<Record<keyof Omit<StopLossConfig, 'enabled'>, string> & { enabled: boolean } | null>(null);
-  useEffect(() => {
-    if (config.data) {
-      const c = config.data;
-      const s = (v: number | null) => (v === null ? '' : String(v));
-      setDraft({ daily_loss_limit: s(c.daily_loss_limit), consecutive_loss_limit: s(c.consecutive_loss_limit), trailing_stop_pct: s(c.trailing_stop_pct), cooldown_minutes: s(c.cooldown_minutes), session_loss_limit: s(c.session_loss_limit), enabled: c.enabled });
-    }
-  }, [config.data]);
+  const [loaded, setLoaded] = useState<StopLossConfig | undefined | null>(null);
+  if (config.data && config.data !== loaded) {  // the stored limits fill the draft as they arrive
+    const c = config.data;
+    const s = (v: number | null) => (v === null ? '' : String(v));
+    setLoaded(c);
+    setDraft({ daily_loss_limit: s(c.daily_loss_limit), consecutive_loss_limit: s(c.consecutive_loss_limit), trailing_stop_pct: s(c.trailing_stop_pct), cooldown_minutes: s(c.cooldown_minutes), session_loss_limit: s(c.session_loss_limit), enabled: c.enabled });
+  }
 
   const save = (e: FormEvent) => {
     e.preventDefault();

@@ -13,7 +13,7 @@ import { type Bankroll, REFUSALS, potentialProfit, useBankroll } from "../../lib
 import { formatINR, formatOdds, humanize } from "../../lib/format";
 import { useArenaStore } from "../../store/useArenaStore";
 import { parseStake, useBetslipStore } from "../../store/useBetslipStore";
-import { SPRING } from "../../ui/kit";
+import { SPRING } from "../../ui/motion";
 
 const cx = (...parts: (string | false | null | undefined)[]): string => parts.filter(Boolean).join(" ");
 

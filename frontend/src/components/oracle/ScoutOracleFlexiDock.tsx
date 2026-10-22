@@ -9,7 +9,7 @@ import { useEffect } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { type DockMode, type DockWidth, setScoutDockMode, useScoutDockMode, useScoutDockStore } from '../../store/useScoutDockStore';
 import { useUIStore } from '../../store/useUIStore';
-import { SPRING } from '../../ui/kit';
+import { SPRING } from '../../ui/motion';
 import { OracleMark, ScoutDrawer } from './ScoutDrawer';
 
 const WIDTH_PX: Record<DockMode, number | string> = { collapsed: 56, docked: 380, expanded: 600, max: '50vw' };

@@ -42,8 +42,8 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.core.config import Settings
-from app.domain.paper_trading.legs import LegTranslationError, translate
-from app.domain.paper_trading.tax import financial_year, section_115bbj
+from app.domain.wagering.legs import LegTranslationError, translate
+from app.domain.wagering.tax import financial_year, section_115bbj
 from app.domain.sports.base_sport_adapter import BaseSportAdapter
 from app.domain.sports.errors import SportNotFoundError
 from app.domain.sports.registry import SportAdapterRegistry

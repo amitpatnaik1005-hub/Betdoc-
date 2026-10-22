@@ -2,7 +2,7 @@
 
 The Oracle prices markets in the platform grammar (``Match Odds``, ``Totals 2.5``, ``Asian Handicap -0.75`` with
 the line on the HOME side, ``BTTS``, ``Double Chance``, ``Draw No Bet``) and selections as codes (``HOME``,
-``DRAW``, ``AWAY``, ``OVER``, ``YES``, ``1X``...). A paper bet settles through the sport adapters, so each leg is
+``DRAW``, ``AWAY``, ``OVER``, ``YES``, ``1X``...). A placed bet settles through the sport adapters, so each leg is
 translated once, at placement: the market key, the selection and the line *of the selected side* (an away
 Asian handicap is the home line negated). The original market and selection stay on the leg too: they are what
 ASHVATTHAMA snaps the live Parimatch price with.

@@ -37,7 +37,8 @@ import {
 import { invalidate, runMutation } from "../../lib/resource";
 import { useAuthStore } from "../../store/useAuthStore";
 import { toast } from "../../store/useToastStore";
-import { Async, Button, CARD_VARIANTS, ConfirmButton, EmptyState, Field, NumberInput, Panel, Pill, SPRING, SURFACE, Segmented, TextInput, Toggle } from "../../ui/kit";
+import { Async, Button, ConfirmButton, EmptyState, Field, NumberInput, Panel, Pill, SURFACE, Segmented, TextInput, Toggle } from "../../ui/kit";
+import { CARD_VARIANTS, SPRING } from "../../ui/motion";
 
 const cx = (...parts: (string | false | null | undefined)[]): string => parts.filter(Boolean).join(" ");
 const STATUS_TONE = { ACTIVE: "good", PAUSED: "neutral", SUSPENDED: "critical", ARCHIVED: "neutral" } as const;

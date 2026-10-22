@@ -34,7 +34,7 @@ from app.domain.backtesting import inplay_stoploss_math as slm
 from app.domain.cfo import growth_math as gm
 from app.domain.competitive_intel import live_consensus_math as lcm
 from app.domain.consultant import diagnostics as dx
-from app.domain.paper_trading.tax import TDS_RATE
+from app.domain.wagering.tax import TDS_RATE
 from app.models.consultant import ConsultantVerdictModel
 from app.services import ashoka_market
 from app.services import manual_parlay as workbench

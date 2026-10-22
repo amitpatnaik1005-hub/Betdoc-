@@ -8,8 +8,10 @@ import { formatAgo, formatINR, formatInt, formatPct, formatRatioPct, formatTime,
 import { invalidate, runMutation, useResource } from '../lib/resource';
 import { subscribeChannel } from '../services/realtime';
 import { useSystemStore } from '../store/useSystemStore';
-import { CommanderHero, MOTIFS } from '../ui/hero';
-import { AnimatedNumber, Async, Button, ConfirmButton, type Column, DataTable, EmptyState, Field, KeyValues, Meter, NumberInput, Page, Panel, Pill, Stat, StatGrid, StatusBadge, TextInput, num } from '../ui/kit';
+import { CommanderHero } from '../ui/hero';
+import { MOTIFS } from '../ui/motifs';
+import { AnimatedNumber, Async, Button, type Column, ComponentGuideBanner, ConfirmButton, DataTable, EmptyState, Field, KeyValues, Meter, NumberInput, Page, Panel, Pill, Stat, StatGrid, StatusBadge, TextInput } from '../ui/kit';
+import { num } from '../ui/num';
 
 // ---------------------------------------------------------------------------
 // CONTRACTS
@@ -205,6 +207,17 @@ export const Core = () => {
             <Button icon="monitor_heart" onClick={() => { void health.refresh(); void engine.refresh(); }}>Deep health check</Button>
           </>
         }
+      />
+      <ComponentGuideBanner
+        className="lg:col-span-12"
+        moduleName="Core · engine room"
+        purpose="PRATAP's engine room: the smallcase registry, the test bench, subsystem diagnostics, the hard risk limits every order passes before it reaches an exchange, and the models' accuracy."
+        steps={[
+          "Watch the engine: its state, queue depth, CPU and the smallcases live",
+          "Run a smallcase on the test bench and read the models' accuracy",
+          "Check the subsystem diagnostics and the hard limits every order must pass",
+        ]}
+        kpiCodes={["BRIER_SCORE"]}
       />
 
       <Panel title="Subsystem diagnostics" icon="developer_board" className="lg:col-span-8" updatedAt={engine.updatedAt}>

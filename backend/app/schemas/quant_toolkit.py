@@ -8,14 +8,14 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from app.domain.phantom.manager import CointegrationSignal, MatchedBettingMode
+from app.domain.quant_toolkit.manager import CointegrationSignal, MatchedBettingMode
 
 MAX_LEGS = 32  # keeps stakes/inputs within the 2048-char JSON columns
 
 DecimalOdds = Annotated[float, Field(gt=1.0, allow_inf_nan=False)]
 
 
-class PhantomSchema(BaseModel):
+class QuantToolkitSchema(BaseModel):
     model_config = ConfigDict(from_attributes=True, extra="forbid")
 
 
@@ -42,7 +42,7 @@ def _decode_json_fields(cls: type[BaseModel], data: Any, mapping: dict[str, str]
 # --------------------------------------------------------------------------- shared reads
 
 
-class PhantomCalculationLogRead(PhantomSchema):
+class QuantCalculationLogRead(QuantToolkitSchema):
     id: UUID
     calc_type: Literal["DUTCHING", "MATCHED_BETTING", "AVELLANEDA", "COINTEGRATION"]
     inputs: dict[str, Any]
@@ -58,24 +58,24 @@ class PhantomCalculationLogRead(PhantomSchema):
 # --------------------------------------------------------------------------- 1. dutching
 
 
-class DutchingRequest(PhantomSchema):
+class DutchingRequest(QuantToolkitSchema):
     target_total_stake: float = Field(gt=0, allow_inf_nan=False)
     odds: list[DecimalOdds] = Field(min_length=2, max_length=MAX_LEGS)
 
 
-class DutchingResponse(PhantomSchema):
+class DutchingResponse(QuantToolkitSchema):
     stakes: list[float]
     guaranteed_return: float
     total_implied_probability: float
     leg_returns: list[float]
     profit: float
-    log: PhantomCalculationLogRead
+    log: QuantCalculationLogRead
 
 
 # --------------------------------------------------------------------------- 2. matched betting
 
 
-class MatchedBettingRequest(PhantomSchema):
+class MatchedBettingRequest(QuantToolkitSchema):
     back_stake: float = Field(gt=0, allow_inf_nan=False)
     back_odds: float = Field(gt=1.0, allow_inf_nan=False)
     lay_odds: float = Field(gt=1.0, allow_inf_nan=False)
@@ -83,19 +83,19 @@ class MatchedBettingRequest(PhantomSchema):
     mode: MatchedBettingMode
 
 
-class MatchedBettingResponse(PhantomSchema):
+class MatchedBettingResponse(QuantToolkitSchema):
     mode: MatchedBettingMode
     lay_stake: float
     lay_liability: float
     back_win_profit: float
     lay_win_profit: float
-    log: PhantomCalculationLogRead
+    log: QuantCalculationLogRead
 
 
 # --------------------------------------------------------------------------- 3. Avellaneda-Stoikov
 
 
-class MarketMakerRequest(PhantomSchema):
+class MarketMakerRequest(QuantToolkitSchema):
     mid_price: float = Field(gt=0, allow_inf_nan=False)
     inventory: float = Field(allow_inf_nan=False)
     gamma: float = Field(gt=0, allow_inf_nan=False)
@@ -105,20 +105,20 @@ class MarketMakerRequest(PhantomSchema):
     liquidity_k: float = Field(gt=0, allow_inf_nan=False)
 
 
-class MarketMakerResponse(PhantomSchema):
+class MarketMakerResponse(QuantToolkitSchema):
     time_remaining: float
     reservation_price: float
     optimal_spread: float
     optimal_ask: float
     optimal_bid: float
     inventory_skew: float
-    log: PhantomCalculationLogRead
+    log: QuantCalculationLogRead
 
 
 # --------------------------------------------------------------------------- 4. cointegration
 
 
-class CointegrationRequest(PhantomSchema):
+class CointegrationRequest(QuantToolkitSchema):
     current_z_score: float = Field(allow_inf_nan=False)
     entry_threshold: float = Field(allow_inf_nan=False)
     exit_threshold: float = Field(allow_inf_nan=False)
@@ -131,8 +131,8 @@ class CointegrationRequest(PhantomSchema):
         return self
 
 
-class CointegrationResponse(PhantomSchema):
+class CointegrationResponse(QuantToolkitSchema):
     signal: CointegrationSignal
     abs_z_score: float
     distance_to_stop_loss: float
-    log: PhantomCalculationLogRead
+    log: QuantCalculationLogRead

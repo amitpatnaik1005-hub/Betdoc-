@@ -5,7 +5,8 @@ import { type MatchOdds, type Side, bestPrices, matchOddsMarket, outcomeSide, us
 import { downloadCsv, formatDateTime, formatINR, formatOdds, formatPct, formatRatioPct } from '../lib/format';
 import { runMutation, useResource } from '../lib/resource';
 import { useExecutionStore } from '../store/useExecutionStore';
-import { CommanderHero, MOTIFS } from '../ui/hero';
+import { CommanderHero } from '../ui/hero';
+import { MOTIFS } from '../ui/motifs';
 import { CashoutPanel, MyBets, ScorecardStrip, TrendingFeed, TwinPanel, VettedSlips } from '../components/oracle/AshokaDesk';
 import { TwinFortressPanel } from '../components/oracle/DigitalTwinCard';
 import { SettlementFeedbackPanel } from '../components/oracle/SettlementFeedbackPanel';
@@ -17,7 +18,8 @@ import { SportsEngineDesk } from '../components/oracle/SportsEngineDesk';
 import { InfinityFlexiViewToggle } from '../components/smallcase/InfinityFlexiViewToggle';
 import { LiveSmallcaseTickerBar } from '../components/smallcase/LiveSmallcaseTickerBar';
 import { ashokaHeadline, useSlips } from '../lib/oracle';
-import { Async, Button, ComponentGuideBanner, EmptyState, Field, Meter, num, NumberInput, Page, Panel, Pill, Segmented, Select, Stat, StatGrid, StatusBadge } from '../ui/kit';
+import { Async, Button, ComponentGuideBanner, EmptyState, Field, Meter, NumberInput, Page, Panel, Pill, Segmented, Select, Stat, StatGrid, StatusBadge } from '../ui/kit';
+import { num } from '../ui/num';
 
 // ---------------------------------------------------------------------------
 // CONTRACTS

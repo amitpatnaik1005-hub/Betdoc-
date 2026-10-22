@@ -10,7 +10,8 @@ import { apiClient } from "../../api/client";
 import { type Bankroll, type RiskSettings, useBankroll } from "../../lib/cfo";
 import { formatINR } from "../../lib/format";
 import { runMutation } from "../../lib/resource";
-import { Async, CARD_VARIANTS, LiveDot, Meter, Panel, SPRING, SURFACE } from "../../ui/kit";
+import { Async, LiveDot, Meter, Panel, SURFACE } from "../../ui/kit";
+import { CARD_VARIANTS, SPRING } from "../../ui/motion";
 
 const KEY_COMMIT_DELAY_MS = 600;
 

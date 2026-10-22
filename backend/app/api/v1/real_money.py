@@ -30,7 +30,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import CurrentUser, get_db
 from app.core.config import Settings, get_settings
-from app.domain.paper_trading.tax import financial_year
+from app.domain.wagering.tax import financial_year
 from app.models.tax_and_fx import TaxLedgerEntry
 from app.models.real_money import RealBetTicket
 from app.schemas.real_money import (

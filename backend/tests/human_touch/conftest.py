@@ -13,6 +13,7 @@ from sqlalchemy import event, insert
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.pool import StaticPool
 
+from app.api import validation
 from app.api.deps import get_db
 from app.api.v1.human_touch import router as human_touch_router
 from app.domain.human_touch.manager import HumanTouchManager
@@ -25,7 +26,7 @@ HUMAN_TOUCH_TABLES = [
     HumanOverrideLogModel.__table__,
 ]
 
-app = FastAPI(title="BetDoc Human Touch Test App")
+app = validation.install(FastAPI(title="BetDoc Human Touch Test App"))  # the production 422 handler (Group 110)
 app.include_router(human_touch_router)  # router already carries /api/v1/human-touch
 
 

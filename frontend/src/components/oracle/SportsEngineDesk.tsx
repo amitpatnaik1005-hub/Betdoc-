@@ -31,7 +31,8 @@ import {
 import { useAuthStore } from '../../store/useAuthStore';
 import { sportInfo, useSportStore } from '../../store/useSportStore';
 import { toast } from '../../store/useToastStore';
-import { Async, Button, EmptyState, Field, KeyValues, Meter, NumberInput, Panel, Pill, Segmented, Select, Stat, StatGrid, TextInput, Toggle, num } from '../../ui/kit';
+import { Async, Button, EmptyState, Field, KeyValues, Meter, NumberInput, Panel, Pill, Segmented, Select, Stat, StatGrid, TextInput, Toggle } from '../../ui/kit';
+import { num } from '../../ui/num';
 
 type Values = Record<string, string>;
 

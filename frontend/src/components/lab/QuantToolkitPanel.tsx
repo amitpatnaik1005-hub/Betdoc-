@@ -9,7 +9,8 @@ import { apiClient } from '../../api/client';
 import { type MatchOdds, type Side, matchOddsMarket, outcomeSide, useLiveOdds } from '../../lib/api';
 import { formatAgo, formatOdds, formatPct, humanize } from '../../lib/format';
 import { runMutation, useResource } from '../../lib/resource';
-import { Async, Button, DataTable, EmptyState, Field, KeyValues, NumberInput, Panel, Pill, Segmented, Select, StatusBadge, TextInput, num } from '../../ui/kit';
+import { Async, Button, DataTable, EmptyState, Field, KeyValues, NumberInput, Panel, Pill, Segmented, Select, StatusBadge, TextInput } from '../../ui/kit';
+import { num } from '../../ui/num';
 
 interface CalcLog { id: string; calc_type: string; inputs: Record<string, unknown>; outputs: Record<string, unknown>; created_at: string }
 interface Comparison { best_bookmaker: string; best_odds: number; mean_odds: number; edge_percentage: number; placement_instruction: string; considered_bookmakers: string[]; ignored_bookmakers: string[] }

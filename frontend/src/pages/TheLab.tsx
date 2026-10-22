@@ -9,8 +9,10 @@ import { ScorePredictionPanel } from '../components/prediction/ScorePredictionPa
 import { formatAgo, formatDateTime, formatOdds, formatPct, formatRatioPct } from '../lib/format';
 import { runMutation, useResource } from '../lib/resource';
 import { type Selection, useExecutionStore } from '../store/useExecutionStore';
-import { CommanderHero, MOTIFS } from '../ui/hero';
-import { Async, Button, ComponentGuideBanner, ConfirmButton, EmptyState, Field, KeyValues, num, NumberInput, Page, Panel, Select, StatusBadge, TextInput, Toggle } from '../ui/kit';
+import { CommanderHero } from '../ui/hero';
+import { MOTIFS } from '../ui/motifs';
+import { Async, Button, ComponentGuideBanner, ConfirmButton, EmptyState, Field, KeyValues, NumberInput, Page, Panel, Select, StatusBadge, TextInput, Toggle } from '../ui/kit';
+import { num } from '../ui/num';
 import { Markdown } from '../ui/markdown';
 
 // ---------------------------------------------------------------------------
@@ -281,7 +283,11 @@ const HumanTouch = () => {
   const [draft, setDraft] = useState<HumanTouchConfig | null>(null);
   const [blend, setBlend] = useState({ prob: '0.55', sentiment: '0.3', factor: 'derby_intensity', value: '0.8', impact: '0.4' });
   const [result, setResult] = useState<BlendResponse | null>(null);
-  useEffect(() => { if (config.data) setDraft(config.data); }, [config.data]);
+  const [loaded, setLoaded] = useState<HumanTouchConfig | null>(null);
+  if (config.data && config.data !== loaded) {  // the stored config fills the draft as it arrives
+    setLoaded(config.data);
+    setDraft(config.data);
+  }
 
   const save = () => draft && runMutation(
     () => apiClient.put('/human-touch/config', {

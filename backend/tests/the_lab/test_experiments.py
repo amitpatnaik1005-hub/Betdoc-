@@ -18,7 +18,6 @@ from app.domain.the_lab import (
 from app.models.the_lab import ExperimentModel
 from app.schemas.the_lab import ExperimentCreate, ResearchCreate
 
-pytestmark = pytest.mark.asyncio
 
 VALID = {
     "name": "Goal model shootout",

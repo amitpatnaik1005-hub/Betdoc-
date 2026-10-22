@@ -6,8 +6,8 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.api.deps import CurrentUser, get_db
 from app.core.database import AsyncSessionLocal
-from app.domain.phantom.errors import PhantomDomainError
-from app.domain.phantom.manager import PhantomManager
+from app.domain.quant_toolkit.errors import QuantToolkitError
+from app.domain.quant_toolkit.manager import QuantToolkitManager
 from app.domain.the_lab.data_agent import DataResearchAgent
 from app.domain.the_lab import (
     ApiHealthMonitor,
@@ -18,7 +18,7 @@ from app.domain.the_lab import (
     ResearchExecutor,
     ResearchReportManager,
 )
-from app.schemas.phantom import (
+from app.schemas.quant_toolkit import (
     CointegrationRequest,
     CointegrationResponse,
     DutchingRequest,
@@ -27,7 +27,7 @@ from app.schemas.phantom import (
     MarketMakerResponse,
     MatchedBettingRequest,
     MatchedBettingResponse,
-    PhantomCalculationLogRead,
+    QuantCalculationLogRead,
 )
 from app.schemas.the_lab import (
     ApiHealthStatus,
@@ -149,16 +149,16 @@ async def conclude_experiment(
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
     except InvalidExperimentWinnerError as exc:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(exc)
         ) from exc
     return ExperimentRead.model_validate(experiment)
 
 
 # ================================================================ Group 96: the quant toolkit (absorbed from Phantom)
-quant_manager = PhantomManager()
+quant_manager = QuantToolkitManager()
 
 
-def _quant_error(exc: PhantomDomainError) -> HTTPException:
+def _quant_error(exc: QuantToolkitError) -> HTTPException:
     return HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=exc.message)
 
 
@@ -167,9 +167,9 @@ async def calculate_dutching(payload: DutchingRequest, db: DbSession, current_us
     """Stakes that return the same amount whichever selection wins."""
     try:
         outcome = await quant_manager.calculate_dutching(db, target_total_stake=payload.target_total_stake, odds=payload.odds)
-    except PhantomDomainError as exc:
+    except QuantToolkitError as exc:
         raise _quant_error(exc) from exc
-    return DutchingResponse(**outcome["result"], log=PhantomCalculationLogRead.model_validate(outcome["log"]))
+    return DutchingResponse(**outcome["result"], log=QuantCalculationLogRead.model_validate(outcome["log"]))
 
 
 @router.post("/quant-toolkit/matched-betting", response_model=MatchedBettingResponse)
@@ -180,9 +180,9 @@ async def calculate_matched_bet(payload: MatchedBettingRequest, db: DbSession, c
             db, back_stake=payload.back_stake, back_odds=payload.back_odds, lay_odds=payload.lay_odds,
             lay_commission_pct=payload.lay_commission_pct, mode=payload.mode,
         )
-    except PhantomDomainError as exc:
+    except QuantToolkitError as exc:
         raise _quant_error(exc) from exc
-    return MatchedBettingResponse(**outcome["result"], log=PhantomCalculationLogRead.model_validate(outcome["log"]))
+    return MatchedBettingResponse(**outcome["result"], log=QuantCalculationLogRead.model_validate(outcome["log"]))
 
 
 @router.post("/quant-toolkit/market-maker", response_model=MarketMakerResponse)
@@ -194,9 +194,9 @@ async def calculate_market_maker(payload: MarketMakerRequest, db: DbSession, cur
             volatility_sigma=payload.volatility_sigma, time_horizon_t=payload.time_horizon_t,
             current_time_t=payload.current_time_t, liquidity_k=payload.liquidity_k,
         )
-    except PhantomDomainError as exc:
+    except QuantToolkitError as exc:
         raise _quant_error(exc) from exc
-    return MarketMakerResponse(**outcome["result"], log=PhantomCalculationLogRead.model_validate(outcome["log"]))
+    return MarketMakerResponse(**outcome["result"], log=QuantCalculationLogRead.model_validate(outcome["log"]))
 
 
 @router.post("/quant-toolkit/cointegration", response_model=CointegrationResponse)
@@ -207,21 +207,21 @@ async def evaluate_cointegration(payload: CointegrationRequest, db: DbSession, c
             db, current_z_score=payload.current_z_score, entry_threshold=payload.entry_threshold,
             exit_threshold=payload.exit_threshold, stop_loss_threshold=payload.stop_loss_threshold,
         )
-    except PhantomDomainError as exc:
+    except QuantToolkitError as exc:
         raise _quant_error(exc) from exc
-    return CointegrationResponse(**outcome["result"], log=PhantomCalculationLogRead.model_validate(outcome["log"]))
+    return CointegrationResponse(**outcome["result"], log=QuantCalculationLogRead.model_validate(outcome["log"]))
 
 
-@router.get("/quant-toolkit/calculations", response_model=list[PhantomCalculationLogRead])
+@router.get("/quant-toolkit/calculations", response_model=list[QuantCalculationLogRead])
 async def list_quant_calculations(
     db: DbSession,
     current_user: CurrentUser,  # noqa: ARG001
     calc_type: Annotated[str | None, Query(max_length=32, description="DUTCHING, MATCHED_BETTING, AVELLANEDA or COINTEGRATION")] = None,
     limit: Annotated[int, Query(ge=1, le=200)] = 25,
-) -> list[PhantomCalculationLogRead]:
+) -> list[QuantCalculationLogRead]:
     """The newest quant toolkit runs."""
     try:
         logs = await quant_manager.list_calculations(db, calc_type=calc_type, limit=limit)
-    except PhantomDomainError as exc:
+    except QuantToolkitError as exc:
         raise _quant_error(exc) from exc
-    return [PhantomCalculationLogRead.model_validate(log) for log in logs]
+    return [QuantCalculationLogRead.model_validate(log) for log in logs]

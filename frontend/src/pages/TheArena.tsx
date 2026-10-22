@@ -7,8 +7,9 @@ import { formatAgo, formatDateTime, formatINR, formatOdds, formatPct, formatSign
 import { invalidate, runMutation, useResource } from '../lib/resource';
 import { MONEY_SECTIONS, useExecutionStore } from '../store/useExecutionStore';
 import { useSystemStore } from '../store/useSystemStore';
-import { CommanderHero, MOTIFS } from '../ui/hero';
-import { Async, Button, ConfirmButton, type Column, DataTable, EmptyState, Page, Panel, Pill, StatusBadge } from '../ui/kit';
+import { CommanderHero } from '../ui/hero';
+import { MOTIFS } from '../ui/motifs';
+import { Async, Button, type Column, ComponentGuideBanner, ConfirmButton, DataTable, EmptyState, Page, Panel, Pill, StatusBadge } from '../ui/kit';
 
 // ---------------------------------------------------------------------------
 // CONTRACTS
@@ -331,6 +332,17 @@ export const TheArena = () => {
             )}
           </>
         }
+      />
+      <ComponentGuideBanner
+        className="lg:col-span-12"
+        moduleName="The Arena"
+        purpose="BAJIRAO's arena: steam moves over the last two hours, surebets on fresh prices, the opportunity queue, open positions and the strategies' analytics."
+        steps={[
+          "Read the steam moves and the surebets on fresh prices",
+          "Work the opportunity queue: a slip confirms through the CFO ledger's two-phase execution",
+          "Track open positions and each strategy's analytics",
+        ]}
+        kpiCodes={["EV", "CLV"]}
       />
       <OpportunityQueue />
       <LiveOddsMatrix odds={odds} steam={steam.data ?? []} />

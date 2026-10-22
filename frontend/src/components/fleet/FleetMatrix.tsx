@@ -4,7 +4,8 @@ import { AnimatePresence, motion } from "framer-motion";
 import { apiClient } from "../../api/client";
 import { formatAgo, formatInt, formatRatioPct } from "../../lib/format";
 import { runMutation } from "../../lib/resource";
-import { Button, ConfirmButton, Meter, Pill, SPRING, Segmented, Select, StatusBadge } from "../../ui/kit";
+import { Button, ConfirmButton, Meter, Pill, Segmented, Select, StatusBadge } from "../../ui/kit";
+import { SPRING } from "../../ui/motion";
 import { BreakerCell, FailoverCell, FleetSwitch, QuotaBar, SecureKeyInline } from "./controls";
 import { type FleetOverview, type FleetSource, cx, groupLabel, seconds } from "./types";
 

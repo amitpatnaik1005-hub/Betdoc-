@@ -296,7 +296,7 @@ async def preview_provider(payload: ProviderPreviewRequest, request: Request, ad
     """Dry-run a spec against a pasted sample response: no network, no storage."""
     spec = payload.spec
     if payload.sport not in spec.coverage:
-        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=f"'{payload.sport}' is not in spec.coverage")
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=f"'{payload.sport}' is not in spec.coverage")
     aliases = _deps(request).aliases
     batch = IngestionBatch(
         source_id="preview", payloads=[SourcePayload(payload.sport, payload.sample)], fetched_at=datetime.now(UTC), latency_ms=0, requests=0, retries=0

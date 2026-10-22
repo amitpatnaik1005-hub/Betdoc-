@@ -1,5 +1,5 @@
 import { Component, type ErrorInfo, type ReactNode } from 'react';
-import { BRAND, SURFACE } from '../ui/brand';
+import { BRAND, SURFACE } from '../ui/tokens';
 
 interface RouteErrorBoundaryProps {
   readonly children: ReactNode;

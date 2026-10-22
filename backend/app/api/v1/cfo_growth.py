@@ -49,7 +49,7 @@ def _redis(request: Request) -> Redis | None:
 def _refused(exc: Exception) -> HTTPException:
     if isinstance(exc, growth.NotEnoughHistory):
         return HTTPException(status.HTTP_409_CONFLICT, {"reason": "INSUFFICIENT_HISTORY", "message": str(exc), "found": exc.found, "needed": exc.needed})
-    return HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, {"reason": "INVALID", "message": str(exc)})
+    return HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, {"reason": "INVALID", "message": str(exc)})
 
 
 @router.get("/policy")
@@ -138,7 +138,7 @@ async def acknowledge(advisory_id: uuid.UUID, body: AcknowledgeRequest, user: Cu
             if user.role != ADMIN_ROLE:
                 raise HTTPException(status.HTTP_403_FORBIDDEN, {"reason": "SIGN_OFF_REQUIRED", "message": "A capital-preservation halt is signed off by an administrator"})
             if not body.note or len(body.note.strip()) < 5:
-                raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, {"reason": "SIGN_OFF_NOTE", "message": "A halt's sign-off needs a reason (5 characters or more)"})
+                raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, {"reason": "SIGN_OFF_NOTE", "message": "A halt's sign-off needs a reason (5 characters or more)"})
             halts = list((await session.execute(
                 select(CFOAdvisoryLog).where(CFOAdvisoryLog.user_id == row.user_id, CFOAdvisoryLog.insight_code == InsightCode.CAPITAL_PRESERVATION_HALT.value,
                                              CFOAdvisoryLog.is_acknowledged.is_(False)).with_for_update()

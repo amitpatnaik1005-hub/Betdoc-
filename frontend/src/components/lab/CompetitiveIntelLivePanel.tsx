@@ -12,7 +12,8 @@ import { formatINR, formatOdds, formatPct } from '../../lib/format';
 import { runMutation, useResource } from '../../lib/resource';
 import { useAuthStore } from '../../store/useAuthStore';
 import { type Selection, useExecutionStore } from '../../store/useExecutionStore';
-import { Async, Button, EmptyState, NumberInput, Panel, Pill, Select, TextInput, Toggle, num } from '../../ui/kit';
+import { Async, Button, EmptyState, NumberInput, Panel, Pill, Select, TextInput, Toggle } from '../../ui/kit';
+import { num } from '../../ui/num';
 
 export type ConsensusVerdict = 'SHARP_CONTRARIAN' | 'PUBLIC_TRAP' | 'SHARP_CONSENSUS' | 'NEUTRAL';
 export type SignalVerdict = 'PUBLIC_TRAP' | 'SHARP_VERIFIED' | 'CAUTION_HIGH_VIG' | 'NEUTRAL';

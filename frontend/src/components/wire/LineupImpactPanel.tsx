@@ -9,7 +9,8 @@ import { useMemo, useState } from "react";
 import { formatTime } from "../../lib/format";
 import { type AbsenceRow, rateAbsence, useLineup, type WireFixture } from "../../lib/the_wire";
 import { useAuthStore } from "../../store/useAuthStore";
-import { Async, Button, EmptyState, NumberInput, Pill, Select, num } from "../../ui/kit";
+import { Async, Button, EmptyState, NumberInput, Pill, Select } from "../../ui/kit";
+import { num } from "../../ui/num";
 
 const STATUS_TONE = { OUT: "critical", SUSPENDED: "critical", DOUBTFUL: "warning", QUESTIONABLE: "info" } as const;
 const pct = (v: number | null | undefined) => (v === null || v === undefined ? "—" : `${(v * 100).toFixed(1)}%`);

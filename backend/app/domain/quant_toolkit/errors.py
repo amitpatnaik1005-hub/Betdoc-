@@ -1,9 +1,9 @@
-"""Domain errors for PHANTOM."""
+"""Domain errors for the Lab's quant toolkit (Group 96; the retired Phantom section's engines)."""
 
 from typing import Any
 
 
-class PhantomDomainError(Exception):
+class QuantToolkitError(Exception):
     """Raised when the quant toolkit rejects an input or cannot complete a calculation."""
 
     def __init__(self, message: str = "[PANINI]: Calculation rejected.", **context: Any) -> None:

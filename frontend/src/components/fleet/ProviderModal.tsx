@@ -7,7 +7,8 @@ import { AnimatePresence, motion } from "framer-motion";
 import { apiClient } from "../../api/client";
 import { formatOdds, formatRatioPct } from "../../lib/format";
 import { runMutation } from "../../lib/resource";
-import { Button, Field, Pill, SPRING, Select, TextInput, Toggle } from "../../ui/kit";
+import { Button, Field, Pill, Select, TextInput, Toggle } from "../../ui/kit";
+import { SPRING } from "../../ui/motion";
 import { type FleetSource, type ProviderPreview, cx } from "./types";
 
 const ID_PATTERN = /^[a-z][a-z0-9_]{2,47}$/;

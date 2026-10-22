@@ -17,7 +17,7 @@ async def get_dashboard_summary(
     try:
         return await build_dashboard_summary(current_user.id, db, tz_offset_hours)
     except ValueError as exc:
-        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(exc)) from exc
 
 
 @router.get("/activity-feed", response_model=list[ActivityEvent])

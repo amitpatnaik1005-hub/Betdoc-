@@ -155,12 +155,12 @@ async def odds_check(body: OddsCheckRequest, user: CurrentUser) -> dict[str, Any
     for i, leg in enumerate(body.legs):
         ref = parse_market(leg.market)
         if ref is None or leg.selection.upper() not in ref.selections:
-            raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, {"reason": "BAD_LEG", "message": f"leg {i + 1}: {leg.market} {leg.selection} is not a market Ashoka knows"})
+            raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, {"reason": "BAD_LEG", "message": f"leg {i + 1}: {leg.market} {leg.selection} is not a market Ashoka knows"})
         prices = {}
         for book, price in leg.prices.items():
             key = canonical_bookmaker(book)
             if key is None or price <= 1.0:
-                raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, {"reason": "BAD_PRICE", "message": f"leg {i + 1}: {book} {price}"})
+                raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, {"reason": "BAD_PRICE", "message": f"leg {i + 1}: {book} {price}"})
             prices[key] = price
         legs.append(LegPrice(f"check-{i}", leg.home, leg.away, ref.key, leg.selection.upper(), prices))
     views = [book_view(book, legs, body.stake_inr) for book in ASHOKA_BOOKMAKERS]
@@ -277,7 +277,7 @@ async def cashout_advice(bet_id: uuid.UUID, body: CashoutRequest, request: Reque
     if bet.status != PlacedStatus.PENDING.value:
         raise HTTPException(status.HTTP_409_CONFLICT, {"reason": "SETTLED", "message": "This bet is settled"})
     if bet.structure not in ("SINGLE", "DOUBLE", "TREBLE", "ACCUMULATOR"):
-        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, {"reason": "SYSTEM_BET", "message": "Cashout advice covers straight multiples; a system's lines settle separately"})
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, {"reason": "SYSTEM_BET", "message": "Cashout advice covers straight multiples; a system's lines settle separately"})
     open_rows = [leg for leg in legs if leg.result == PlacedStatus.PENDING.value]
     if not open_rows:
         raise HTTPException(status.HTTP_409_CONFLICT, {"reason": "NOTHING_OPEN", "message": "Every leg is decided: the bet settles"})
@@ -296,7 +296,7 @@ async def cashout_advice(bet_id: uuid.UUID, body: CashoutRequest, request: Reque
         probability = body.probabilities.get(leg.position) or ashoka_market.fair_value_inputs(candidate)
         if probability is None:
             raise HTTPException(
-                status.HTTP_422_UNPROCESSABLE_ENTITY,
+                status.HTTP_422_UNPROCESSABLE_CONTENT,
                 {"reason": "NO_LIVE_PRICE", "message": f"No live price for {leg.home} vs {leg.away} ({leg.market} {leg.selection}): give its current probability", "position": leg.position},
             )
         hedge_back: list[tuple[str, float]] = []

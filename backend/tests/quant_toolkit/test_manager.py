@@ -1,4 +1,4 @@
-"""PhantomManager tests: every engine checked against an independent reference implementation."""
+"""QuantToolkitManager tests: every engine checked against an independent reference implementation."""
 
 import json
 import math
@@ -9,12 +9,12 @@ from pydantic import ValidationError
 from sqlalchemy import func, insert, select
 from sqlalchemy.exc import IntegrityError
 
-from app.domain.phantom.errors import PhantomDomainError
-from app.domain.phantom.manager import CointegrationSignal, MatchedBettingMode
+from app.domain.quant_toolkit.errors import QuantToolkitError
+from app.domain.quant_toolkit.manager import CointegrationSignal, MatchedBettingMode
 from app.models.phantom import PhantomCalculationLogModel
-from app.schemas.phantom import (
+from app.schemas.quant_toolkit import (
     CointegrationRequest,
-    PhantomCalculationLogRead,
+    QuantCalculationLogRead,
 )
 
 pytestmark = pytest.mark.asyncio
@@ -70,7 +70,7 @@ async def test_integrity_error_is_rolled_back_and_wrapped(manager, db_session, m
 
     monkeypatch.setattr(db_session, "commit", failing_commit)
     monkeypatch.setattr(db_session, "rollback", counting_rollback)
-    with pytest.raises(PhantomDomainError, match="storage constraints"):
+    with pytest.raises(QuantToolkitError, match="storage constraints"):
         await manager.calculate_dutching(db_session, 100.0, [2.0, 3.0])
     assert calls["rollback"] == 1
 
@@ -97,7 +97,7 @@ async def test_dutching_equal_payout(manager, db_session, odds, target):
 
 async def test_dutching_persists_log_and_decodes_json(manager, db_session):
     outcome = await manager.calculate_dutching(db_session, 100.0, [2.0, 4.0, 4.0])
-    log = PhantomCalculationLogRead.model_validate(outcome["log"])
+    log = QuantCalculationLogRead.model_validate(outcome["log"])
 
     assert log.calc_type == "DUTCHING"
     assert log.inputs == {"target_total_stake": 100.0, "odds": [2.0, 4.0, 4.0]}
@@ -107,7 +107,7 @@ async def test_dutching_persists_log_and_decodes_json(manager, db_session):
 
 
 async def test_log_read_validator_handles_dicts_and_bad_json():
-    parsed = PhantomCalculationLogRead.model_validate(
+    parsed = QuantCalculationLogRead.model_validate(
         {
             "id": uuid4(),
             "calc_type": "COINTEGRATION",
@@ -120,7 +120,7 @@ async def test_log_read_validator_handles_dicts_and_bad_json():
     assert parsed.outputs == {"b": 2}
 
     with pytest.raises(ValidationError):
-        PhantomCalculationLogRead.model_validate(
+        QuantCalculationLogRead.model_validate(
             {
                 "id": uuid4(),
                 "calc_type": "COINTEGRATION",
@@ -133,7 +133,7 @@ async def test_log_read_validator_handles_dicts_and_bad_json():
 
 @pytest.mark.parametrize(("odds", "target"), [([2.0], 100.0), ([2.0, 0.5], 100.0), ([2.0, 3.0], -1.0)])
 async def test_dutching_rejects_invalid_inputs(manager, db_session, odds, target):
-    with pytest.raises(PhantomDomainError):
+    with pytest.raises(QuantToolkitError):
         await manager.calculate_dutching(db_session, target, odds)
     assert await _count(db_session, PhantomCalculationLogModel) == 0
 
@@ -195,7 +195,7 @@ async def test_matched_betting_mode_lay_stakes_are_ordered(manager, db_session):
 
 async def test_matched_betting_logs_inputs_and_outputs(manager, db_session):
     outcome = await manager.calculate_matched_bet(db_session, 10.0, 3.0, 3.2, 2.0, "STANDARD")
-    log = PhantomCalculationLogRead.model_validate(outcome["log"])
+    log = QuantCalculationLogRead.model_validate(outcome["log"])
 
     assert log.calc_type == "MATCHED_BETTING"
     assert log.inputs["mode"] == "STANDARD"
@@ -219,7 +219,7 @@ async def test_matched_betting_logs_inputs_and_outputs(manager, db_session):
 async def test_matched_betting_rejects_invalid_inputs(
     manager, db_session, back_stake, back_odds, lay_odds, commission, mode
 ):
-    with pytest.raises(PhantomDomainError):
+    with pytest.raises(QuantToolkitError):
         await manager.calculate_matched_bet(db_session, back_stake, back_odds, lay_odds, commission, mode)
     assert await _count(db_session, PhantomCalculationLogModel) == 0
 
@@ -279,7 +279,7 @@ async def test_market_maker_zero_time_remaining_uses_liquidity_term_only(manager
 
 async def test_market_maker_persists_log(manager, db_session):
     outcome = await manager.calculate_market_maker_quotes(db_session, 2.0, 1.0, 0.1, 0.2, 1.0, 0.0, 1.5)
-    log = PhantomCalculationLogRead.model_validate(outcome["log"])
+    log = QuantCalculationLogRead.model_validate(outcome["log"])
     assert log.calc_type == "AVELLANEDA"
     assert log.inputs["liquidity_k"] == 1.5
     assert log.outputs["optimal_ask"] == outcome["result"]["optimal_ask"]
@@ -290,7 +290,7 @@ async def test_market_maker_persists_log(manager, db_session):
     [(0.0, 0.2, 1.5), (-0.1, 0.2, 1.5), (0.1, 0.2, 0.0), (0.1, 0.2, -1.0), (0.1, -0.2, 1.5), (0.1, 1e200, 1.5)],
 )
 async def test_market_maker_rejects_invalid_or_overflowing_inputs(manager, db_session, gamma, sigma, k):
-    with pytest.raises(PhantomDomainError):
+    with pytest.raises(QuantToolkitError):
         await manager.calculate_market_maker_quotes(db_session, 2.0, 1.0, gamma, sigma, 1.0, 0.0, k)
     assert await _count(db_session, PhantomCalculationLogModel) == 0
 
@@ -334,7 +334,7 @@ async def test_cointegration_thresholds_are_fully_dynamic(manager, db_session):
 
 async def test_cointegration_persists_log(manager, db_session):
     outcome = await manager.evaluate_cointegration(db_session, 3.2, ENTRY, EXIT, STOP)
-    log = PhantomCalculationLogRead.model_validate(outcome["log"])
+    log = QuantCalculationLogRead.model_validate(outcome["log"])
     assert log.calc_type == "COINTEGRATION"
     assert log.outputs["signal"] == "STOP_LOSS_LIQUIDATE"
     assert log.inputs["stop_loss_threshold"] == STOP
@@ -345,7 +345,7 @@ async def test_cointegration_persists_log(manager, db_session):
     [(2.0, 2.0, 3.0), (2.0, 2.5, 3.0), (3.0, 0.5, 3.0), (4.0, 0.5, 3.0), (2.0, -0.1, 3.0)],
 )
 async def test_cointegration_rejects_invalid_threshold_ordering(manager, db_session, entry, exit_, stop):
-    with pytest.raises(PhantomDomainError):
+    with pytest.raises(QuantToolkitError):
         await manager.evaluate_cointegration(db_session, 1.0, entry, exit_, stop)
     with pytest.raises(ValidationError):
         CointegrationRequest(

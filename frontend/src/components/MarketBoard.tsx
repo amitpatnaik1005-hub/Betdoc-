@@ -1,4 +1,4 @@
-import { memo, useEffect, useRef, useState, type JSX } from "react";
+import { memo, useEffect, useState, type JSX } from "react";
 import { useShallow } from "zustand/react/shallow";
 import { type Selection, useExecutionStore } from "../store/useExecutionStore";
 import { type MarketTick, useMarketStore } from "../store/useMarketStore";
@@ -30,23 +30,26 @@ const OddsCell = memo(function OddsCell({ matchId, label, selection, tick }: Odd
   // Boolean selector: flips only for the two cells whose selection state changes.
   const isSelected = useExecutionStore((s) => s.draftMatchId === matchId && s.draftSelection === selection);
 
-  const previousOdds = useRef<number | undefined>(tick?.odds);
-  const [flash, setFlash] = useState<"up" | "down" | null>(null);
   const odds: number | undefined = tick?.odds;
-
-  useEffect(() => {
+  const [seen, setSeen] = useState<number | undefined>(odds);  // the price this cell last rendered
+  const [last, setLast] = useState<number | undefined>(odds);  // the last price a tick carried (kept through a gap)
+  const [flash, setFlash] = useState<"up" | "down" | null>(null);
+  if (odds !== seen) {  // a new price: decide the flash while rendering it, not in an effect after
+    setSeen(odds);
     if (odds === undefined) {
       setFlash(null);
-      return;
+    } else {
+      if (last !== undefined && last !== odds) setFlash(odds > last ? "up" : "down");
+      setLast(odds);
     }
-    const prev: number | undefined = previousOdds.current;
-    previousOdds.current = odds; // only updated when a tick exists
-    if (prev === undefined || prev === odds) return;
-    setFlash(odds > prev ? "up" : "down");
+  }
+
+  useEffect(() => {
+    if (!flash) return;
     const timer: number = window.setTimeout(() => setFlash(null), FLASH_MS);
-    // Strict cleanup: clears on the next price change AND on unmount.
+    // Strict cleanup: restarts on the next price change, clears on unmount.
     return () => window.clearTimeout(timer);
-  }, [odds]);
+  }, [flash, seen]);
 
   if (!tick) {
     return (

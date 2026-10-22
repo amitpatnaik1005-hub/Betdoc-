@@ -517,11 +517,8 @@ async def test_api_put_config_rejects_non_finite_tokens(client, token):
         '{"is_blended_mode_active":true,"max_adjustment_limit_pct":' + token + ","
         '"sentiment_weight":0.5,"momentum_weight":0.5,"min_adjustment_threshold_pct":0}'
     )
-    try:
-        response = await client.put(f"{BASE}/config", content=raw, headers={"Content-Type": "application/json"})
-        assert response.status_code == 422
-    except ValueError:
-        pytest.skip("FastAPI JSONResponse serialization crashed on NaN")
+    response = await client.put(f"{BASE}/config", content=raw, headers={"Content-Type": "application/json"})
+    assert response.status_code == 422  # the production handler drops the echoed input: no NaN reaches the JSON encoder
 
 
 # =============================================================== API: blending
@@ -587,11 +584,8 @@ async def test_api_blend_out_of_bounds_returns_422(client, payload):
     ],
 )
 async def test_api_blend_rejects_non_finite_tokens(client, raw):
-    try:
-        response = await _post_raw(client, "/blend", raw)
-        assert response.status_code == 422
-    except ValueError:
-        pytest.skip("FastAPI JSONResponse serialization crashed on NaN")
+    response = await _post_raw(client, "/blend", raw)
+    assert response.status_code == 422
 
 
 # =============================================================== API: execute & resolve
@@ -645,11 +639,8 @@ async def test_api_resolve_invalid_outcome_returns_422(client, insert_log, paylo
 @pytest.mark.parametrize("token", ["NaN", "Infinity"])
 async def test_api_resolve_rejects_non_finite_tokens(client, insert_log, token):
     log_id = await insert_log(pure=0.6, blended=0.65)
-    try:
-        response = await _post_raw(client, f"/override-logs/{log_id}/resolve", '{"actual_outcome":' + token + "}")
-        assert response.status_code == 422
-    except ValueError:
-        pytest.skip("FastAPI JSONResponse serialization crashed on NaN")
+    response = await _post_raw(client, f"/override-logs/{log_id}/resolve", '{"actual_outcome":' + token + "}")
+    assert response.status_code == 422
 
 
 async def test_api_resolve_malformed_id_returns_422(client):

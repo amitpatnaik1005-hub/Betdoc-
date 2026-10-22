@@ -16,7 +16,6 @@ from app.domain.oracle_scout.manager import (
 )
 from app.models.oracle_scout import OracleScoutHistoryModel
 
-pytestmark = pytest.mark.asyncio
 
 
 async def _count(session) -> int:

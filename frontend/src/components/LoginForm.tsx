@@ -2,7 +2,8 @@ import { useEffect, useState, type FormEvent, type JSX } from "react";
 import { motion } from "framer-motion";
 import { MOCK_AUTH, useAuthStore } from "../store/useAuthStore";
 import { BetdocLogo } from "../ui/brand";
-import { Button, SPRING, Segmented, inputClass } from "../ui/kit";
+import { Button, Segmented, inputClass } from "../ui/kit";
+import { SPRING } from "../ui/motion";
 
 // Mirrors backend UserCreate: 3-64 chars of a-z 0-9 _ . - (lower-cased), password 8-72 bytes.
 const USERNAME_RE = /^[a-z0-9_.-]{3,64}$/;

@@ -95,7 +95,7 @@ async def upsert_venue(payload: VenueUpsert, request: Request, admin: CurrentAdm
     try:  # orders carry money: a venue must be a public https host (DNS checked off the event loop)
         await asyncio.to_thread(assert_public_target, payload.base_url, allowed_schemes=frozenset({"https"}), allow_private=settings.omni_allow_private_networks)
     except UnsafeTargetError as exc:
-        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, {"reason": "UNSAFE_VENUE_URL", "message": str(exc)}) from exc
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, {"reason": "UNSAFE_VENUE_URL", "message": str(exc)}) from exc
     async with sessions() as session:
         row = await session.get(ExecutionVenue, payload.id)
         if row is None:
@@ -150,7 +150,7 @@ async def sync_catalog(venue_id: str, request: Request, admin: CurrentAdmin) -> 
 @router.put("/venues/{venue_id}/mappings", status_code=status.HTTP_204_NO_CONTENT)
 async def write_mappings(venue_id: str, rows: list[MappingWrite], request: Request, admin: CurrentAdmin, sessions: SessionFactory) -> None:  # noqa: ARG001
     if len(rows) > 1000:
-        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, {"reason": "TOO_MANY", "message": "At most 1000 mappings per call"})
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, {"reason": "TOO_MANY", "message": "At most 1000 mappings per call"})
     async with sessions() as session:
         if await session.get(ExecutionVenue, venue_id) is None:
             raise HTTPException(status.HTTP_404_NOT_FOUND, {"reason": "NOT_FOUND", "message": "No such venue"})

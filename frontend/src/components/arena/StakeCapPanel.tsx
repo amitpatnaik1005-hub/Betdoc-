@@ -8,7 +8,8 @@ import { apiClient } from "../../api/client";
 import { type ControlSettings, useDashboardSummary } from "../../lib/api";
 import { formatINR } from "../../lib/format";
 import { runMutation } from "../../lib/resource";
-import { AnimatedNumber, CARD_VARIANTS, SPRING, SURFACE } from "../../ui/kit";
+import { AnimatedNumber, SURFACE } from "../../ui/kit";
+import { CARD_VARIANTS, SPRING } from "../../ui/motion";
 
 const MIN_PCT = 1;
 const MAX_PCT = 10;
