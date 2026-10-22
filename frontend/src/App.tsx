@@ -234,6 +234,8 @@ const StageHeader = (): ReactElement => {
   const liveCommander = useCommanders().byId.get(activeCommander.id);
   const isCompact = useUIStore((s) => s.isCompact);
   const toggleLeft = useUIStore((s) => s.toggleLeft);
+  const isInfinityView = useUIStore((s) => s.isInfinityView);
+  const setInfinityView = useUIStore((s) => s.setInfinityView);
   const money = useDisplayMoney();
   // "Live" means the cross-section event bus is open; the odds feed is reported alongside it.
   const socketStatus: SocketStatus =
@@ -274,6 +276,17 @@ const StageHeader = (): ReactElement => {
             <h1 className="truncate font-display text-[17px] font-bold leading-tight tracking-[-0.02em] text-stone-900 dark:text-stone-100">
               Quantitative Desk
             </h1>
+            {/* Group 107: one click back out of the Infinity view, wherever it was entered */}
+            {isInfinityView && (
+              <button
+                type="button"
+                onClick={() => setInfinityView(false)}
+                className="inline-flex shrink-0 items-center gap-1 rounded-full bg-emerald-600 px-2.5 py-0.5 text-[11px] font-semibold text-white shadow-soft transition-colors hover:bg-emerald-500"
+              >
+                <span className="material-symbols-outlined text-[14px]" aria-hidden="true">fullscreen_exit</span>
+                Exit Infinity
+              </button>
+            )}
             <span
               className="hidden items-center gap-1.5 rounded-full bg-[color-mix(in_srgb,var(--accent)_12%,transparent)] px-2.5 py-0.5 text-[11px] font-medium text-[var(--accent-text)] sm:inline-flex"
               title={commanderTooltip(activeCommander.domain, liveCommander)}
@@ -491,12 +504,13 @@ const SidebarNav = ({ collapsed }: { collapsed: boolean }) => {
 };
 
 const Sidebar = ({ theme, onToggleTheme }: { theme: string; onToggleTheme: () => void; }) => {
-  const { isLeftCollapsed, toggleLeft, isCompact, closeLeftIfCompact } = useUIStore();
+  const { isLeftCollapsed, toggleLeft, isCompact, closeLeftIfCompact, isInfinityView } = useUIStore();
   const user = useAuthStore((s) => s.user);
   const logout = useAuthStore((s) => s.logout);
   const { pathname } = useLocation();
-  // Phones: the drawer is fully hidden when collapsed and floats over content when open.
-  const hidden = isCompact && isLeftCollapsed;
+  // Phones: the drawer is fully hidden when collapsed and floats over content when open. The Infinity view (Group 107)
+  // hides it on every screen until the view is left.
+  const hidden = (isCompact && isLeftCollapsed) || isInfinityView;
 
   useEffect(() => closeLeftIfCompact(), [pathname, closeLeftIfCompact]);
 
@@ -674,6 +688,7 @@ const AppShell = () => {
   const { theme, toggle } = useTheme();
   const { pathname } = useLocation();
   const commands = usePaletteCommands();
+  const isInfinityView = useUIStore((s) => s.isInfinityView);
 
   // Group 100: Ctrl+J (Cmd+J on a Mac) opens or collapses the Scout Oracle from anywhere
   useEffect(() => {
@@ -698,7 +713,7 @@ const AppShell = () => {
       >
         <StageHeader />
         <HaltBanner />
-        <div className="flex-1 px-4 pb-28 sm:px-10 sm:pb-14">
+        <div className={isInfinityView ? 'flex-1 px-2 pb-14 sm:px-4' : 'flex-1 px-4 pb-28 sm:px-10 sm:pb-14'}>
           <RouteErrorBoundary key={pathname}>
             <Suspense fallback={<RouteFallback />}>
               <Outlet />

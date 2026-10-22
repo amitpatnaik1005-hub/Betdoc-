@@ -6,6 +6,8 @@ import { runMutation, useResource } from '../lib/resource';
 import { BankrollGrowthOptimizer } from '../components/cfo/BankrollGrowthOptimizer';
 import { RealBankrollCard } from '../components/real_money/RealBankrollCard';
 import { RealHistoryTable } from '../components/real_money/RealHistoryTable';
+import { LiveSmallcaseTickerBar } from '../components/smallcase/LiveSmallcaseTickerBar';
+import { SmallcaseComponentsPanel } from '../components/smallcase/SmallcaseComponentsPanel';
 import { TaxCertificateModal } from '../components/real_money/TaxCertificateModal';
 import { CommanderHero, MOTIFS } from '../ui/hero';
 import { DivergingBars, LineChart } from '../ui/charts';
@@ -327,8 +329,11 @@ export const TheVault = () => {
           moved here from the retired Live Desk; tickets are placed by hand and settle from recorded final scores */}
       <section className="flex min-w-0 flex-col gap-6 lg:col-span-12" aria-label="Real-money vault">
         <RealBankrollCard />
+        {/* Group 107: the live smallcases as KUMBHA sizes them against this bankroll; loading one opens the workbench */}
+        <LiveSmallcaseTickerBar toWorkbenchOnLoad />
         <RealHistoryTable />
       </section>
+      <SmallcaseComponentsPanel />
       <TaxCertificateModal />
       <GrowthPanel bankroll={bankroll} />
       <Panel title="P&L waterfall" icon="waterfall_chart" className="lg:col-span-4" updatedAt={waterfall.updatedAt}>

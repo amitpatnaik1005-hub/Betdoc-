@@ -428,6 +428,18 @@ class Settings(BaseSettings):
     # The Bet-Slip ornament (Group 106, points b.7 and b.12): the printable ticket of an approved, sealed verdict.
     # Its prices are the ones signed; past this age the ticket says to re-check them at the book before placing.
     BET_SLIP_FRESH_MINUTES: int = Field(default=30, ge=1, le=1440)
+    # Live smallcases (Group 107, point b.8): six thematic baskets of independent positive-EV singles, rebuilt from the
+    # live market on every scan and sized leg by leg by KUMBHA's policy, the basket as a whole under its own ceiling
+    SMALLCASE_MAX_LEGS: int = Field(default=5, ge=2, le=8)
+    SMALLCASE_MIN_EV: float = Field(default=0.02, ge=0, lt=1)  # a leg's EV at the best retail book, to enter any basket
+    SMALLCASE_SAFE_MIN_PROBABILITY: float = Field(default=0.55, gt=0, lt=1)  # the safe compounder: BetDoc's fair chance at least this
+    SMALLCASE_UNDERDOG_MIN_ODDS: float = Field(default=2.5, gt=1)  # the high-yield underdog basket: priced at least this
+    SMALLCASE_EUROPEAN_LEAGUES: list[str] = Field(default_factory=lambda: [
+        "soccer_epl", "soccer_spain_la_liga", "soccer_germany_bundesliga", "soccer_italy_serie_a", "soccer_france_ligue_one",
+        "soccer_uefa_champs_league", "soccer_uefa_europa_league",
+    ])
+    SMALLCASE_MAX_BASKET_FRACTION: float = Field(default=0.06, gt=0, le=0.5)  # one basket's singles together, of bankroll
+    SMALLCASE_SCAN_SECONDS: int = Field(default=30, ge=5, le=3600)  # the market scan is shared by every viewer this long
     # the sports filter: label -> the feed's sport_key prefixes
     MANUAL_PARLAY_SPORTS: dict[str, tuple[str, ...]] = Field(default_factory=lambda: {
         "Football": ("soccer",), "Basketball": ("basketball",), "Tennis": ("tennis",), "Cricket": ("cricket",), "Ice Hockey": ("icehockey",),

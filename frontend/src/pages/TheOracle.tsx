@@ -14,6 +14,8 @@ import { NeverForgetLearningJournal } from '../components/oracle/NeverForgetLear
 import { BetBuilder } from '../components/builder/BetBuilder';
 import { MatchBoard } from '../components/oracle/board/MatchBoard';
 import { SportsEngineDesk } from '../components/oracle/SportsEngineDesk';
+import { InfinityFlexiViewToggle } from '../components/smallcase/InfinityFlexiViewToggle';
+import { LiveSmallcaseTickerBar } from '../components/smallcase/LiveSmallcaseTickerBar';
 import { ashokaHeadline, useSlips } from '../lib/oracle';
 import { Async, Button, ComponentGuideBanner, EmptyState, Field, Meter, num, NumberInput, Page, Panel, Pill, Segmented, Select, Stat, StatGrid, StatusBadge } from '../ui/kit';
 
@@ -352,9 +354,15 @@ export const TheOracle = () => {
             >
               Export value bets
             </Button>
+            <InfinityFlexiViewToggle />
           </>
         }
       />
+
+      {/* Group 107: the live smallcases, on every tab (a loaded basket lands on the slip the board and the builder share) */}
+      <div className="min-w-0 lg:col-span-12">
+        <LiveSmallcaseTickerBar />
+      </div>
 
       <div className="lg:col-span-12">
         <Segmented label="Oracle view" value={tab} onChange={setTab} options={ORACLE_TABS} />

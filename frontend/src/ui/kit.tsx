@@ -19,6 +19,7 @@ import { animate, motion, useMotionValue, useReducedMotion, useTransform } from 
 import type { ResourceResult } from "../lib/resource";
 import { formatAgo } from "../lib/format";
 import { KPI_GLOSSARY } from "./kpi_glossary";
+import { useUIStore } from "../store/useUIStore";
 
 // --------------------------------------------------------------------------- motion
 /** Soft, organic spring: low stiffness, high damping, so nothing overshoots or snaps. */
@@ -35,16 +36,20 @@ export const ITEM_VARIANTS = { hidden: { opacity: 0, y: 8 }, show: { opacity: 1,
 const cx = (...parts: (string | false | null | undefined)[]): string => parts.filter(Boolean).join(" ");
 
 // --------------------------------------------------------------------------- layout
-export const Page = ({ children }: { children: ReactNode }) => (
-  <motion.div
-    variants={GRID_VARIANTS}
-    initial="hidden"
-    animate="show"
-    className="mx-auto grid w-full max-w-7xl grid-cols-1 gap-x-6 gap-y-10 py-8 lg:grid-cols-12 lg:py-10"
-  >
-    {children}
-  </motion.div>
-);
+export const Page = ({ children }: { children: ReactNode }) => {
+  // Group 107: the Infinity / Flexi view lifts the reading width so the workspace runs edge to edge
+  const infinity = useUIStore((s) => s.isInfinityView);
+  return (
+    <motion.div
+      variants={GRID_VARIANTS}
+      initial="hidden"
+      animate="show"
+      className={cx("mx-auto grid w-full grid-cols-1 gap-x-6 gap-y-10 py-8 lg:grid-cols-12 lg:py-10", infinity ? "max-w-none" : "max-w-7xl")}
+    >
+      {children}
+    </motion.div>
+  );
+};
 
 /** Card surface: no border, a warm diffused lift in light mode, a matte step up in dark. */
 export const SURFACE =
