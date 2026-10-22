@@ -8,26 +8,39 @@ placed from here.
     GET  /smallcase/ticker                      the six baskets in one line each
     POST /smallcase/rebalance-slip              your slip as a smallcase at your book: one holding per fixture, legs under fair left out
     GET  /smallcase/components                  every quantitative component, implemented or not, and how the smallcases use it
+    WS   /ws/smallcases?token=...               live push: the viewer's baskets whenever the market they draw from changes
+
+The socket (token-checked in the handshake) sends the viewer's board at once, then again each time a fresh read of the
+market changes it: when any read announces a change (``smallcase.live_channel``), and on its own every
+``SMALLCASE_SCAN_SECONDS`` through the shared scan (so one read of the market serves every viewer). A board identical
+to the last one sent is not sent again. Sizing stays per viewer: KUMBHA's stakes for that account.
 """
 
 from __future__ import annotations
 
+import asyncio
+import hashlib
+import json
+import logging
 from datetime import UTC, datetime
 from decimal import Decimal
 from typing import Annotated, Any
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, WebSocket, status
 from redis.asyncio import Redis
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from app.api.deps import CurrentUser
+from app.api.deps import CurrentUser, WsUser
 from app.api.v1.cfo_execution import get_session_factory
 from app.core.config import Settings, get_settings
 from app.schemas.smallcase import SlipAsSmallcase
 from app.services import smallcase
 from app.services.twin import vetting
 
+logger = logging.getLogger("betdoc.smallcase.ws")
+
 router = APIRouter(prefix="/smallcase", tags=["Live Smallcases (ASHOKA, KUMBHA)"])
+ws_router = APIRouter(tags=["websockets"])
 
 AppSettings = Annotated[Settings, Depends(get_settings)]
 Sessions = Annotated[async_sessionmaker[AsyncSession], Depends(get_session_factory)]
@@ -91,3 +104,72 @@ async def rebalance_slip(body: SlipAsSmallcase, request: Request, user: CurrentU
 @router.get("/components")
 async def components(request: Request, user: CurrentUser, sessions: Sessions, settings: AppSettings) -> dict[str, Any]:
     return await smallcase.components(sessions, _need_redis(request), settings, user.id, datetime.now(UTC))
+
+
+# ================================================================ the live push
+def _fingerprint(board: dict[str, Any]) -> str:
+    """The board as the viewer sees it (when it was computed aside): equal fingerprints are not pushed twice."""
+    body = {k: v for k, v in board.items() if k != "computed_at"}
+    return hashlib.sha256(json.dumps(body, sort_keys=True, default=str).encode()).hexdigest()
+
+
+@ws_router.websocket("/smallcases")
+async def smallcases_socket(websocket: WebSocket, user: WsUser, sessions: Sessions, settings: AppSettings) -> None:
+    redis = getattr(websocket.app.state, "redis", None)
+    if redis is None:
+        await websocket.close(code=status.WS_1011_INTERNAL_ERROR, reason="The live market is unavailable")
+        return
+    pubsub = redis.pubsub(ignore_subscribe_messages=True)
+    try:
+        await pubsub.subscribe(smallcase.live_channel(settings))
+    except Exception:  # noqa: BLE001 - Redis down: refuse; the page keeps polling /smallcase/baskets
+        await websocket.close(code=status.WS_1011_INTERNAL_ERROR, reason="The live market is unavailable")
+        return
+    await websocket.accept()
+    send_lock = asyncio.Lock()
+    sent: dict[str, str | None] = {"fingerprint": None}
+
+    async def send(frame: dict[str, Any]) -> None:
+        async with send_lock:
+            await websocket.send_text(json.dumps(frame, default=str, separators=(",", ":")))
+
+    async def push(reason: str) -> None:
+        try:
+            board = await smallcase.baskets(sessions, redis, settings, user.id, bankroll=None, now=datetime.now(UTC))
+        except Exception:  # noqa: BLE001 - one failed read never closes the socket; the next one may succeed
+            logger.warning("smallcase socket: the board could not be computed for a push (%s)", reason, exc_info=True)
+            return
+        mark = _fingerprint(board)
+        if mark != sent["fingerprint"]:
+            sent["fingerprint"] = mark
+            await send({"type": "board", "reason": reason, "board": board})
+
+    await send({"type": "connection_ack", "channel": smallcase.live_channel(settings), "refresh_seconds": settings.SMALLCASE_SCAN_SECONDS})
+    await push("connected")
+
+    async def on_market() -> None:
+        async for message in pubsub.listen():
+            if message.get("type") == "message":
+                await push("market")
+
+    async def on_clock() -> None:
+        while True:
+            await asyncio.sleep(settings.SMALLCASE_SCAN_SECONDS)
+            await push("scan")  # through the shared scan: a read only when its cache has expired
+
+    async def drain() -> None:
+        while True:
+            if await websocket.receive_text() == "ping":
+                await send({"type": "pong"})
+
+    tasks = [asyncio.create_task(on_market()), asyncio.create_task(on_clock()), asyncio.create_task(drain())]
+    try:
+        await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
+    finally:
+        for task in tasks:
+            task.cancel()
+        try:
+            await pubsub.unsubscribe()
+            await pubsub.aclose()
+        except Exception:  # noqa: BLE001
+            logger.debug("smallcase socket: pubsub already closed")

@@ -1,12 +1,13 @@
 /**
  * Live smallcases (Group 107, point b.8): six thematic baskets of independent positive-EV singles, rebuilt from
- * ASHOKA's live market and sized leg by leg by KUMBHA (`/smallcase`). Every figure is the backend's; the baskets refresh
- * on the backend's own scan cadence. Loading a basket puts its legs on the Oracle's shared slip, with their real
+ * ASHOKA's live market and sized leg by leg by KUMBHA (`/smallcase`). Every figure is the backend's; the baskets are
+ * pushed as the market moves (`/ws/smallcases`, `smallcase_live.ts`). Loading a basket puts its legs on the Oracle's shared slip, with their real
  * prices, where the fortress inspects them. Developed for Amit Ashok Kumar Patnaik.
  */
 import { apiClient } from "../api/client";
 import { type Skin } from "./backtest_and_parlay";
 import { useResource } from "./resource";
+import { BOARD_KEY, useSmallcaseFeed } from "./smallcase_live";
 import { type SlipLeg, useParlaySlipStore } from "../store/useParlaySlipStore";
 import { toast } from "../store/useToastStore";
 
@@ -137,7 +138,12 @@ export interface Components {
   as_of: string;
 }
 
-export const useSmallcases = () => useResource("smallcase:board", () => apiClient.get<Board>("/smallcase/baskets"), { intervalMs: 30_000 });
+/** The six baskets: pushed over `/ws/smallcases` as the market moves, polled every 30 s while the socket is down (and every
+ * 5 minutes as a safety net while it is up). */
+export const useSmallcases = () => {
+  const live = useSmallcaseFeed() === "open";
+  return useResource(BOARD_KEY, () => apiClient.get<Board>("/smallcase/baskets"), { intervalMs: live ? 300_000 : 30_000 });
+};
 export const useComponents = (enabled: boolean) =>
   useResource(enabled ? "smallcase:components" : null, () => apiClient.get<Components>("/smallcase/components"), { intervalMs: 300_000 });
 export const rebalanceBasket = (id: string) => apiClient.post<Omit<Board, "baskets"> & { basket: Basket }>(`/smallcase/baskets/${id}/rebalance`);

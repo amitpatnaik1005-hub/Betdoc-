@@ -93,6 +93,7 @@ api_router.include_router(consultant.router, dependencies=_authenticated)
 api_router.include_router(slip_ornament.router, dependencies=_authenticated)
 # Group 107: /smallcase (the six live smallcases from ASHOKA's market, sized by KUMBHA; the slip as a smallcase; the components)
 api_router.include_router(smallcase.router, dependencies=_authenticated)
+api_router.include_router(smallcase.ws_router, prefix="/ws")  # live push of the viewer's baskets; token-checked in the handshake
 # Group 108: /neural-bus (a Wire item through the Score Predictor, the Oracle, the Consultant and the smallcases) and its
 # live frames on /ws/neural-bus (token-checked in the handshake); VIDUR's board itself is /the-wire/board
 api_router.include_router(neural_bus.router, prefix="/neural-bus", dependencies=_authenticated)

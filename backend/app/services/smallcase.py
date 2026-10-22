@@ -3,7 +3,9 @@ Developed for Amit Ashok Kumar Patnaik.
 
 * ``scan``: every quoted leg of Ashoka's live market (``ashoka_market.load_candidates``, pre-match and in play within
   ``LIVE_LOOKBACK``) priced at its best fresh retail book (Parimatch, 1xBet, Stake) against BetDoc's fair probability.
-  The scan is shared by every viewer for ``SMALLCASE_SCAN_SECONDS`` (Redis); a rebalance forces a fresh one.
+  The scan is shared by every viewer for ``SMALLCASE_SCAN_SECONDS`` (Redis); a rebalance forces a fresh one. A fresh
+  read whose legs, books, prices or fair chances differ from the last one is announced on ``live_channel`` (Redis
+  pub/sub), and every ``/ws/smallcases`` socket re-sizes its viewer's baskets and pushes them (live push).
 * ``baskets``: each theme (``app.domain.smallcase.baskets``) takes its holdings from the scan; KUMBHA sizes them
   against the user's CFO bankroll, rolling drawdown, the models' skill and any latched halt, all read without side
   effects (``app.domain.smallcase.portfolio``); each basket carries its risk, its parlay alternative, each holding's
@@ -18,6 +20,7 @@ Nothing is placed from here: loading a basket puts its legs on the Oracle's slip
 
 from __future__ import annotations
 
+import hashlib
 import json
 import uuid
 from collections import defaultdict
@@ -57,6 +60,35 @@ def _key(settings: Settings) -> str:
     return f"{settings.ARYABHATA_PREFIX}:smallcase:scan"
 
 
+def live_channel(settings: Settings) -> str:
+    """Redis pub/sub: a fresh read of the market that changed what the baskets draw from."""
+    return f"{settings.ARYABHATA_PREFIX}:smallcase:live"
+
+
+def _digest_key(settings: Settings) -> str:
+    return f"{settings.ARYABHATA_PREFIX}:smallcase:digest"
+
+
+def digest(picks: Sequence[bk.Pick]) -> str:
+    """What the baskets draw from: each leg, its book, price and fair chance (kickoff and in-play flags ride with them)."""
+    rows = sorted((p.leg_id, p.book, round(p.price, 4), round(p.fair_probability, 6), p.in_play) for p in picks)
+    return hashlib.sha256(json.dumps(rows, separators=(",", ":")).encode()).hexdigest()[:32]
+
+
+async def _announce(redis: Redis, settings: Settings, picks: Sequence[bk.Pick], as_of: str) -> bool:
+    """Publish a fresh read when it changed the market the baskets draw from. Never raises: the push only hurries the
+    poll along."""
+    mark = digest(picks)
+    try:
+        previous = await redis.set(_digest_key(settings), mark, ex=settings.SMALLCASE_SCAN_SECONDS * 20, get=True)
+        if previous == mark:
+            return False
+        await redis.publish(live_channel(settings), json.dumps({"type": "scan", "as_of": as_of, "digest": mark, "valued": len(picks)}))
+        return True
+    except (RedisError, OSError):
+        return False
+
+
 def _pick(leg: Any, quote: Any, now: datetime, settings: Settings) -> bk.Pick | None:
     try:
         ev, fair = leg.ev(quote.net_odds), leg.probability
@@ -91,6 +123,7 @@ async def scan(redis: Redis, settings: Settings, now: datetime, *, fresh: bool =
         await redis.set(_key(settings), json.dumps(payload), ex=settings.SMALLCASE_SCAN_SECONDS)
     except (RedisError, OSError):
         pass
+    await _announce(redis, settings, picks, payload["as_of"])
     return picks, payload["as_of"], len(candidates)
 
 

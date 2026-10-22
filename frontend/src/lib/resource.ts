@@ -56,6 +56,11 @@ export function refresh(key: string): Promise<void> {
   return reg.inflight;
 }
 
+/** Data a server pushed (a WebSocket frame): it replaces the entry exactly as a completed fetch would. */
+export function publish<T>(key: string, data: T): void {
+  patch(key, { data, error: null, loading: false, updatedAt: Date.now() });
+}
+
 const matches = (key: string, prefix: string): boolean => key === prefix || key.startsWith(`${prefix}:`);
 
 /** Refetch every mounted resource whose key equals, or is namespaced under, one of the prefixes. */

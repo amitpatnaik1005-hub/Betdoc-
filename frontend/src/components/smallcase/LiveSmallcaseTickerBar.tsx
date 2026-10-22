@@ -8,6 +8,7 @@ import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { formatAgo, formatINR } from "../../lib/format";
 import { type Basket, pct, TIER_LABEL, useLoadBasket, useSmallcases } from "../../lib/smallcase";
+import { useSmallcaseFeed } from "../../lib/smallcase_live";
 import { Async, Button, ConfirmButton, Pill } from "../../ui/kit";
 import { BasketInspector } from "./BasketInspector";
 
@@ -33,6 +34,7 @@ export const LoadBasketButton = ({ basket, afterLoad, size = "sm" }: { basket: B
 
 export const LiveSmallcaseTickerBar = ({ toWorkbenchOnLoad = false }: { toWorkbenchOnLoad?: boolean }) => {
   const board = useSmallcases();
+  const live = useSmallcaseFeed() === "open";  // the push is up: boards arrive as the market moves
   const navigate = useNavigate();
   const age = useAge(board.data?.as_of);
   const [open, setOpen] = useState<string | null>(null);
@@ -42,16 +44,16 @@ export const LiveSmallcaseTickerBar = ({ toWorkbenchOnLoad = false }: { toWorkbe
     <section aria-label="Live smallcases" className="flex min-w-0 flex-col gap-2 rounded-3xl bg-white/70 p-3 shadow-soft dark:bg-stone-900/50">
       <div className="flex flex-wrap items-center justify-between gap-2 px-1 text-[11px]">
         <span className="flex items-center gap-2 font-semibold text-stone-700 dark:text-stone-200">
-          <span className="relative flex size-2" aria-hidden="true">
-            <span className="absolute inline-flex size-full animate-ping rounded-full bg-emerald-400 opacity-60" />
-            <span className="relative inline-flex size-2 rounded-full bg-emerald-500" />
+          <span className="relative flex size-2" aria-hidden="true" title={live ? "Pushed live as the market moves" : "Polled every 30 seconds"}>
+            {live && <span className="absolute inline-flex size-full animate-ping rounded-full bg-emerald-400 opacity-60" />}
+            <span className={`relative inline-flex size-2 rounded-full ${live ? "bg-emerald-500" : "bg-stone-400"}`} />
           </span>
           Live smallcases
           <span className="font-normal text-stone-500 dark:text-stone-400">baskets of positive-EV singles from ASHOKA's market, sized by KUMBHA</span>
         </span>
         {board.data && (
           <span className="font-mono text-stone-500 dark:text-stone-400">
-            {board.data.eligible} of {board.data.valued} legs qualify · market read {age === null ? "—" : `${age}s`} ago · rescans every {board.data.refresh_seconds}s
+            {board.data.eligible} of {board.data.valued} legs qualify · market read {age === null ? "—" : `${age}s`} ago · {live ? "pushed live as it moves" : `polled every ${board.data.refresh_seconds}s`}
             {board.data.bankroll_inr ? ` · bankroll ${formatINR(Number(board.data.bankroll_inr))}` : " · no bankroll: weights only"}
           </span>
         )}

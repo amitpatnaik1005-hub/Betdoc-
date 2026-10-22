@@ -2,38 +2,64 @@
  * The slip as a smallcase (Group 107, point b.8), beside the manual workbench: the Oracle's slip re-priced at the book
  * you bet from, one holding per fixture, legs priced under fair left out (KUMBHA stakes nothing on them), the rest
  * sized leg by leg by KUMBHA and measured as a basket, beside the slip as you built it as one parlay. "Keep only the
- * holdings" drops the left-out legs from the slip. Developed for Amit Ashok Kumar Patnaik.
+ * holdings" drops the left-out legs from the slip.
+ *
+ * Kept live once rebalanced: it re-prices as you change the slip (after a short pause) and whenever the market pushes
+ * a new board (`/ws/smallcases`), until you stop it. Developed for Amit Ashok Kumar Patnaik.
  */
-import { useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { ApiError } from "../../api/client";
-import { formatINR } from "../../lib/format";
+import { formatINR, formatTime } from "../../lib/format";
 import { pct, type SlipSmallcase, slipAsSmallcase } from "../../lib/smallcase";
+import { useMarketPulse } from "../../lib/smallcase_live";
 import { slipSignature, useParlaySlipStore } from "../../store/useParlaySlipStore";
 import { toast } from "../../store/useToastStore";
 import { Button, Panel, Pill } from "../../ui/kit";
 
 const refusal = (err: unknown): string => (err instanceof ApiError ? err.message : "No answer from the server");
 const REASON: Record<SlipSmallcase["excluded"][number]["reason"], string> = { NOT_QUOTED: "not quoted", UNDER_FAIR: "under fair", SAME_FIXTURE: "same fixture" };
+const SETTLE_MS = 600;  // a slip being edited is re-priced once it stops changing for this long
 
 export const SmallcaseSlipRebalancer = () => {
   const legs = useParlaySlipStore((s) => s.legs);
   const skin = useParlaySlipStore((s) => s.skin);
   const remove = useParlaySlipStore((s) => s.remove);
-  const [result, setResult] = useState<{ sig: string; data: SlipSmallcase } | null>(null);
+  const [result, setResult] = useState<{ sig: string; data: SlipSmallcase; at: number } | null>(null);
   const [busy, setBusy] = useState(false);
+  const [live, setLive] = useState(false);
+  const [problem, setProblem] = useState<string | null>(null);
+  const { pushes } = useMarketPulse();
   const signature = slipSignature(legs, skin, null);
-  const data = result?.sig === signature ? result.data : null;
+  const latest = useRef(0);  // only the newest request may write its answer
 
-  const run = async () => {
+  const run = useCallback(async (manual: boolean) => {
+    if (legs.length === 0) return;
+    const ticket = ++latest.current;
     setBusy(true);
     try {
-      setResult({ sig: signature, data: await slipAsSmallcase({ leg_ids: legs.map((l) => l.leg_id), skin }) });
+      const data = await slipAsSmallcase({ leg_ids: legs.map((l) => l.leg_id), skin });
+      if (ticket !== latest.current) return;
+      setResult({ sig: signature, data, at: Date.now() });
+      setProblem(null);
+      if (manual) setLive(true);
     } catch (err) {
-      toast.error("Not rebalanced", refusal(err));
+      if (ticket !== latest.current) return;
+      if (manual) toast.error("Not rebalanced", refusal(err));
+      else setProblem(refusal(err));  // a live re-price that failed says so here, without a toast each time
     } finally {
-      setBusy(false);
+      if (ticket === latest.current) setBusy(false);
     }
-  };
+  }, [legs, skin, signature]);
+
+  // live: re-price when the slip settles after a change, and whenever the market pushes a new board
+  useEffect(() => {
+    if (!live || legs.length === 0) return;
+    const id = window.setTimeout(() => void run(false), SETTLE_MS);
+    return () => window.clearTimeout(id);
+  }, [live, signature, pushes, legs.length, run]);
+
+  const data = legs.length > 0 && result && (result.sig === signature || live) ? result.data : null;
+  const catchingUp = live && result !== null && result.sig !== signature;
   const keep = () => {
     if (!data) return;
     data.excluded.forEach((e) => remove(e.leg_id));
@@ -46,10 +72,24 @@ export const SmallcaseSlipRebalancer = () => {
       <div className="flex flex-col gap-3">
         <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-stone-600 dark:text-stone-300">
           <span>{legs.length ? `${legs.length} leg${legs.length === 1 ? "" : "s"} on the slip, priced at your book.` : "Put legs on the slip first (the match board, or a smallcase above)."}</span>
-          <Button size="sm" variant="primary" icon="auto_fix_high" disabled={legs.length === 0} busy={busy} onClick={() => void run()}>Rebalance</Button>
+          <span className="flex items-center gap-2">
+            {live && (
+              <Button size="sm" variant="ghost" icon="pause_circle" onClick={() => setLive(false)}>Stop live</Button>
+            )}
+            <Button size="sm" variant="primary" icon="auto_fix_high" disabled={legs.length === 0} busy={busy && !live} onClick={() => void run(true)}>
+              {live ? "Rebalance now" : "Rebalance"}
+            </Button>
+          </span>
         </div>
+        {live && legs.length > 0 && (
+          <p className="flex flex-wrap items-center gap-1.5 text-[11px] text-emerald-700 dark:text-emerald-400" aria-live="polite">
+            <span className={`size-1.5 rounded-full bg-emerald-500 ${busy ? "animate-pulse" : ""}`} aria-hidden="true" />
+            {busy || catchingUp ? "Re-pricing your slip…" : `Live: re-priced ${result ? formatTime(new Date(result.at).toISOString()) : ""} as the slip and the market move`}
+            {problem && <span className="text-rose-600 dark:text-rose-400"> · last re-price failed: {problem}</span>}
+          </p>
+        )}
         {data && (
-          <>
+          <div className={`flex flex-col gap-3 transition-opacity ${catchingUp ? "opacity-60" : ""}`}>
             <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
               {[
                 ["KUMBHA's stake", Number(data.stake_inr) > 0 ? formatINR(Number(data.stake_inr)) : "—"],
@@ -78,14 +118,14 @@ export const SmallcaseSlipRebalancer = () => {
                 {data.excluded.map((e) => (
                   <p key={e.leg_id}><Pill tone="warning">{REASON[e.reason]}</Pill> <strong>{e.label ?? label(e.leg_id)}</strong>: {e.message}</p>
                 ))}
-                <Button size="sm" variant="ghost" icon="playlist_remove" className="self-start" onClick={keep}>Keep only the holdings</Button>
+                <Button size="sm" variant="ghost" icon="playlist_remove" className="self-start" disabled={catchingUp} onClick={keep}>Keep only the holdings</Button>
               </div>
             )}
             <p className="text-[11px] text-stone-500 dark:text-stone-400">
               Priced at {data.book_label}. {data.parlay ? `The holdings as one parlay: ${data.parlay.odds.toFixed(2)}, wins ${pct(data.parlay.win_probability, 1)}, EV ${pct(data.parlay.ev, 1, true)}. ` : ""}
               As a smallcase each leg settles on its own; the workbench still inspects every leg against the 15 pillars before you place it.
             </p>
-          </>
+          </div>
         )}
       </div>
     </Panel>
