@@ -88,13 +88,25 @@ async def _kautilya(db: AsyncSession, _: ProbeContext) -> tuple[BotStatus, dict[
         "trading_halted": halted, "bots_enabled": bots_enabled, "activity_summary": summary}
 
 
+def _probability_self_test() -> tuple[bool, float]:
+    """The math engine's self-test: one normal-distribution prediction must be a probability (and how long it took)."""
+    started = time.perf_counter()
+    probability = float(NormalDistributionModel().predict(np.array([[7.0, 3.0]]))[0])
+    return 0.0 < probability < 1.0, round((time.perf_counter() - started) * 1000, 2)
+
+
 async def _ashoka(db: AsyncSession, _: ProbeContext) -> tuple[BotStatus, dict[str, Any]]:
+    """The Oracle: predictions logged, and (since ARYABHATA's retirement in Group 103, when the Sports Engine joined
+    The Oracle) the probability self-test of the math engine."""
     since = datetime.now(UTC) - timedelta(hours=24)
     total = await _count(db, select(func.count()).select_from(PredictionRecord))
     recent = await _count(db, select(func.count()).where(PredictionRecord.created_at >= since))
+    healthy, ms = _probability_self_test()
     summary = f"{_n(recent, 'prediction')} in 24h · {total} total" if total else "No predictions logged yet"
-    return (BotStatus.WORKING if recent else BotStatus.ONLINE), {
-        "predictions_total": total, "predictions_24h": recent, "activity_summary": summary}
+    summary += f" · self-test {'passed' if healthy else 'FAILED'} in {ms} ms"
+    status = BotStatus.DEGRADED if not healthy else BotStatus.WORKING if recent else BotStatus.ONLINE
+    return status, {"predictions_total": total, "predictions_24h": recent, "self_test_ms": ms, "self_test_passed": healthy,
+                    "activity_summary": summary}
 
 
 async def _bajirao(db: AsyncSession, _: ProbeContext) -> tuple[BotStatus, dict[str, Any]]:
@@ -139,15 +151,6 @@ async def _todar_mal(db: AsyncSession, _: ProbeContext) -> tuple[BotStatus, dict
     await db.execute(text("SELECT 1"))
     db_ms = round((time.perf_counter() - started) * 1000, 2)
     return BotStatus.ONLINE, {"db_latency_ms": db_ms, "activity_summary": f"Database ping {db_ms} ms"}
-
-
-async def _aryabhata(_: AsyncSession, __: ProbeContext) -> tuple[BotStatus, dict[str, Any]]:
-    started = time.perf_counter()
-    probability = float(NormalDistributionModel().predict(np.array([[7.0, 3.0]]))[0])
-    healthy = 0.0 < probability < 1.0
-    ms = round((time.perf_counter() - started) * 1000, 2)
-    summary = f"Probability self-test passed in {ms} ms" if healthy else f"Probability self-test failed (p={probability})"
-    return (BotStatus.ONLINE if healthy else BotStatus.DEGRADED), {"self_test_ms": ms, "activity_summary": summary}
 
 
 async def _chanakya(db: AsyncSession, _: ProbeContext) -> tuple[BotStatus, dict[str, Any]]:
@@ -213,7 +216,6 @@ PROBES: dict[LegendaryBot, Probe] = {
     LegendaryBot.PANINI: _panini,
     LegendaryBot.PRATAP: _pratap,
     LegendaryBot.TODAR_MAL: _todar_mal,
-    LegendaryBot.ARYABHATA: _aryabhata,
     LegendaryBot.CHANAKYA: _chanakya,
     LegendaryBot.SHIVAJI: _shivaji,
     LegendaryBot.DRONA: _drona,

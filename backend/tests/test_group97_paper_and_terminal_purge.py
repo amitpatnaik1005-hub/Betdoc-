@@ -35,15 +35,13 @@ from app.models.the_hive import BotStatus, LegendaryBot
 from app.services.commander_supervisor import PROBES, ProbeContext
 
 MIGRATION = Path(__file__).resolve().parents[1] / "alembic" / "versions" / "a97c5e1d2f30_retire_arjuna_and_paper_trading.py"
-FIFTEEN = {
-    "ASHOKA", "KAUTILYA", "BAJIRAO", "VIDUR", "KUMBHA", "PANINI", "PRATAP", "TODAR MAL", "ARYABHATA",
-    "CHANAKYA", "SHIVAJI", "DRONA", "BHEESHMA", "KARNA", "ASHVATTHAMA",
-}
 
 
 # --------------------------------------------------------------------------- the roster
-def test_the_roster_is_fifteen_without_arjuna_or_garuda() -> None:
-    assert {b.value for b in LegendaryBot} == FIFTEEN and len(LegendaryBot) == 15
+def test_arjuna_and_garuda_stay_retired() -> None:
+    # The exact roster is test_commander_parity's (and the latest retirement's) to pin; later groups retire more
+    assert {"ARJUNA", "GARUDA"}.isdisjoint(b.value for b in LegendaryBot)
+    assert "KUMBHA" in {b.value for b in LegendaryBot}  # ARJUNA's successor
     assert set(PROBES) == set(LegendaryBot)
 
 

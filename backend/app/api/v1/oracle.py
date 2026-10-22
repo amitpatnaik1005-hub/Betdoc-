@@ -3,6 +3,7 @@
     POST /oracle/suggest                    the core-satellite allocator (unchanged)
     GET  /oracle/slips                      vetted slips from the live market, staked for a bankroll
     POST /oracle/slips/recheck              one slip re-priced against the latest feeds ("Re-check odds")
+    GET  /oracle/board                      the match board: every priced fixture by sport, country and time window (Group 103)
     POST /oracle/odds-check                 Parimatch vs 1xBet (and the rest) on prices the user typed in
     GET  /oracle/trending                   sharp steam parlays, public traps, AI hybrids
     GET  /oracle/bets                       the user's placed bets (active / settled / all), legs included
@@ -45,7 +46,7 @@ from app.models.cfo_vault import BankrollAccount
 from app.models.user_bets_ledger import PlacedStatus, UserPlacedBet, UserPlacedLeg
 from app.schemas.ashoka import CashoutRecord, CashoutRequest, OddsCheckRequest, PlaceBetRequest, ScoreIn, SlipLegsRequest
 from app.schemas.popular_picks import PopularParlayRead
-from app.services import ashoka_market
+from app.services import ashoka_market, match_board_service
 from app.services import user_pnl_tracker as tracker
 from app.services.oracle_scores import poll_scores
 
@@ -101,6 +102,21 @@ async def slips(
         raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, {"reason": "NO_MARKET", "message": "The live market (Redis) is unavailable"}) from exc
     payload["bankroll_inr"] = None if bankroll is None else str(bankroll)
     return payload
+
+
+@router.get("/board")
+async def match_board(
+    request: Request, user: CurrentUser, db: DbSession, settings: AppSettings,  # noqa: ARG001 - signed-in users only
+    sport: Annotated[str | None, Query(max_length=40)] = None, window: match_board_service.Window = "all",
+) -> dict[str, Any]:
+    """The match board (Group 103): the workbench's priced fixtures by sport (Cricket and Football first), country and
+    time window, each with its market count, best EV and (three-way football) the scoreline the market implies."""
+    if sport is not None and sport not in settings.MANUAL_PARLAY_SPORTS:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, {"reason": "UNKNOWN_SPORT", "message": f"sport is one of {', '.join(settings.MANUAL_PARLAY_SPORTS)}"})
+    try:
+        return await match_board_service.match_board(_need_redis(request), db, settings, datetime.now(UTC), sport=sport, window=window)
+    except (RedisError, OSError, TimeoutError) as exc:
+        raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, {"reason": "NO_MARKET", "message": "The live market (Redis) is unavailable"}) from exc
 
 
 @router.post("/slips/recheck")

@@ -404,6 +404,9 @@ class Settings(BaseSettings):
         "Baseball": ("baseball",), "American Football": ("americanfootball",), "MMA/UFC": ("mma", "boxing_ufc"), "Esports": ("esports",),
     })
     MANUAL_PARLAY_MAX_LEGS: int = Field(default=8, ge=2, le=20)
+    # The Oracle's match board (Group 103): the workbench board by country and time window, these sports first
+    MATCH_BOARD_PRIORITY_SPORTS: list[str] = Field(default_factory=lambda: ["Cricket", "Football"])
+    MATCH_BOARD_MAX_FIXTURES: int = Field(default=200, ge=10, le=2000)
 
     # ---- Experience (FA-2): XP for discipline, wins, lessons and shielded losses (Group 75) ----
     XP_AWARD_SLIP_VETTED: int = Field(default=25, ge=1)  # once per slip that clears every enforced pillar

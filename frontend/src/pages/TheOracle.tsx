@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { apiClient } from '../api/client';
 import { type MatchOdds, type Side, bestPrices, matchOddsMarket, outcomeSide, useControls, useDashboardSummary, useLiveOdds } from '../lib/api';
 import { downloadCsv, formatDateTime, formatINR, formatOdds, formatPct, formatRatioPct } from '../lib/format';
@@ -11,8 +12,10 @@ import { SettlementFeedbackPanel } from '../components/oracle/SettlementFeedback
 import { ModelRecalibrationPanel } from '../components/oracle/ModelRecalibrationPanel';
 import { NeverForgetLearningJournal } from '../components/oracle/NeverForgetLearningJournal';
 import { ManualParlayWorkbench } from '../components/parlay/ManualParlayWorkbench';
+import { MatchBoard } from '../components/oracle/board/MatchBoard';
+import { SportsEngineDesk } from '../components/oracle/SportsEngineDesk';
 import { ashokaHeadline, useSlips } from '../lib/oracle';
-import { Async, Button, ComponentGuideBanner, EmptyState, Field, Meter, num, NumberInput, Page, Panel, Pill, Select, Stat, StatGrid, StatusBadge } from '../ui/kit';
+import { Async, Button, ComponentGuideBanner, EmptyState, Field, Meter, num, NumberInput, Page, Panel, Pill, Segmented, Select, Stat, StatGrid, StatusBadge } from '../ui/kit';
 
 // ---------------------------------------------------------------------------
 // CONTRACTS
@@ -293,7 +296,24 @@ const GoldenAlpha = ({ bets }: { bets: ValueBetFlag[] }) => {
 // ---------------------------------------------------------------------------
 // NAMED EXPORT: THE ORACLE
 // ---------------------------------------------------------------------------
+type OracleTab = 'board' | 'desk' | 'engine';
+const ORACLE_TABS: { value: OracleTab; label: string; icon: string }[] = [
+  { value: 'board', label: 'Match board', icon: 'stadium' },
+  { value: 'desk', label: 'Vetted slips & desk', icon: 'verified' },
+  { value: 'engine', label: 'Sports engine', icon: 'sports' },
+];
+const isOracleTab = (v: string | null): v is OracleTab => v === 'board' || v === 'desk' || v === 'engine';
+
 export const TheOracle = () => {
+  // Group 103: the Sports Engine joined The Oracle; /sports redirects here with ?tab=engine
+  const [params, setParams] = useSearchParams();
+  const tabParam = params.get('tab');
+  const tab: OracleTab = isOracleTab(tabParam) ? tabParam : 'board';
+  const setTab = (next: OracleTab) => setParams((prev) => { const p = new URLSearchParams(prev); p.set('tab', next); return p; }, { replace: true });
+  const recordInWorkbench = () => {
+    setTab('desk');
+    window.setTimeout(() => document.getElementById('parlay-workbench')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 120);
+  };
   const odds = useLiveOdds();
   const controls = useControls();
   const setDraft = useExecutionStore((s) => s.setDraft);
@@ -335,6 +355,45 @@ export const TheOracle = () => {
         }
       />
 
+      <div className="lg:col-span-12">
+        <Segmented label="Oracle view" value={tab} onChange={setTab} options={ORACLE_TABS} />
+      </div>
+
+      {tab === 'board' && (
+        <>
+          <ComponentGuideBanner
+            className="lg:col-span-12"
+            moduleName="The Oracle · Match board"
+            purpose="Every fixture the authorised feeds price, laid out like a sportsbook in the skin of the book you bet from, with BetDoc's fair prices, EV and projected scores beside the bookmaker's. Nothing is placed from here."
+            steps={[
+              "Pick a sport (Cricket and Football first), a window and a league; switch the column between Winner, Total and Handicap",
+              "Click prices (or add a top parlay) to build the slip; open a match for its score prediction and every market",
+              "Inspect the slip against the 15 pillars, place it at the book, then record it in the workbench",
+            ]}
+            kpiCodes={["EV", "OVERROUND", "SLIP_SCORE"]}
+          />
+          <MatchBoard slips={slips.data?.slips ?? []} onRecord={recordInWorkbench} />
+        </>
+      )}
+
+      {tab === 'engine' && (
+        <>
+          <ComponentGuideBanner
+            className="lg:col-span-12"
+            moduleName="The Oracle · Sports engine"
+            purpose="The nine sport adapters behind every price: price a match from its sub-model consensus, read its line markets, and run the Twin's pipeline on a selection."
+            steps={[
+              "Choose a sport in the fleet and enter both sides' inputs (league averages are pre-filled)",
+              "Price the match: the consensus, its line markets and each sub-model's view",
+              "Evaluate a selection against the venues' prices for the confidence index and the Kelly stake",
+            ]}
+            kpiCodes={["EV", "KELLY_STAKE"]}
+          />
+          <SportsEngineDesk />
+        </>
+      )}
+
+      {tab === 'desk' && (<>
       <ComponentGuideBanner
         className="lg:col-span-12"
         moduleName="The Oracle"
@@ -410,6 +469,7 @@ export const TheOracle = () => {
 
       <GoldenAlpha bets={bets} />
       <EnginePanel rows={rows} />
+      </>)}
     </Page>
   );
 };

@@ -1,15 +1,16 @@
 /**
- * The Sports Engine (Commander ARYABHATA, Group 79): nine quantitative sport adapters on one desk.
+ * The Sports Engine desk on The Oracle (Group 79's page, unified into ASHOKA's Oracle in Group 103; its commander
+ * ARYABHATA retired): nine quantitative sport adapters on one desk.
  * Price a match from its sport's sub-model consensus, read the line markets, run the twin's pipeline on a selection
  * (pillar 1 consensus, pillar 9 sharp benchmark, OmniRoute, the 0-100 confidence index, the sport's Kelly stake) and
  * watch the beat's cross-provider edges. Architect: Amit Ashok Kumar Patnaik.
  */
 import { useMemo, useState } from 'react';
-import { ApiError } from '../api/client';
-import { SportSpecificStatCard } from '../components/sports/SportSpecificStatCard';
-import { UniversalSportSelector } from '../components/sports/UniversalSportSelector';
-import { formatAgo, formatINR, formatOdds, humanize } from '../lib/format';
-import { invalidate } from '../lib/resource';
+import { ApiError } from '../../api/client';
+import { SportSpecificStatCard } from '../sports/SportSpecificStatCard';
+import { UniversalSportSelector } from '../sports/UniversalSportSelector';
+import { formatAgo, formatINR, formatOdds, humanize } from '../../lib/format';
+import { invalidate } from '../../lib/resource';
 import {
   OMNI_VENUES,
   SPORT_FIELDS,
@@ -26,12 +27,11 @@ import {
   type MatchProbabilities,
   type OmniVenue,
   type Side,
-} from '../lib/sports';
-import { useAuthStore } from '../store/useAuthStore';
-import { sportInfo, useSportStore } from '../store/useSportStore';
-import { toast } from '../store/useToastStore';
-import { CommanderHero, MOTIFS } from '../ui/hero';
-import { Async, Button, EmptyState, Field, KeyValues, Meter, NumberInput, Page, Panel, Pill, Segmented, Select, Stat, StatGrid, TextInput, Toggle, num } from '../ui/kit';
+} from '../../lib/sports';
+import { useAuthStore } from '../../store/useAuthStore';
+import { sportInfo, useSportStore } from '../../store/useSportStore';
+import { toast } from '../../store/useToastStore';
+import { Async, Button, EmptyState, Field, KeyValues, Meter, NumberInput, Panel, Pill, Segmented, Select, Stat, StatGrid, TextInput, Toggle, num } from '../../ui/kit';
 
 type Values = Record<string, string>;
 
@@ -44,7 +44,7 @@ const presetContext = (preset: (typeof SPORT_FIELDS)[keyof typeof SPORT_FIELDS])
 
 const CONFIDENCE_TONE: Record<string, 'good' | 'warning' | 'critical' | 'accent'> = { A: 'good', B: 'accent', C: 'warning', D: 'critical' };
 
-export const SportsEngine = () => {
+export const SportsEngineDesk = () => {
   const activeSport = useSportStore((s) => s.activeSport);
   const marketFilter = useSportStore((s) => s.activeMarketFilter);
   const setMarketFilter = useSportStore((s) => s.setActiveMarketFilter);
@@ -147,17 +147,15 @@ export const SportsEngine = () => {
   const sportEdges = edges.data?.edges ?? [];
 
   return (
-    <Page>
-      <CommanderHero
-        commander="ARYABHATA"
-        headline={`ARYABHATA ACTIVE. ${supported.data?.length ?? 9} sport adapters, ${adapter?.bet_types.length ?? 0} bet types live on ${info.name}, ${sportEdges.length} edge${sportEdges.length === 1 ? '' : 's'} on the board.`}
-        motif={MOTIFS.constellation}
-        detail={`Each sport prices from at least three independent sub-models blended into one consensus, settles all 27 universal bet types, and feeds the Digital Twin's pillars before anything reaches the CFO. Architect: ${credit}.`}
-        actions={<Button variant="primary" icon="refresh" busy={edges.loading && edges.data !== undefined} onClick={() => { void edges.refresh(); void configs.refresh(); }}>Refresh board</Button>}
-      />
-
-      <Panel title="Sport fleet" icon="sports" className="lg:col-span-12" subtitle={adapter ? adapter.model_family : info.modelType}>
+    <>
+      <Panel title="Sport fleet" icon="sports" className="lg:col-span-12"
+        subtitle={`${supported.data?.length ?? 9} sport adapters · ${adapter?.bet_types.length ?? 0} of the 27 universal bet types on ${info.name} · ${sportEdges.length} edge${sportEdges.length === 1 ? '' : 's'} · ${adapter ? adapter.model_family : info.modelType}`}
+        actions={<Button icon="refresh" busy={edges.loading && edges.data !== undefined} onClick={() => { void edges.refresh(); void configs.refresh(); }}>Refresh</Button>}>
         <UniversalSportSelector inactive={inactive} />
+        <p className="mt-3 text-[11px] text-stone-500 dark:text-stone-400">
+          Each sport prices from at least three independent sub-models blended into one consensus, settles all 27 universal bet types, and feeds the
+          Digital Twin's pillars before anything reaches the CFO. Architect: {credit}.
+        </p>
       </Panel>
 
       <Panel title="Model inputs" icon="tune" className="lg:col-span-5" subtitle={`${info.name} · ${info.modelType}`}
@@ -348,6 +346,6 @@ export const SportsEngine = () => {
           <Async resource={configs}>{() => <EmptyState icon="settings" title="No configuration" />}</Async>
         )}
       </Panel>
-    </Page>
+    </>
   );
 };

@@ -16,36 +16,18 @@ import { ApiError } from "../../api/client";
 import { formatDateTime, formatINR } from "../../lib/format";
 import {
   BOOKMAKER_THEMES, emergencyCashout, inspectParlay, STRUCTURES, submitParlay, TIER_STYLE, useAccounts, useBoard, useShields, useShieldStream,
-  type FixtureCard, type Inspection, type PillarRow, type SelectionCard, type Shield, type Skin,
+  type FixtureCard, type Inspection, type PillarRow, type Shield, type Skin,
 } from "../../lib/backtest_and_parlay";
 import { invalidate } from "../../lib/resource";
+import { priceAt, type SlipLeg, slipSignature, toSlipLeg, useParlaySlipStore } from "../../store/useParlaySlipStore";
 import { toast } from "../../store/useToastStore";
 import { Async, Button, EmptyState, Field, Meter, NumberInput, Panel, Pill, Select, TextInput } from "../../ui/kit";
 import { boardTargets } from "../../lib/prediction";
 import { ScoreBackedLegs } from "../prediction/ScoreBackedLegs";
 
-interface SlipLeg {
-  leg_id: string;
-  fixture: string;
-  label: string;
-  market: string;
-  prices: Record<string, number>;
-  fair_probability: number;
-}
-
 const refusal = (err: unknown): string => (err instanceof ApiError ? err.message : "No answer from the server");
 const pct = (v: number | null | undefined, digits = 1): string => (v === null || v === undefined ? "—" : `${(v * 100).toFixed(digits)}%`);
 const DRAG_TYPE = "application/x-betdoc-leg";
-
-const priceAt = (leg: SlipLeg, book: string | null): number | null => {
-  if (book) return leg.prices[book] ?? null;
-  const values = Object.entries(leg.prices).filter(([b]) => ["parimatch", "1xbet", "stake"].includes(b)).map(([, v]) => v);
-  return values.length ? Math.max(...values) : null;
-};
-
-const toSlipLeg = (card: FixtureCard, market: string, s: SelectionCard): SlipLeg => ({
-  leg_id: s.leg_id, fixture: `${card.home} v ${card.away}`, label: s.label, market, prices: s.prices, fair_probability: s.fair_probability,
-});
 
 const Radar = ({ rows, color }: { rows: PillarRow[]; color: string }) => {
   const size = 180;
@@ -211,12 +193,18 @@ const ShieldRow = ({ shield, live }: { shield: Shield; live: Shield["frame"] | u
 };
 
 export const ManualParlayWorkbench = () => {
-  const [skin, setSkin] = useState<Skin>("betdoc");
+  // Group 103: the slip and the skin are The Oracle's (shared with the match board)
+  const skin = useParlaySlipStore((s) => s.skin);
+  const setSkin = useParlaySlipStore((s) => s.setSkin);
+  const slip = useParlaySlipStore((s) => s.legs);
+  const addLeg = useParlaySlipStore((s) => s.add);
+  const removeLeg = useParlaySlipStore((s) => s.remove);
+  const clearSlip = useParlaySlipStore((s) => s.clear);
   const [sport, setSport] = useState<string | null>(null);
-  const [slip, setSlip] = useState<SlipLeg[]>([]);
   const [kind, setKind] = useState<string | null>(null);
   const [stopLoss, setStopLoss] = useState(0.25);
-  const [inspection, setInspection] = useState<Inspection | null>(null);
+  // An inspection holds only for the exact legs, structure and skin it rated
+  const [inspected, setInspected] = useState<{ sig: string; result: Inspection } | null>(null);
   const [busy, setBusy] = useState<"inspect" | "submit" | null>(null);
   const [placed, setPlaced] = useState({ stake: "", odds: "", code: "" });
   const [over, setOver] = useState(false);
@@ -234,11 +222,10 @@ export const ManualParlayWorkbench = () => {
   const prices = slip.map((l) => priceAt(l, theme.book));
   const combined = prices.every((p) => p !== null) && slip.length ? prices.reduce<number>((a, p) => a * (p as number), 1) : null;
   const balance = theme.book ? accounts.data?.accounts?.[theme.book] : undefined;
+  const signature = slipSignature(slip, skin, chosen);
+  const inspection = inspected?.sig === signature ? inspected.result : null;
 
-  const add = (leg: SlipLeg) => {
-    setInspection(null);
-    setSlip((prev) => (prev.some((l) => l.leg_id === leg.leg_id) ? prev : [...prev, leg]));
-  };
+  const add = (leg: SlipLeg) => addLeg(leg);
   const drop = (e: DragEvent) => {
     e.preventDefault();
     setOver(false);
@@ -249,7 +236,7 @@ export const ManualParlayWorkbench = () => {
     setBusy("inspect");
     try {
       const r = await inspectParlay({ leg_ids: slip.map((l) => l.leg_id), kind: chosen, skin });
-      setInspection(r);
+      setInspected({ sig: signature, result: r });
       setStopLoss(r.stop_loss.recommended_pct);
       setPlaced((p) => ({ ...p, odds: r.audit.total_odds ?? p.odds, stake: Number(r.audit.stake_inr) > 0 ? r.audit.stake_inr : p.stake }));
     } catch (err) {
@@ -264,8 +251,8 @@ export const ManualParlayWorkbench = () => {
     try {
       const r = await submitParlay({ audit_id: inspection.audit.id, skin, stake_inr: placed.stake, placed_odds: placed.odds || undefined, booking_code: placed.code || undefined, stop_loss_pct: stopLoss });
       toast.success("Recorded in your ledger", r.shield.armed ? `Stop-loss shield armed at ${pct(stopLoss, 0)}` : (r.shield.message ?? "The shield is not watching this slip"));
-      setSlip([]);
-      setInspection(null);
+      clearSlip();
+      setInspected(null);
       invalidate("parlay:shields");
     } catch (err) {
       toast.error("Not recorded", refusal(err));
@@ -278,13 +265,13 @@ export const ManualParlayWorkbench = () => {
   const tier = inspection ? TIER_STYLE[inspection.rating.tier] : null;
   return (
     <Panel title="Manual parlay workbench" icon="construction" className="lg:col-span-12" subtitle="Build a parlay by hand, rate it against the 15 pillars, and let the stop-loss shield watch it">
-      <div className="flex flex-col gap-4 rounded-3xl p-4 transition-colors duration-300" style={style}>
+      <div id="parlay-workbench" className="flex scroll-mt-24 flex-col gap-4 rounded-3xl p-4 transition-colors duration-300" style={style}>
         <header className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex flex-wrap gap-1.5" role="radiogroup" aria-label="Betting account">
             {(Object.keys(BOOKMAKER_THEMES) as Skin[]).map((key) => {
               const t = BOOKMAKER_THEMES[key];
               return (
-                <button key={key} type="button" role="radio" aria-checked={skin === key} onClick={() => { setSkin(key); setInspection(null); }}
+                <button key={key} type="button" role="radio" aria-checked={skin === key} onClick={() => setSkin(key)}
                         className="rounded-full px-3 py-1 text-xs font-bold transition"
                         style={skin === key ? { background: t.primary, color: t.onPrimary } : { border: `1px solid ${t.primary}`, color: t.primary }}>
                   {t.label}
@@ -345,7 +332,7 @@ export const ManualParlayWorkbench = () => {
         >
           <div className="flex items-center justify-between">
             <h3 className="text-sm font-bold" style={{ color: theme.primary }}>Betslip · {slip.length} leg{slip.length === 1 ? "" : "s"}</h3>
-            {slip.length > 0 && <button type="button" className="text-[11px] underline" onClick={() => { setSlip([]); setInspection(null); }}>clear</button>}
+            {slip.length > 0 && <button type="button" className="text-[11px] underline" onClick={clearSlip}>clear</button>}
           </div>
           {slip.length === 0 ? (
             <p className="text-xs" style={{ color: theme.muted }}>Drop a card or a selection here, or click a price.</p>
@@ -356,7 +343,7 @@ export const ManualParlayWorkbench = () => {
                   <span className="min-w-0 truncate">{l.fixture} · {l.label}</span>
                   <span className="flex items-center gap-2">
                     <span className="font-mono font-bold" style={{ color: theme.primary }}>{prices[i] ?? "—"}</span>
-                    <button type="button" aria-label={`remove ${l.label}`} onClick={() => { setSlip((prev) => prev.filter((x) => x.leg_id !== l.leg_id)); setInspection(null); }}>✕</button>
+                    <button type="button" aria-label={`remove ${l.label}`} onClick={() => removeLeg(l.leg_id)}>✕</button>
                   </span>
                 </li>
               ))}
@@ -364,7 +351,7 @@ export const ManualParlayWorkbench = () => {
           )}
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
             <Field label="Structure">
-              <Select value={chosen ?? ""} disabled={!structures.length} onChange={(e) => { setKind(e.target.value); setInspection(null); }}>
+              <Select value={chosen ?? ""} disabled={!structures.length} onChange={(e) => setKind(e.target.value)}>
                 {structures.map((s) => <option key={s.kind} value={s.kind}>{s.label} ({s.lines})</option>)}
               </Select>
             </Field>

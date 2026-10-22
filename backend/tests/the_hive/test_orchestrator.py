@@ -108,7 +108,7 @@ async def test_retry_logic(session_factory, orch) -> None:
     grandchild = await _create(session_factory, orch, "publish tip")
     await _link(session_factory, orch, parent, child)
     await _link(session_factory, orch, child, grandchild)
-    bot = LegendaryBot.ARYABHATA
+    bot = LegendaryBot.DRONA
 
     for attempt in range(1, 4):
         async with session_factory() as session:

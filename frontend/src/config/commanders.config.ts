@@ -1,6 +1,6 @@
 /**
- * Single source of truth for the 15 BetDoc commanders, in claude_code_handoff.md order (GARUDA retired in Group 96,
- * ARJUNA in Group 97).
+ * Single source of truth for the 14 BetDoc commanders, in claude_code_handoff.md order (GARUDA retired in Group 96,
+ * ARJUNA in Group 97, ARYABHATA in Group 103 when the Sports Engine joined The Oracle).
  * IDs mirror the PostgreSQL enum `hive_legendary_bot` exactly (guarded by tests/test_commander_parity.py).
  * Commanders without a section page own a reserved route prefix so the registry stays validatable.
  */
@@ -14,7 +14,6 @@ export const COMMANDER_IDS = [
   "PANINI",
   "PRATAP",
   "TODAR MAL",
-  "ARYABHATA",
   "CHANAKYA",
   "SHIVAJI",
   "DRONA",
@@ -52,8 +51,8 @@ export const COMMANDER_REGISTRY: Readonly<Record<CommanderId, CommanderProfile>>
   ASHOKA: {
     id: "ASHOKA",
     name: "Ashoka",
-    domain: "The Oracle / Prediction Engine",
-    routePrefixes: ["/oracle"],
+    domain: "The Oracle / Match Board, Unified Sports Engine & Bet Builder",
+    routePrefixes: ["/oracle", "/sports", "/engine"],
     networkProtocol: "REST",
     theme: { primary: "#3B82F6", glow: "rgba(59, 130, 246, 0.55)", accent: "#BFDBFE" },
     clearanceLevel: 8,
@@ -134,17 +133,6 @@ export const COMMANDER_REGISTRY: Readonly<Record<CommanderId, CommanderProfile>>
     networkProtocol: "REST",
     theme: { primary: "#10B981", glow: "rgba(16, 185, 129, 0.55)", accent: "#A7F3D0" },
     clearanceLevel: 8,
-    status: "STANDBY",
-    scene: "command",
-  },
-  ARYABHATA: {
-    id: "ARYABHATA",
-    name: "Aryabhata",
-    domain: "Math Engine / Probability Distributions",
-    routePrefixes: ["/engine"],
-    networkProtocol: "REST",
-    theme: { primary: "#0EA5E9", glow: "rgba(14, 165, 233, 0.55)", accent: "#BAE6FD" },
-    clearanceLevel: 6,
     status: "STANDBY",
     scene: "command",
   },

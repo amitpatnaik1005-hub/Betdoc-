@@ -3,6 +3,7 @@
 import asyncio
 import json
 from contextlib import asynccontextmanager
+from types import SimpleNamespace
 
 import pytest
 from fastapi import FastAPI
@@ -94,6 +95,7 @@ class FakeHive:
     async def record_heartbeat(self, db, bot, *, status, uptime_seconds, resource_metrics):  # noqa: ANN001
         assert uptime_seconds >= 0
         self.beats[bot] = (status, dict(resource_metrics))
+        return SimpleNamespace(bot_name=bot, status=status)  # the orchestrator returns the profile it wrote (sweep reads its status)
 
 
 class FakeSession:

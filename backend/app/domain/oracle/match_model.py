@@ -59,6 +59,16 @@ def dixon_coles_matrix(home_rate: float, away_rate: float, rho: float = DEFAULT_
     return adjusted / adjusted.sum()
 
 
+def likeliest_score(matrix: np.ndarray) -> dict[str, object]:
+    """The single most likely scoreline (the folded tail row/column is never named) and the expected goals."""
+    m = matrix / matrix.sum()
+    exact = m[:MAX_GOALS, :MAX_GOALS]
+    home, away = (int(i) for i in np.unravel_index(int(np.argmax(exact)), exact.shape))
+    goals = np.arange(m.shape[0])
+    return {"score": f"{home}-{away}", "probability": round(float(exact[home, away]), 6),
+            "expected_goals": [round(float(m.sum(axis=1) @ goals), 3), round(float(m.sum(axis=0) @ goals), 3)]}
+
+
 def one_x_two(matrix: np.ndarray) -> tuple[float, float, float]:
     return float(np.tril(matrix, -1).sum()), float(np.trace(matrix)), float(np.triu(matrix, 1).sum())
 

@@ -66,7 +66,7 @@ interface Tip {
 const COMMANDER_ROUTE: Record<string, string> = {
   KAUTILYA: '/command-center', ASHOKA: '/oracle', BAJIRAO: '/arena', VIDUR: '/hive', KUMBHA: '/vault',
   PANINI: '/lab', PRATAP: '/core', 'TODAR MAL': '/archive', CHANAKYA: '/vault',
-  DRONA: '/lab', ARYABHATA: '/core', KARNA: '/hive', SHIVAJI: '/control-panel',
+  DRONA: '/lab', KARNA: '/hive', SHIVAJI: '/control-panel',
   BHEESHMA: '/control-panel', ASHVATTHAMA: '/oracle',
 };
 

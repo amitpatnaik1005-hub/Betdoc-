@@ -39,11 +39,8 @@ MIGRATION = Path(__file__).resolve().parents[1] / "alembic" / "versions" / "f96a
 
 # --------------------------------------------------------------------------- the roster
 def test_garuda_is_retired() -> None:
-    assert "GARUDA" not in {b.value for b in LegendaryBot}  # Group 97 also retired ARJUNA: 15 remain
-    assert {b.value for b in LegendaryBot} == {
-        "ASHOKA", "KAUTILYA", "BAJIRAO", "VIDUR", "KUMBHA", "PANINI", "PRATAP", "TODAR MAL", "ARYABHATA",
-        "CHANAKYA", "SHIVAJI", "DRONA", "BHEESHMA", "KARNA", "ASHVATTHAMA",
-    }
+    # The exact roster is test_commander_parity's (and the latest retirement's) to pin; later groups retire more
+    assert "GARUDA" not in {b.value for b in LegendaryBot} and "PANINI" in {b.value for b in LegendaryBot}
     assert set(PROBES) == set(LegendaryBot)  # every commander still has its health probe
 
 

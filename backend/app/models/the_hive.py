@@ -18,14 +18,15 @@ def utc_now() -> datetime:
 
 
 class LegendaryBot(StrEnum):
-    """The 15 commanders, in handoff order. Must match frontend/src/config/commanders.config.ts.
+    """The 14 commanders, in handoff order. Must match frontend/src/config/commanders.config.ts.
 
     Retired, their Hive history handed to a successor and their labels left dormant in the Postgres type
-    ``hive_legendary_bot``: GARUDA (Group 96, to PANINI, who absorbed the quant toolkit) and ARJUNA (Group 97, to
-    KUMBHA, who now watches the orders awaiting reconciliation).
+    ``hive_legendary_bot``: GARUDA (Group 96, to PANINI, who absorbed the quant toolkit), ARJUNA (Group 97, to
+    KUMBHA, who now watches the orders awaiting reconciliation) and ARYABHATA (Group 103, to ASHOKA, whose Oracle
+    absorbed the Sports Engine; the pricing engine that carries the name is unchanged, only the commander retired).
     """
 
-    ASHOKA = "ASHOKA"  # Oracle: prediction engine
+    ASHOKA = "ASHOKA"  # Oracle: prediction engine, match board and the unified sports engine
     KAUTILYA = "KAUTILYA"  # Command Center: master control
     BAJIRAO = "BAJIRAO"  # The Arena: live execution
     VIDUR = "VIDUR"  # The Hive / The Wire: social & news sentiment
@@ -33,7 +34,6 @@ class LegendaryBot(StrEnum):
     PANINI = "PANINI"  # The Lab: quantitative research
     PRATAP = "PRATAP"  # Core: system architecture
     TODAR_MAL = "TODAR MAL"  # Archive: data warehouse
-    ARYABHATA = "ARYABHATA"  # Math engine: probability distributions
     CHANAKYA = "CHANAKYA"  # Risk management: Kelly criterion
     SHIVAJI = "SHIVAJI"  # Security: VaultCrypto
     DRONA = "DRONA"  # Training: ML ops

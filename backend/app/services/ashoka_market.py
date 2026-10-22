@@ -126,6 +126,13 @@ async def load_candidates(redis: Redis, settings: Settings, now: datetime, *, fi
             prices = [{label: float(price) for label, price in line.prices.items()} for line in fresh]
             complete = [p for p in prices if all(label in p for label in ref.selections)]
             fair = consensus_two_way(complete, ref.selections) if complete else None
+            if fair is None and ref.kind is MarketKind.MATCH_ODDS and not any("DRAW" in p for p in prices):
+                # A two-way match winner (cricket, tennis, MMA, a moneyline): no book offers a draw, so the consensus is
+                # over home and away. Before Group 103 such a market had no consensus and its legs could not be priced.
+                two_way = [p for p in prices if "HOME" in p and "AWAY" in p]
+                pair = consensus_two_way(two_way, ("HOME", "AWAY")) if two_way else None
+                if pair is not None:
+                    fair, complete = {**pair, "DRAW": 0.0}, two_way
             quotes: dict[str, dict[str, Quote]] = {s: {} for s in ref.selections}
             for line in lines:
                 if line.is_suspended:
@@ -145,7 +152,7 @@ async def load_candidates(redis: Redis, settings: Settings, now: datetime, *, fi
             per_market[ref] = (fair, len(complete), quotes)
         match_odds = per_market.get(MarketRef(MarketKind.MATCH_ODDS))
         models = None
-        if match_odds is not None and match_odds[0] is not None:
+        if match_odds is not None and match_odds[0] is not None and match_odds[0]["DRAW"] > 0.0:  # scorelines: three-way markets only
             fair = match_odds[0]
             totals = {ref.line: f["OVER"] for ref, (f, _, _) in per_market.items() if ref.kind is MarketKind.TOTALS and f is not None and ref.line is not None and not ref.has_push}
             try:

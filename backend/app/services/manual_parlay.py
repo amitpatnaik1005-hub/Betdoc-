@@ -32,6 +32,7 @@ from app.core.config import Settings
 from app.domain.bookmakers.adapters import EXCHANGE_BOOKMAKERS
 from app.domain.backtesting import inplay_stoploss_math as slm
 from app.domain.manual_parlay import cognitive_parlay_rater as rater
+from app.domain.oracle.match_model import likeliest_score
 from app.domain.oracle.parlay_engine import LegCandidate
 from app.models.digital_twin import PulloutReason, TwinInPlayMonitor, TwinVettingAudit
 from app.models.omni_vault import VaultBookmakerAccount
@@ -101,11 +102,15 @@ async def board(redis: Redis, settings: Settings, now: datetime, *, sport: str |
         kickoff = head.kickoff
         started = kickoff is not None and kickoff <= now
         liquidity = intel.get(fixture_id).liquidity if intel.get(fixture_id) is not None else None  # type: ignore[union-attr]
+        # Group 102/103: the scoreline the market implies, from the Dixon-Coles matrix Ashoka fitted to this fixture's
+        # de-vigged 1X2 (and totals); None where no three-way market was fitted (two-way sports)
+        fitted = next((leg.models.matrices["dixon_coles"] for leg in legs if leg.models is not None and "dixon_coles" in leg.models.matrices), None)
         cards.append({
             "fixture_id": fixture_id, "home": head.home, "away": head.away, "sport": label, "sport_key": head.sport_key, "league": head.league,
             "kickoff": None if kickoff is None else kickoff.isoformat(), "in_play": started,
             "minutes_since_kickoff": round((now - kickoff).total_seconds() / 60) if started and kickoff is not None else None,
             "max_stake_inr": None if liquidity is None else {k: str(v) for k, v in liquidity.max_stake_inr.items()},
+            "projection": None if fitted is None else likeliest_score(fitted),
             "markets": [_market_rows(rows, None if steam is None else steam.get((fixture_id, key), set()), now, settings)
                         for key, rows in sorted(markets.items(), key=lambda kv: (kv[0] != "Match Odds", kv[0]))],
         })

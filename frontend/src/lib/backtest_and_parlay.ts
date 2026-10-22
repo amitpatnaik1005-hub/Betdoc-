@@ -27,9 +27,9 @@ export interface BookmakerTheme {
 }
 
 export const BOOKMAKER_THEMES: Record<Skin, BookmakerTheme> = {
-  parimatch: { label: "Parimatch", book: "parimatch", primary: "#FFEE00", surface: "#121212", onPrimary: "#121212", text: "#FAFAFA", muted: "#A3A3A3", card: "#1E1E1E",
+  parimatch: { label: "Parimatch", book: "parimatch", primary: "#F8FF13", surface: "#121212", onPrimary: "#121212", text: "#FAFAFA", muted: "#A3A3A3", card: "#1E1E1E",
                font: "'Inter', system-ui, sans-serif", couponStyle: "high-contrast yellow coupon, bold totals" },
-  one_xbet: { label: "1xBet", book: "1xbet", primary: "#00A3E0", surface: "#163963", onPrimary: "#FFFFFF", text: "#F1F5F9", muted: "#A9C1DA", card: "#1D4A7D",
+  one_xbet: { label: "1xBet", book: "1xbet", primary: "#007ACC", surface: "#163963", onPrimary: "#FFFFFF", text: "#F1F5F9", muted: "#A9C1DA", card: "#1D4A7D",
               font: "'Roboto', system-ui, sans-serif", couponStyle: "navy betslip, accumulator badge" },
   stake: { label: "Stake", book: "stake", primary: "#00E701", surface: "#1A2C38", onPrimary: "#0B1620", text: "#E8EEF2", muted: "#8DA2B3", card: "#213743",
            font: "'Inter', system-ui, sans-serif", couponStyle: "minimal slate slip" },
@@ -98,6 +98,8 @@ export interface FixtureCard {
   minutes_since_kickoff: number | null;
   max_stake_inr: Record<string, string> | null;
   markets: MarketCard[];
+  /** Three-way football: the likeliest score of the Dixon-Coles matrix fitted to the de-vigged market (Group 103). */
+  projection?: { score: string; probability: number; expected_goals: [number, number] } | null;
 }
 
 export interface Board {
