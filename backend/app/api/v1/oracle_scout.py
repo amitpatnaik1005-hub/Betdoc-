@@ -60,14 +60,14 @@ async def _facts_for(user_id: UUID | None, db: AsyncSession) -> ScoutFacts | Non
 
 @router.post("/chat", response_model=ScoutChatResponse)
 async def scout_chat(payload: ScoutChatRequest, request: Request, db: DbSession, manager: Manager) -> ScoutChatResponse:
-    # Authenticated callers always chat as themselves; a payload user_id can't impersonate anyone.
+    # Identity comes only from the bearer token; payload.user_id is ignored, so no token means anonymous.
     caller = _bearer_user_id(request)
     try:
         entry, actions, source = await manager.chat(
             db,
             user_message=payload.user_message,
             page_context=payload.page_context,
-            user_id=caller or payload.user_id,
+            user_id=caller,
             facts=await _facts_for(caller, db),
         )
     except ScoutDomainError as exc:
@@ -78,13 +78,18 @@ async def scout_chat(payload: ScoutChatRequest, request: Request, db: DbSession,
 
 @router.get("/history", response_model=list[ScoutHistoryRead])
 async def scout_history(
+    request: Request,
     db: DbSession,
     manager: Manager,
     user_id: Annotated[UUID | None, Query()] = None,
     limit: Annotated[int, Query(ge=1, le=MAX_HISTORY_LIMIT)] = DEFAULT_HISTORY_LIMIT,
 ) -> list[ScoutHistoryRead]:
+    # Callers only ever read their own history; user_id stays accepted but must name the caller.
+    caller = _bearer_user_id(request)
+    if user_id is not None and user_id != caller:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Scout history is only readable by its owner")
     try:
-        history = await manager.get_history(db, user_id=user_id, limit=limit)
+        history = await manager.get_history(db, user_id=caller, limit=limit)
     except ScoutDomainError as exc:
         logger.warning("ASHOKA: history rejected: %s", exc.message)
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=exc.message) from exc

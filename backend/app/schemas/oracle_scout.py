@@ -18,7 +18,7 @@ class ScoutChatRequest(ScoutSchema):
 
     page_context: str | None = Field(default=None, max_length=MAX_PAGE_CONTEXT_LENGTH)
     user_message: str = Field(min_length=1, max_length=MAX_MESSAGE_LENGTH)
-    user_id: UUID | None = None
+    user_id: UUID | None = None  # Accepted for compatibility only; the router uses the bearer token's user
 
 
 class ScoutAction(ScoutSchema):
