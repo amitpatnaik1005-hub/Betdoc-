@@ -28,6 +28,7 @@ import { emergencyStop, resumeTrading, useControls, useDashboardSummary } from '
 import { invalidate } from './lib/resource';
 import { startRealtime } from './services/realtime';
 import { toast } from './store/useToastStore';
+import { NeuralPipelineBar } from './components/common/NeuralPipelineBar';
 import { CurrencySelector } from './components/currency/CurrencySelector';
 import { useDisplayMoney } from './components/currency/useDisplayMoney';
 
@@ -711,7 +712,11 @@ const AppShell = () => {
         transition={SPRING}
         className="relative flex min-w-0 flex-1 flex-col overflow-y-auto overflow-x-hidden"
       >
-        <StageHeader />
+        {/* Group 108: the neural event bus's pipeline bar rides above the header, both pinned as one block */}
+        <div className="sticky top-0 z-30">
+          <NeuralPipelineBar />
+          <StageHeader />
+        </div>
         <HaltBanner />
         <div className={isInfinityView ? 'flex-1 px-2 pb-14 sm:px-4' : 'flex-1 px-4 pb-28 sm:px-10 sm:pb-14'}>
           <RouteErrorBoundary key={pathname}>

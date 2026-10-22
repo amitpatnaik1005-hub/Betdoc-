@@ -16,8 +16,10 @@
     POST  /the-wire/referees/assign                 name a fixture's referee (admin)
     POST  /the-wire/referees/records                import past officiating records with their source (admin)
     POST  /the-wire/scan?parts=news,espn,weather    run the scans now (admin)
+    GET   /the-wire/board?sport=&category=&q=&linked_only=   VIDUR's four-column intelligence board (Group 108)
+    GET   /the-wire/board/{item_id}                 one item of the board
 
-Live frames: ``/api/v1/ws/the-wire`` (``app/api/v1/wire_ws.py``).
+Live frames: ``/api/v1/ws/the-wire`` (``app/api/v1/wire_ws.py``); the neural chain an item starts: ``/api/v1/neural-bus``.
 """
 
 from __future__ import annotations
@@ -39,6 +41,8 @@ from app.domain.the_wire import venue_geocoder as geo
 from app.domain.the_wire.live_providers import OddsApiScoreProvider, RssNewsProvider
 from app.models.the_wire import InjuryRosterReport, NewsArticleSentiment, OfficiatingRecord, RefereeProfile, VenueLocation, WeatherSnapshot
 from app.schemas.the_wire import AbsenceIn, AbsenceRating, OfficiatingImport, RefereeAssignment, VenueIn, WireDashboard
+from app.domain.the_wire import intel_board as ib
+from app.services.the_wire import board as wire_board
 from app.services.the_wire import espn_sync, lineups, news, referees, weather
 from app.services.the_wire.fixtures import Fixture, tracked
 from app.services.the_wire.providers import EspnScoreProvider, SnapshotWeatherProvider, StoredNewsProvider
@@ -310,6 +314,30 @@ async def import_referee_records(body: OfficiatingImport, admin: CurrentAdmin, s
             profiles += [p.as_dict() for p in await referees.refresh(session, settings, league, now)]
         await session.commit()
         return {"imported": count, "profiles": profiles, "developer_credit": await developer_credit(session)}
+
+
+# ================================================================ VIDUR's intelligence board (Group 108)
+@router.get("/board")
+async def get_board(request: Request, user: CurrentUser, sessions: Sessions, settings: AppSettings,  # noqa: ARG001 - user enforces authentication
+                    sport: Annotated[str, Query(max_length=24)] = "ALL", category: Annotated[str, Query(max_length=24)] = "ALL",
+                    q: Annotated[str | None, Query(max_length=80)] = None, linked_only: bool = True,
+                    limit: Annotated[int | None, Query(ge=1, le=500)] = None) -> dict[str, Any]:
+    sport, category = sport.upper(), category.upper()
+    if sport != "ALL" and sport not in settings.WIRE_BOARD_SPORTS:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, f"sport is ALL or one of {', '.join(settings.WIRE_BOARD_SPORTS)}")
+    if category != "ALL" and category not in {c.value for c in ib.Category}:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, f"category is ALL or one of {', '.join(c.value for c in ib.Category)}")
+    board = await wire_board.build(sessions, _redis(request), settings, datetime.now(UTC))
+    out = wire_board.view(board, sport=sport, category=category, query=q, linked_only=linked_only, limit=limit or settings.WIRE_BOARD_LIMIT)
+    return {**out, "developer_credit": await _credit(sessions)}
+
+
+@router.get("/board/{item_id:path}")
+async def get_board_item(item_id: str, request: Request, user: CurrentUser, sessions: Sessions, settings: AppSettings) -> dict[str, Any]:  # noqa: ARG001
+    found = wire_board.find(await wire_board.build(sessions, _redis(request), settings, datetime.now(UTC)), item_id)
+    if found is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, {"reason": "NOT_ON_BOARD", "message": "That item is not on VIDUR's board (aged out, or its fixture left the live board)"})
+    return found
 
 
 # ================================================================ scans on demand

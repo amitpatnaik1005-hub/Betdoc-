@@ -9,6 +9,7 @@
  * BetDoc's own models; nothing is placed from here.
  */
 import { type CSSProperties, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { BOOKMAKER_THEMES, type MarketCard, type SelectionCard } from "../../../lib/backtest_and_parlay";
 import { type BoardWindow, type MarketColumn, useMatchBoard } from "../../../lib/match_board";
 import type { Slip } from "../../../lib/oracle";
@@ -28,7 +29,14 @@ export const MatchBoard = ({ slips, onRecord }: { slips: Slip[]; onRecord: () =>
   const [window, setWindow] = useState<BoardWindow>("all");
   const [column, setColumn] = useState<MarketColumn>("winner");
   const [leagues, setLeagues] = useState<Set<string>>(new Set());
-  const [openId, setOpenId] = useState<string | null>(null);
+  // Group 108: "Open in Oracle" on VIDUR's board lands on the fixture (?fixture=<id>); leaving it clears the link
+  const [params, setParams] = useSearchParams();
+  const [picked, setPicked] = useState<string | null>(null);
+  const openId = params.get("fixture") ?? picked;  // a followed link wins, even with the board already open
+  const setOpenId = (id: string | null) => {
+    setPicked(id);
+    if (params.has("fixture")) setParams((prev) => { const p = new URLSearchParams(prev); p.delete("fixture"); return p; }, { replace: true });
+  };
   const skin = useParlaySlipStore((s) => s.skin);
   const setSkin = useParlaySlipStore((s) => s.setSkin);
   const legs = useParlaySlipStore((s) => s.legs);

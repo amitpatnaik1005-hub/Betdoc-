@@ -59,6 +59,7 @@ from app.domain.the_wire import venue_geocoder as geo
 from app.domain.the_wire import weather_impact as wi
 from app.models import User
 from app.models.control_panel import SystemSettingsModel
+from app.models.market_signals import MarketTickModel
 from app.models.the_wire import InjuryRosterReport, NewsArticleSentiment, OfficiatingRecord, RefereeProfile, VenueLocation, WeatherSnapshot
 from app.schemas.market import MarketTick
 from app.schemas.the_wire import NewsItem
@@ -71,7 +72,8 @@ from tests.test_ultra_vetting import PINNACLE_NO_ARB, SOFT, seed, stream
 
 D = Decimal
 TABLES = [User.__table__, SystemSettingsModel.__table__, VenueLocation.__table__, WeatherSnapshot.__table__, InjuryRosterReport.__table__,
-          NewsArticleSentiment.__table__, OfficiatingRecord.__table__, RefereeProfile.__table__]
+          NewsArticleSentiment.__table__, OfficiatingRecord.__table__, RefereeProfile.__table__,
+          MarketTickModel.__table__]  # Group 108: the board the news scan's neural chain reads takes steam from the odds ticks
 TEST_REDIS_URL = os.environ["TEST_REDIS_URL"]  # forced onto the isolated test database by tests/conftest.py
 TEST_POSTGRES_URL = os.environ.get("TEST_POSTGRES_URL")
 _MARK = "betdoc:test-wire"
@@ -536,7 +538,7 @@ async def test_breaking_news_is_paged_and_becomes_a_catalyst_when_the_market_fol
         NewsItem(id="c", source="BBC Sport", title="Old story", summary="", url="https://www.bbc.co.uk/sport/3", published_at=now - timedelta(days=3)),
     ]
     first = await news.scan(sessions, redis, settings, now, items=items)
-    assert first == {"fetched": 3, "ingested": 2, "alerts": 1, "catalysts": 0, "fixtures": 1}
+    assert first == {"fetched": 3, "ingested": 2, "alerts": 1, "catalysts": 0, "fixtures": 1, "chains": 1}  # Group 108: the CRITICAL story starts a chain
     assert (await news.scan(sessions, redis, settings, now, items=items))["ingested"] == 0  # one row per URL
     async with sessions() as session:
         story = (await session.execute(select(NewsArticleSentiment).where(NewsArticleSentiment.url == items[0].url))).scalar_one()

@@ -440,6 +440,36 @@ class Settings(BaseSettings):
     ])
     SMALLCASE_MAX_BASKET_FRACTION: float = Field(default=0.06, gt=0, le=0.5)  # one basket's singles together, of bankroll
     SMALLCASE_SCAN_SECONDS: int = Field(default=30, ge=5, le=3600)  # the market scan is shared by every viewer this long
+    # VIDUR's intelligence board (Group 108, point b.14b): the Wire's own records (stored articles, catalysts, absences,
+    # forecasts, steam) as one board, each item against its fixture's measured market move and Ashoka's live edges
+    WIRE_BOARD_HOURS: float = Field(default=48.0, gt=0)  # articles published within this
+    WIRE_BOARD_LIMIT: int = Field(default=80, ge=1, le=500)  # items on the board after the filters
+    WIRE_BOARD_CACHE_SECONDS: int = Field(default=20, ge=1, le=600)  # the unfiltered board is shared by every viewer this long
+    WIRE_BOARD_SPORTS: dict[str, list[str]] = Field(default_factory=lambda: {  # the filter's sports -> the feed's sport families
+        "CRICKET": ["cricket"], "FOOTBALL": ["soccer"], "TENNIS": ["tennis"], "MMA": ["mma"],
+    })
+    # tier 1: governing bodies, leagues and clubs (host suffixes); tier 2: the press at or over this credibility; tier 3: the rest
+    WIRE_OFFICIAL_SOURCE_HOSTS: list[str] = Field(default_factory=lambda: [
+        "icc-cricket.com", "bcci.tv", "iplt20.com", "cricket.com.au", "ecb.co.uk", "premierleague.com", "uefa.com", "fifa.com", "thefa.com",
+        "laliga.com", "bundesliga.com", "legaseriea.it", "ligue1.com", "atptour.com", "wtatennis.com", "ufc.com",
+    ])
+    WIRE_PRESS_MIN_CREDIBILITY: float = Field(default=0.75, gt=0, le=1)
+    WIRE_BOARD_STEAM_WINDOW_MINUTES: int = Field(default=120, ge=1, le=1440)  # steam moves measured over the odds ticks this far back
+    WIRE_BOARD_STEAM_MIN_PROB_DELTA: float = Field(default=2.0, gt=0, le=100)  # percentage points of implied probability
+    WIRE_BOARD_STEAM_MIN_LINE_SHIFT: float = Field(default=0.25, ge=0)
+    WIRE_BOARD_STEAM_MIN_SECONDS: int = Field(default=60, ge=1)
+    WIRE_BOARD_WEATHER_MIN_EFFECT: float = Field(default=0.05, gt=0, lt=1)  # a forecast is news when the friction factor moves this far from 1
+    # the neural event bus (Group 108, point b.9): a Wire item run through the Score Predictor, the Oracle, the Consultant and
+    # the Vault's smallcases, every step a real engine call; frames on Redis pub/sub "<prefix>:pipeline", in process without Redis
+    NEURAL_BUS_PREFIX: str = "betdoc:neural"
+    NEURAL_BUS_HISTORY: int = Field(default=30, ge=1, le=500)  # chains kept per audience (the system's, each user's)
+    NEURAL_BUS_HISTORY_HOURS: float = Field(default=24.0, gt=0)
+    NEURAL_BUS_TOP_EDGES: int = Field(default=3, ge=1, le=20)  # the Oracle step lists this many of the fixture's best legs
+    NEURAL_BUS_AUTO_IMPACTS: List[str] = Field(default_factory=lambda: ["CRITICAL"])  # news at these impacts on a tracked fixture starts a chain
+    NEURAL_BUS_AUTO_CATALYSTS: bool = True  # a news-to-steam catalyst starts one too
+    NEURAL_BUS_AUTO_MAX_PER_SCAN: int = Field(default=3, ge=0, le=50)
+    NEURAL_BUS_AUTO_COOLDOWN_SECONDS: int = Field(default=600, ge=0)  # one automatic chain per fixture this often
+    NEURAL_BUS_USER_LOCK_SECONDS: int = Field(default=120, ge=1, le=900)  # one chain at a time per user (released when it ends)
     # the sports filter: label -> the feed's sport_key prefixes
     MANUAL_PARLAY_SPORTS: dict[str, tuple[str, ...]] = Field(default_factory=lambda: {
         "Football": ("soccer",), "Basketball": ("basketball",), "Tennis": ("tennis",), "Cricket": ("cricket",), "Ice Hockey": ("icehockey",),

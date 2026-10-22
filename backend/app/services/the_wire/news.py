@@ -214,4 +214,12 @@ async def scan(sessions: async_sessionmaker[AsyncSession], redis: Redis | None, 
     frames = [{"type": "news", **news_item(a).model_dump(mode="json")} for a in created]
     frames += [{"type": "catalyst", **c.model_dump(mode="json")} for a in found if (c := catalyst_alert(a)) is not None]
     await live.publish(redis, settings, frames)
-    return {"fetched": len(items), "ingested": len(created), "alerts": len(alerts), "catalysts": len(found), "fixtures": len(fixtures)}
+    chains = 0
+    if created or found:  # Group 108: breaking stories and catalysts start the neural chain (system audience, capped, per-fixture cooldown)
+        from app.services import neural_chain  # noqa: PLC0415 - the chain pulls in the oracle engine
+
+        try:
+            chains = await neural_chain.auto(sessions, redis, settings, created, found, now)
+        except Exception:  # noqa: BLE001 - the chain never fails the scan; its record is not the scan's truth
+            logger.exception("VIDUR: the neural chain did not run")
+    return {"fetched": len(items), "ingested": len(created), "alerts": len(alerts), "catalysts": len(found), "fixtures": len(fixtures), "chains": chains}
