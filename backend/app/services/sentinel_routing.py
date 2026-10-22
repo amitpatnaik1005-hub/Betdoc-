@@ -52,8 +52,9 @@ def validate(raw: Mapping[str, Any]) -> list[str]:
     return problems
 
 
-# INFO alerts the user acts on from their phone: the forecast, the twin's slips and pullouts (Group 72), settlements (Group 73)
-PHONE_KINDS = frozenset({AlertKind.MARKET_HYPE, AlertKind.TWIN_SLIP_VETTED, AlertKind.TWIN_PULLOUT, AlertKind.TWIN_SETTLED})
+# INFO alerts the user acts on from their phone: the forecast, the twin's slips and pullouts (Group 72), settlements (Group 73),
+# the Chef's Table's DIAMOND plates (Group 109)
+PHONE_KINDS = frozenset({AlertKind.MARKET_HYPE, AlertKind.TWIN_SLIP_VETTED, AlertKind.TWIN_PULLOUT, AlertKind.TWIN_SETTLED, AlertKind.CHEF_DIAMOND})
 
 
 def row_of(alert: SentinelAlert) -> str:

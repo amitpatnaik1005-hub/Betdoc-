@@ -68,6 +68,7 @@ class AlertKind(StrEnum):
     WIRE_BREAKING_NEWS = "WIRE_BREAKING_NEWS"  # VIDUR read news at an alerting impact about a tracked fixture (Group 78)
     WIRE_STEAM_CATALYST = "WIRE_STEAM_CATALYST"  # the market followed a piece of news inside the catalyst window
     BET_SLIP = "BET_SLIP"  # a Bet-Slip ticket sent to the admin's own Telegram, phone or inbox on request (Group 106)
+    CHEF_DIAMOND = "CHEF_DIAMOND"  # the Chef's Table served a DIAMOND plate before kickoff (Group 109): the phone hears it once
 
 
 class SentinelAlert(BaseModel):

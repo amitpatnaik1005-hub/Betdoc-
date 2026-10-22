@@ -18,6 +18,9 @@ Every leg carries a recipe card, all of it read from the engines:
 
 The stake is KUMBHA's (the fortress's sizing pillar) for the asking user's bankroll. Cached per user for
 ``CHEF_TABLE_CACHE_SECONDS``; a slip whose legs are no longer quoted drops out.
+
+Group 109: a DIAMOND plate whose every leg is still before kickoff pages the phone channels (``AlertKind.CHEF_DIAMOND``,
+the Sentinel's phone row), once per slip.
 """
 
 from __future__ import annotations
@@ -25,7 +28,7 @@ from __future__ import annotations
 import json
 import logging
 import uuid
-from datetime import datetime
+from datetime import UTC, datetime
 from decimal import Decimal
 from typing import Any
 
@@ -35,8 +38,11 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.core.config import Settings
 from app.domain.builder.recipe import Rated, scoreline_link, serve, stress_test
+from app.domain.oracle.slip_formatter import inr
 from app.domain.oracle.parlay_engine import LegCandidate
+from app.models.sentinel import Severity
 from app.services import ashoka_market, manual_parlay
+from app.services.sentinel_bus import AlertKind, SentinelAlert, emit_alert
 from app.services.twin import vetting
 
 logger = logging.getLogger("betdoc.chef")
@@ -66,6 +72,45 @@ def recipe_card(leg: dict[str, Any], book: str | None, candidate: LegCandidate |
         "scoreline": None if ref is None else scoreline_link(matrix, ref, selection),  # type: ignore[arg-type]
         "stress_test": [] if ref is None else stress_test(matrix, ref, selection),  # type: ignore[arg-type]
     }
+
+
+def _kickoff(value: object) -> datetime | None:
+    try:
+        moment = datetime.fromisoformat(str(value))
+    except (TypeError, ValueError):
+        return None
+    return moment if moment.tzinfo else moment.replace(tzinfo=UTC)
+
+
+async def page_diamonds(redis: Redis, settings: Settings, plates: list[dict[str, Any]], now: datetime) -> int:
+    """Page the phone channels for each DIAMOND plate whose every leg is still before kickoff, once per slip (Group 109)."""
+    if not settings.POCKET_TWIN_DIAMOND_ALERTS:
+        return 0
+    paged = 0
+    for plate in plates:
+        rating = plate["rating"]
+        kickoffs = [_kickoff(leg.get("kickoff")) for leg in plate["legs"]]
+        if rating.get("tier") != "DIAMOND" or not kickoffs or any(k is None or k <= now for k in kickoffs):
+            continue
+        try:
+            first = await redis.set(f"{settings.ARYABHATA_PREFIX}:chef:diamond:{plate['slip_id']}", now.isoformat(), nx=True, ex=86_400)
+        except (RedisError, OSError):
+            continue
+        if not first:
+            continue
+        legs = "; ".join(f"{leg['fixture']}: {leg['label']}" for leg in plate["legs"])
+        soonest = min(k for k in kickoffs if k is not None)
+        stake = float(plate["stake_inr"] or 0)
+        await emit_alert(redis, settings, SentinelAlert(
+            kind=AlertKind.CHEF_DIAMOND, severity=Severity.INFO, source="chef_table", dedupe_key=f"chef-diamond:{plate['slip_id']}",
+            title=f"DIAMOND parlay · Slip Score {rating['score']:.0f} · odds {float(plate['odds']):.2f}"[:200],
+            body=(f"{plate['title']} ({plate['kind']}): {legs}. Joint EV {float(plate['joint_ev'] or 0):+.1%}, lands {float(plate['joint_probability'] or 0):.1%}; "
+                  f"KUMBHA's stake {inr(stake) if stake > 0 else 'nothing (no bankroll, or the regime holds it back)'}. "
+                  f"First kickoff {soonest:%d %b %H:%M} UTC. Inspect it in BetDoc before placing: nothing is placed for you.")[:4000],
+            detail={"slip_id": plate["slip_id"], "score": rating["score"], "odds": plate["odds"], "book": plate["book"], "legs": [leg["leg_id"] for leg in plate["legs"]]},
+        ))
+        paged += 1
+    return paged
 
 
 async def chef_table(sessions: async_sessionmaker[AsyncSession], redis: Redis, settings: Settings, user_id: uuid.UUID, bankroll: Decimal | None,
@@ -116,6 +161,7 @@ async def chef_table(sessions: async_sessionmaker[AsyncSession], redis: Redis, s
         "rejected": vetted.get("rejected", {}), "thresholds": vetted.get("thresholds", {}), "scanned": vetted.get("scanned"),
         "simulated": vetted.get("simulated"), "legs_considered": vetted.get("legs_considered"), "developer_credit": DEVELOPER_CREDIT,
     }
+    await page_diamonds(redis, settings, served, now)
     if settings.CHEF_TABLE_CACHE_SECONDS:
         try:
             await redis.set(key, json.dumps(table, default=str), ex=settings.CHEF_TABLE_CACHE_SECONDS)

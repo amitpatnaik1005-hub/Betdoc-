@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import { apiClient } from '../api/client';
 import MarketBoard from '../components/MarketBoard';
 import { BotAvatar } from '../components/bots/BotAvatar';
+import { PocketTwinPanel } from '../components/mobile/PocketTwinPanel';
 import { emergencyStop, resumeTrading, useControls, useDashboardSummary } from '../lib/api';
 import { avatarStatus, formatProbeLatency, useCommanders } from '../lib/commanders';
 import { formatAgo, formatINR, formatInt, formatPct, formatSignedINR, formatTime, humanize } from '../lib/format';
@@ -337,6 +338,7 @@ export const CommandCenter = () => {
       <CommanderRoster />
       <ActivityStream />
       <ConsultantDesk />
+      <PocketTwinPanel className="lg:col-span-12" />
       <motion.div variants={CARD_VARIANTS} className="lg:col-span-12">
         <MarketBoard />
       </motion.div>

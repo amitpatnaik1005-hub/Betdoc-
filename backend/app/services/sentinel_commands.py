@@ -12,6 +12,11 @@ confirm the bot exists), and the attempt is logged.
   restores the saved limits. A stop engaged from the Control Panel is lifted there, not from a phone.
 * ``/status``: the last 24h realised P&L, bankroll and exposure, open bets, the bots by state, the
   kill switch and Hive halt, Garuda's heartbeat, and the dependency health.
+
+Group 109 (the Pocket Twin, point b.10) answers the desk itself from the same chats: ``/matches``, ``/score``, ``/chef``,
+``/consultant``, ``/slip``, ``/vault`` and ``/ask`` (``app/services/pocket_twin.py``), with inline buttons whose taps
+come back as callback queries and are handled as the command they carry. The account commands need the chat linked to
+a BetDoc account (``/link CODE``, or ``/start CODE`` through the bot's deep link; ``/unlink`` undoes it).
 """
 
 from __future__ import annotations
@@ -45,13 +50,28 @@ from app.services.sentinel_health import GARUDA, read_health
 
 logger = logging.getLogger("betdoc.sentinel.commands")
 
-COMMANDS = ("/halt", "/resume", "/status", "/help", "/start")
+COMMANDS = ("/halt", "/resume", "/status", "/help", "/start", "/matches", "/score", "/chef", "/consultant", "/slip", "/vault", "/ask", "/link", "/unlink")
+ACCOUNT_COMMANDS = frozenset({"/chef", "/consultant", "/slip", "/vault"})  # read the linked account
 HELP = (
     "<b>BetDoc Sentinel</b>\n"
     "/status: P&amp;L, bankroll, bots, kill switch, feeds\n"
     "/halt: engage the global kill switch (the emergency stop)\n"
-    "/resume: lift a halt you engaged here (asks for a one-time code)"
+    "/resume: lift a halt you engaged here (asks for a one-time code)\n"
+    "\n<b>Pocket Twin</b>\n"
+    "/matches [sport]: the match board, Parimatch and 1xBet side by side\n"
+    "/score &lt;match&gt;: BetDoc Score Prediction for a fixture\n"
+    "/chef [sport] [stake]: the Chef's Table, with a coupon to copy\n"
+    "/consultant: your latest signed verdict\n"
+    "/slip: your latest Bet-Slip ticket\n"
+    "/vault: bankroll, drawdown regime, stop-loss shields\n"
+    "/ask &lt;question&gt;: the Scout Oracle\n"
+    "/link CODE: link this chat to your BetDoc account (the code is in Command Center → Pocket Twin)"
 )
+MENU = [
+    [{"text": "🏟️ Matches", "callback_data": "/matches"}, {"text": "🎯 Score", "callback_data": "/score"}],
+    [{"text": "👨‍🍳 Chef's Table", "callback_data": "/chef"}, {"text": "🩺 Consultant", "callback_data": "/consultant"}],
+    [{"text": "🎟️ Bet-Slip", "callback_data": "/slip"}, {"text": "🛡️ Vault", "callback_data": "/vault"}, {"text": "📊 Status", "callback_data": "/status"}],
+]
 
 
 @dataclass(frozen=True, slots=True)
@@ -61,14 +81,25 @@ class TelegramUpdate:
     sender_id: int | None
     sender: str | None  # @username, else the numeric id
     text: str
+    callback_id: str | None = None  # a tapped inline button (Group 109): its data is the command
 
     @classmethod
     def parse(cls, body: Mapping[str, Any]) -> TelegramUpdate | None:
-        """A text message, or None (edits, joins, callbacks and anything else are ignored)."""
+        """A text message or a tapped inline button, or None (edits, joins and anything else are ignored)."""
         try:
             update_id = int(body["update_id"])
         except (KeyError, TypeError, ValueError):
             return None
+        callback = body.get("callback_query")
+        if isinstance(callback, Mapping) and isinstance(callback.get("data"), str):
+            message = callback.get("message") if isinstance(callback.get("message"), Mapping) else {}
+            chat = message.get("chat") if isinstance(message.get("chat"), Mapping) else {}
+            sender = callback.get("from") if isinstance(callback.get("from"), Mapping) else {}
+            sender_id = sender.get("id") if isinstance(sender.get("id"), int) else None
+            username = sender.get("username")
+            label = f"@{username}" if isinstance(username, str) and username else (str(sender_id) if sender_id is not None else None)
+            chat_id = chat.get("id") if isinstance(chat.get("id"), int) else None
+            return cls(update_id, chat_id, sender_id, label, callback["data"].strip()[:200], str(callback.get("id") or "") or None)
         message = body.get("message")
         if not isinstance(message, Mapping) or not isinstance(message.get("text"), str):
             return cls(update_id, None, None, None, "")
@@ -95,6 +126,7 @@ class CommandReply:
     outcome: str
     authorised: bool
     detail: dict[str, Any] = field(default_factory=dict)
+    keyboard: list[list[dict[str, str]]] | None = None  # inline buttons (Group 109)
 
 
 def authorised(update: TelegramUpdate, config: Mapping[str, Any]) -> bool:
@@ -126,12 +158,62 @@ class CommandCenter:
             reply = await self.resume(update, args[0] if args else None)
         elif command == "/status":
             reply = await self.status()
+        elif command == "/start" and args:  # the bot's t.me deep link carries a link code
+            reply = await self.link(update, args[0])
         elif command in ("/help", "/start"):
-            reply = CommandReply(HELP, "HELP", True)
+            reply = CommandReply(HELP, "HELP", True, keyboard=MENU)
+        elif command in ("/link", "/unlink"):
+            reply = await self.link(update, args[0] if args else None) if command == "/link" else await self.unlink(update)
+        elif command in ("/matches", "/score", "/chef", "/consultant", "/slip", "/vault", "/ask"):
+            reply = await self.pocket(update, command, args, config)
         else:
             reply = CommandReply(f"Unknown command. {HELP}", "UNKNOWN", True)
         await self._log(update, command or "(text)", reply)
         return reply
+
+    # -------------------------------------------------------------- the Pocket Twin (Group 109)
+    async def pocket(self, update: TelegramUpdate, command: str, args: list[str], config: Mapping[str, Any]) -> CommandReply:
+        from app.services import pocket_twin as twin  # noqa: PLC0415 - the oracle engines load on first use
+
+        now = self.clock()
+        user = await twin.user_of(self.session_factory, twin.linked_user_id(config, update.chat_id))
+        if command in ACCOUNT_COMMANDS and user is None:
+            answer = twin.not_linked(self.settings)
+        elif command == "/matches":
+            answer = await twin.matches(self.session_factory, self.redis, self.settings, now, args)
+        elif command == "/score":
+            answer = await twin.score(self.session_factory, self.redis, self.settings, now, args)
+        elif command == "/ask":
+            answer = await twin.ask(self.session_factory, self.settings, None if user is None else user.id, args)
+        elif command == "/chef":
+            answer = await twin.chef(self.session_factory, self.redis, self.settings, user.id, now, args)  # type: ignore[union-attr]
+        elif command == "/consultant":
+            answer = await twin.consultant(self.session_factory, self.settings, user.id)  # type: ignore[union-attr]
+        elif command == "/slip":
+            answer = await twin.slip(self.session_factory, self.settings, user.id, now)  # type: ignore[union-attr]
+        else:
+            answer = await twin.vault(self.session_factory, self.redis, self.settings, user.id, now)  # type: ignore[union-attr]
+        detail = {**answer.detail, "account": None if user is None else user.username}
+        return CommandReply(answer.text, answer.outcome, True, detail, answer.keyboard)
+
+    async def link(self, update: TelegramUpdate, code: str | None) -> CommandReply:
+        from app.services import pocket_twin as twin  # noqa: PLC0415
+
+        if not code:
+            return CommandReply("Send <code>/link CODE</code> with the code from BetDoc (Command Center → Pocket Twin → Link Telegram).", "REFUSED", True)
+        user = await twin.user_of(self.session_factory, await twin.redeem_link_code(self.redis, self.settings, code))
+        if user is None or update.chat_id is None:
+            return CommandReply("That code is wrong, used or expired. Make a new one in BetDoc.", "REFUSED", True)
+        await twin.set_link(self.session_factory, update.chat_id, user, self.clock())
+        return CommandReply(f"🔗 Linked to <b>{html.escape(user.username)}</b>. /chef, /consultant, /slip and /vault now read this account.",
+                            "LINKED", True, {"account": user.username}, MENU)
+
+    async def unlink(self, update: TelegramUpdate) -> CommandReply:
+        from app.services import pocket_twin as twin  # noqa: PLC0415
+
+        if update.chat_id is not None:
+            await twin.set_link(self.session_factory, update.chat_id, None, self.clock())
+        return CommandReply("Unlinked: this chat no longer reads a BetDoc account.", "UNLINKED", True)
 
     # -------------------------------------------------------------- /halt
     async def halt(self, update: TelegramUpdate) -> CommandReply:
@@ -315,9 +397,12 @@ def _aware(moment: datetime) -> datetime:
     return moment if moment.tzinfo else moment.replace(tzinfo=UTC)
 
 
-def reply_payload(chat_id: int, text: str) -> dict[str, Any]:
+def reply_payload(chat_id: int, text: str, keyboard: list[list[dict[str, str]]] | None = None) -> dict[str, Any]:
     """Answer Telegram's webhook request with the ``sendMessage`` call itself (no token needed)."""
-    return {"method": "sendMessage", "chat_id": chat_id, "text": text[:4096], "parse_mode": "HTML", "disable_web_page_preview": True}
+    payload: dict[str, Any] = {"method": "sendMessage", "chat_id": chat_id, "text": text[:4096], "parse_mode": "HTML", "disable_web_page_preview": True}
+    if keyboard:
+        payload["reply_markup"] = {"inline_keyboard": keyboard}
+    return payload
 
 
 def known_commands() -> Sequence[str]:

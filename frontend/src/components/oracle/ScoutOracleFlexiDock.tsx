@@ -79,7 +79,7 @@ export const ScoutOracleFlexiDock = () => {
             animate={{ scale: 1, opacity: 1 }}
             exit={{ scale: 0.8, opacity: 0 }}
             whileTap={{ scale: 0.95 }}
-            className="fixed bottom-5 right-5 z-30 inline-flex items-center gap-2 rounded-full bg-[var(--accent)] px-5 py-3.5 text-sm font-semibold text-[var(--accent-ink)] shadow-soft-lg"
+            className="fixed bottom-[calc(5rem+env(safe-area-inset-bottom))] right-4 z-30 inline-flex md:bottom-5 md:right-5 items-center gap-2 rounded-full bg-[var(--accent)] px-5 py-3.5 text-sm font-semibold text-[var(--accent-ink)] shadow-soft-lg"
             aria-label={unread ? `Open Scout Oracle, ${unread} unread` : 'Open Scout Oracle'}
           >
             <span className="relative"><OracleMark thinking={false} size={20} /><UnreadBadge count={unread} /></span>

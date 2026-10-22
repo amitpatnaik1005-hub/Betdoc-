@@ -39,7 +39,7 @@ REQUIRED_CREDENTIALS: dict[ChannelName, tuple[str, ...]] = {
     ChannelName.EMAIL: ("password",),
 }
 CONFIG_FIELDS: dict[ChannelName, dict[str, type]] = {
-    ChannelName.TELEGRAM: {"chat_ids": list, "admin_user_ids": list},  # alerts go to chat_ids; commands only from them (and these users)
+    ChannelName.TELEGRAM: {"chat_ids": list, "admin_user_ids": list, "bot_username": str},  # alerts go to chat_ids; commands only from them (and these users); bot_username: the t.me deep link that links a chat (Group 109)
     ChannelName.DISCORD: {"mention_on_fatal": bool},
     ChannelName.TWILIO: {"from_number": str, "to_numbers": list, "voice_on_fatal": bool},
     ChannelName.PAGERDUTY: {"source": str},

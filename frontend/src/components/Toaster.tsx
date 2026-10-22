@@ -12,7 +12,7 @@ export const Toaster = () => {
   const toasts = useToastStore((s) => s.toasts);
   const dismiss = useToastStore((s) => s.dismiss);
   return (
-    <div aria-live="polite" className="pointer-events-none fixed bottom-5 left-1/2 z-[60] flex w-[min(92vw,420px)] -translate-x-1/2 flex-col gap-2">
+    <div aria-live="polite" className="pointer-events-none fixed bottom-[calc(5rem+env(safe-area-inset-bottom))] left-1/2 z-[60] md:bottom-5 flex w-[min(92vw,420px)] -translate-x-1/2 flex-col gap-2">
       <AnimatePresence initial={false}>
         {toasts.map((t) => (
           <motion.div

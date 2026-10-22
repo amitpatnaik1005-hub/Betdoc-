@@ -8,10 +8,10 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import _decode_user_id, get_db
-from app.domain.dashboard import build_dashboard_summary
 from app.domain.oracle_scout.errors import ScoutDomainError
-from app.domain.oracle_scout.manager import DEFAULT_HISTORY_LIMIT, MAX_HISTORY_LIMIT, OracleScoutManager, ScoutFacts
+from app.domain.oracle_scout.manager import DEFAULT_HISTORY_LIMIT, MAX_HISTORY_LIMIT, OracleScoutManager
 from app.schemas.oracle_scout import ScoutChatRequest, ScoutChatResponse, ScoutHistoryRead
+from app.services.scout_facts import facts_for as _facts_for
 
 logger = logging.getLogger("betdoc.ashoka")
 
@@ -37,25 +37,6 @@ def _bearer_user_id(request: Request) -> UUID | None:
         return _decode_user_id(header[7:].strip())
     except HTTPException:
         return None
-
-
-async def _facts_for(user_id: UUID | None, db: AsyncSession) -> ScoutFacts | None:
-    if user_id is None:
-        return None
-    try:
-        summary = await build_dashboard_summary(user_id, db, 0.0)
-    except Exception:  # noqa: BLE001 - a briefing without numbers beats no briefing
-        logger.warning("ASHOKA: live book unavailable for %s", user_id, exc_info=True)
-        await db.rollback()
-        return None
-    return ScoutFacts(
-        bankroll=float(summary.total_bankroll),
-        exposure=float(summary.current_exposure),
-        daily_pnl=float(summary.daily_pnl),
-        open_positions=int(summary.active_bets_count),
-        win_rate_pct=float(summary.win_rate_pct),
-        stop_loss_status=str(summary.stop_loss_status),
-    )
 
 
 @router.post("/chat", response_model=ScoutChatResponse)

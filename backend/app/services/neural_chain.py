@@ -20,7 +20,6 @@ the chain carries on (the steps read the market independently). Nothing is place
 
 from __future__ import annotations
 
-import asyncio
 import logging
 import time
 import uuid
@@ -37,12 +36,11 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from app.core.config import Settings
 from app.domain.bookmakers.adapters import ASHOKA_BOOKMAKERS
 from app.domain.neural_bus.chain import Chain, Module, Status, Step, slip_signature
-from app.domain.oracle.match_model import MarketTargets
 from app.domain.oracle.slip_formatter import inr
 from app.domain.the_wire import intel_board as ib
+from app.services import fixture_prediction
 from app.services import neural_bus as bus
 from app.services.the_wire import board as wire_board
-from app.services.the_wire import lineups, news
 from app.services.the_wire.fixtures import Fixture
 
 logger = logging.getLogger("betdoc.neural.chain")
@@ -107,46 +105,29 @@ async def wire_step(ctx: Context) -> Outcome:
 
 # ================================================================ 2. SCORE PREDICTOR
 async def predictor_step(ctx: Context) -> Outcome:
-    from app.domain.prediction import score_predictor as sp  # noqa: PLC0415 - numerical engine, loaded on use
-
     f = ctx.fixture
     if f is None:
         return Status.SKIPPED, "No fixture to re-price: the item names none on the live board", {}
-    probs = (await news.consensus(ctx.redis, ctx.settings, [f.fixture_id], ctx.now)).get(f.fixture_id)
-    async with ctx.sessions() as session:
-        rows = await lineups.rows_for(session, f.fixture_id)
-    view = lineups.view(rows, f, ctx.settings, probs)
-    detail: dict[str, Any] = {"consensus": probs, "absences": len(view["absences"]), "unrated": view["unrated"],
-                              "delta_pts": {k: round(100.0 * v, 2) for k, v in view["delta"].items()}, "adjusted": view["adjusted"],
-                              "basis": "the de-vigged Match Odds consensus on the live board, through the lineup model's rated absences"}
+    detail = await fixture_prediction.predict(ctx.sessions, ctx.redis, ctx.settings, f, ctx.now)
+    probs = detail["consensus"]
     if not probs:
-        if view["absences"]:
-            return Status.SKIPPED, f"{len(view['absences'])} absence(s) recorded, but the live board has no Match Odds consensus to move", detail
+        if detail["absences"]:
+            return Status.SKIPPED, f"{detail['absences']} absence(s) recorded, but the live board has no Match Odds consensus to move", detail
         return Status.SKIPPED, "The live board has no Match Odds consensus for this fixture right now", detail
-    moved = view["adjusted"] is not None and any(abs(v) > 0 for v in view["delta"].values())
     sides = " · ".join(f"{k} {_pct(v)}" for k, v in probs.items())
-    lineup = (f"; with {len(view['absences']) - len(view['unrated'])} rated absence(s): "
-              + " · ".join(f"{k} {_pct(v)}" for k, v in (view["adjusted"] or {}).items())) if moved else (
-              f"; {len(view['unrated'])} absence(s) unrated, so not counted" if view["unrated"] else "; no rated absence moves it")
-    if f.family == "soccer" and all(k in probs for k in ("HOME", "DRAW", "AWAY")):
-        def fit(p: dict[str, float]) -> Any:
-            return sp.football_from_market(MarketTargets(p["HOME"], p["DRAW"], p["AWAY"]), heatmap_goals=ctx.settings.PREDICTION_HEATMAP_GOALS,
-                                           top=ctx.settings.PREDICTION_TOP_SCORELINES)
-
-        market = await asyncio.to_thread(fit, probs)
-        detail["market_fit"] = {"expected_goals": list(market.expected_goals),
-                                "top_scorelines": [{"score": s.label, "probability": round(s.probability, 4)} for s in market.top_scorelines]}
-        top = market.top_scorelines[0]
-        summary = f"Market now {sides}: xG {market.expected_goals[0]:.2f}-{market.expected_goals[1]:.2f}, likeliest {top.label} ({_pct(top.probability)}){lineup}"
-        if moved:
-            adjusted = await asyncio.to_thread(fit, view["adjusted"])
-            detail["lineup_fit"] = {"expected_goals": list(adjusted.expected_goals),
-                                    "top_scorelines": [{"score": s.label, "probability": round(s.probability, 4)} for s in adjusted.top_scorelines]}
-            summary += f" → xG {adjusted.expected_goals[0]:.2f}-{adjusted.expected_goals[1]:.2f}"
-        detail["model"] = "Dixon-Coles scorelines fitted to the probabilities (exact matrix)"
-        return Status.COMPLETED, summary, detail
-    detail["model"] = "probabilities only: this sport's simulator needs its stats (run it in Score Prediction)"
-    return Status.COMPLETED, f"Market now {sides}{lineup}", detail
+    lineup = (f"; with {detail['absences'] - len(detail['unrated'])} rated absence(s): "
+              + " · ".join(f"{k} {_pct(v)}" for k, v in (detail["adjusted"] or {}).items())) if detail["moved"] else (
+              f"; {len(detail['unrated'])} absence(s) unrated, so not counted" if detail["unrated"] else "; no rated absence moves it")
+    market = detail["market_fit"]
+    if market is None:
+        return Status.COMPLETED, f"Market now {sides}{lineup}", detail
+    top = market["top_scorelines"][0]
+    xg = market["expected_goals"]
+    summary = f"Market now {sides}: xG {xg[0]:.2f}-{xg[1]:.2f}, likeliest {top['score']} ({_pct(top['probability'])}){lineup}"
+    if detail["lineup_fit"]:
+        adj = detail["lineup_fit"]["expected_goals"]
+        summary += f" → xG {adj[0]:.2f}-{adj[1]:.2f}"
+    return Status.COMPLETED, summary, detail
 
 
 # ================================================================ 3. ORACLE & BET BUILDER

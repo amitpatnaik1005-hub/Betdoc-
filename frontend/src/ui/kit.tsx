@@ -69,14 +69,15 @@ interface PanelProps {
 
 export const Panel = ({ title, icon, children, actions, className, bodyClassName, updatedAt, subtitle }: PanelProps) => (
   <motion.section variants={CARD_VARIANTS} className={cx("flex min-w-0 flex-col gap-4", className)}>
-    <div className="flex min-h-[32px] items-center justify-between gap-3 px-1">
+    {/* Group 109: on a phone the actions drop under the title and wrap, rather than run past the screen's edge */}
+    <div className="flex min-h-[32px] flex-wrap items-center justify-between gap-x-3 gap-y-2 px-1">
       <div className="flex min-w-0 items-center gap-2.5">
         <span className="material-symbols-outlined text-[18px] text-stone-400 dark:text-stone-500">{icon}</span>
         <h2 className="truncate text-[15px] font-semibold text-stone-900 first-letter:uppercase dark:text-stone-100">{title}</h2>
         {subtitle && <span className="hidden truncate text-xs text-stone-400 sm:inline dark:text-stone-500">{subtitle}</span>}
         {updatedAt ? <UpdatedAgo at={updatedAt} /> : null}
       </div>
-      {actions && <div className="flex shrink-0 items-center gap-2">{actions}</div>}
+      {actions && <div className="flex max-w-full flex-wrap items-center gap-2">{actions}</div>}
     </div>
     <div className={cx(SURFACE, "min-w-0 overflow-hidden", bodyClassName ?? "p-5 sm:p-6")}>{children}</div>
   </motion.section>

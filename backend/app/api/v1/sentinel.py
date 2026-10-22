@@ -14,7 +14,7 @@
     GET  /sentinel/hype                           the last 08:00 forecast (admin)
     POST /sentinel/hype/preview                   today's forecast and the line it would send, sending nothing (admin)
     GET  /sentinel/commands                       the Telegram command log (admin)
-    POST /sentinel/webhook/telegram               Telegram's webhook: /halt, /resume, /status (no JWT; secret header)
+    POST /sentinel/webhook/telegram               Telegram's webhook: /halt, /resume, /status and the Pocket Twin's commands (no JWT; secret header)
 
 The live feed is the ``/ws/sentinel`` WebSocket (``app.api.v1.ws``). Secrets never leave the server:
 the API shows a hint (``bot 1234567``, ``key ab…wxyz``) and whether each one is set.
@@ -25,6 +25,7 @@ from __future__ import annotations
 import hmac
 import json
 import logging
+import re
 from datetime import UTC, datetime
 from typing import Annotated, Any
 
@@ -39,6 +40,7 @@ from app.adapters.notifications.base import DispatcherConfigurationError, Outbou
 from app.adapters.notifications.discord import validate_webhook_url
 from app.adapters.notifications.email import validate_address, validate_port
 from app.adapters.notifications.registry import CONFIG_FIELDS, CREDENTIAL_FIELDS, build, credentials_hint, decrypt
+from app.adapters.notifications.telegram import answer_callback
 from app.adapters.notifications.twilio import validate_number
 from app.api.deps import CurrentAdmin, CurrentUser
 from app.api.v1.cfo_execution import get_session_factory
@@ -277,6 +279,11 @@ def _clean_config(channel: ChannelName, config: dict[str, Any]) -> dict[str, Any
                 clean[name] = validate_address(str(value)) if value else ""
             elif name == "port":
                 clean[name] = str(validate_port(value)) if str(value).strip() else ""
+            elif name == "bot_username":
+                handle = str(value).strip().removeprefix("@")
+                if handle and not re.fullmatch(r"[A-Za-z][A-Za-z0-9_]{4,31}", handle):
+                    raise ValueError("bot_username is the bot's Telegram username (5-32 letters, digits or underscores)")
+                clean[name] = handle
             else:
                 clean[name] = str(value)[:64]
     except (ValueError, TypeError) as exc:
@@ -461,6 +468,9 @@ async def telegram_webhook(request: Request, sessions: Sessions, settings: AppSe
         except (RedisError, OSError):
             pass
     reply = await CommandCenter(sessions, redis, settings).handle(update, (row.config or {}) if row is not None else {})
+    if update.callback_id and reply.authorised and secrets is not None and secrets.get("bot_token"):  # a tapped button: stop its spinner
+        async with httpx.AsyncClient(timeout=settings.SENTINEL_HTTP_TIMEOUT_SECONDS) as http:
+            await answer_callback(http, secrets.get("bot_token"), update.callback_id)
     if reply.text is None:
         return {}
-    return reply_payload(update.chat_id, reply.text)
+    return reply_payload(update.chat_id, reply.text, reply.keyboard)

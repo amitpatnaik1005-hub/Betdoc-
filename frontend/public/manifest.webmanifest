@@ -1,0 +1,23 @@
+{
+  "id": "/",
+  "name": "BetDoc — Quantitative Sports Desk",
+  "short_name": "BetDoc",
+  "description": "BetDoc's desk in your pocket: the Oracle, Score Prediction, the Consultant, the Bet-Slip and The Vault. Developed for Amit Ashok Kumar Patnaik.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#0c0a09",
+  "theme_color": "#0c0a09",
+  "categories": ["sports", "finance"],
+  "icons": [
+    { "src": "/icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/icons/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ],
+  "shortcuts": [
+    { "name": "Match board", "short_name": "Oracle", "url": "/oracle", "description": "Live fixtures, Parimatch and 1xBet side by side", "icons": [{ "src": "/icons/icon-192.png", "sizes": "192x192" }] },
+    { "name": "Score Prediction", "short_name": "Score", "url": "/lab#score-prediction", "description": "Scorelines, innings, sets and rounds", "icons": [{ "src": "/icons/icon-192.png", "sizes": "192x192" }] },
+    { "name": "BetDoc Consultant", "short_name": "Consultant", "url": "/consultant", "description": "Audit a slip: Doctor, Lawyer, Consultant", "icons": [{ "src": "/icons/icon-192.png", "sizes": "192x192" }] },
+    { "name": "The Vault", "short_name": "Vault", "url": "/vault", "description": "Bankroll, stop-loss shields, real-money ledger", "icons": [{ "src": "/icons/icon-192.png", "sizes": "192x192" }] }
+  ]
+}

@@ -17,6 +17,7 @@ import { toggleScoutDock } from './store/useScoutDockStore';
 import LoginForm from './components/LoginForm';
 import { RouteErrorBoundary } from './components/RouteErrorBoundary';
 import { Toaster } from './components/Toaster';
+import { MobileBottomNav } from './components/layout/MobileBottomNav';
 import { CommandPalette, type PaletteCommand, useNavigateCommands } from './components/CommandPalette';
 import { MOCK_AUTH, useAuthStore } from './store/useAuthStore';
 import { useMarketStore } from './store/useMarketStore';
@@ -718,7 +719,7 @@ const AppShell = () => {
           <StageHeader />
         </div>
         <HaltBanner />
-        <div className={isInfinityView ? 'flex-1 px-2 pb-14 sm:px-4' : 'flex-1 px-4 pb-28 sm:px-10 sm:pb-14'}>
+        <div className={isInfinityView ? 'flex-1 px-2 pb-28 sm:px-4 md:pb-14' : 'flex-1 px-4 pb-28 sm:px-10 md:pb-14'}>
           <RouteErrorBoundary key={pathname}>
             <Suspense fallback={<RouteFallback />}>
               <Outlet />
@@ -729,6 +730,8 @@ const AppShell = () => {
       <ScoutOracleFlexiDock />
       <CommandPalette commands={commands} />
       <Toaster />
+      {/* Group 109: the Pocket Twin's thumb bar, phones only */}
+      <MobileBottomNav />
     </div>
   );
 };

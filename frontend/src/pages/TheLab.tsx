@@ -1,5 +1,6 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
+import { useLocation } from 'react-router-dom';
 import { apiClient } from '../api/client';
 import { TheLabScene } from '../components/bots/TheLabScene';
 import { CompetitiveIntelLivePanel } from '../components/lab/CompetitiveIntelLivePanel';
@@ -355,6 +356,13 @@ const HumanTouch = () => {
 // NAMED EXPORT: THE LAB
 // ---------------------------------------------------------------------------
 export const TheLab = () => {
+  // Group 109: the Pocket Twin's Score tab (and the PWA shortcut) land on Score Prediction
+  const { hash } = useLocation();
+  useEffect(() => {
+    if (hash !== '#score-prediction') return;
+    const frame = window.requestAnimationFrame(() => document.getElementById('score-prediction')?.scrollIntoView({ block: 'start' }));
+    return () => window.cancelAnimationFrame(frame);
+  }, [hash]);
   const health = useResource('lab:health', () => apiClient.get<SourceHealth[]>('/lab/health'), { intervalMs: 120_000 });
   const research = useResource('lab:research', () => apiClient.get<Research[]>('/lab/research', { limit: 25 }), { intervalMs: 10_000 });
   const experiments = useResource('lab:experiments', () => apiClient.get<Experiment[]>('/lab/experiments', { limit: 25 }), { intervalMs: 30_000 });
@@ -391,7 +399,9 @@ export const TheLab = () => {
         ]}
         kpiCodes={["EV", "OVERROUND"]}
       />
-      <ScorePredictionPanel />
+      <div id="score-prediction" className="min-w-0 scroll-mt-32 lg:col-span-12">
+        <ScorePredictionPanel />
+      </div>
       <CompetitiveIntelLivePanel />
       <ModelSandbox />
       <SourceHealth health={health} />

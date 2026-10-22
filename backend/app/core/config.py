@@ -470,6 +470,12 @@ class Settings(BaseSettings):
     NEURAL_BUS_AUTO_MAX_PER_SCAN: int = Field(default=3, ge=0, le=50)
     NEURAL_BUS_AUTO_COOLDOWN_SECONDS: int = Field(default=600, ge=0)  # one automatic chain per fixture this often
     NEURAL_BUS_USER_LOCK_SECONDS: int = Field(default=120, ge=1, le=900)  # one chain at a time per user (released when it ends)
+    # The Pocket Twin (Group 109, point b.10): the installable PWA and the two-way Telegram desk. The bot is the Sentinel's
+    # Telegram channel (its token and webhook secret stay in the vault); these only shape what it answers
+    PUBLIC_APP_URL: str | None = None  # the PWA's https origin: Telegram's buttons open it (unset, or not https: no link buttons)
+    POCKET_TWIN_LINK_CODE_SECONDS: int = Field(default=600, ge=60, le=3600)  # a one-time code that links a Telegram chat to an account
+    POCKET_TWIN_MATCHES: int = Field(default=5, ge=1, le=10)  # /matches lists this many fixtures
+    POCKET_TWIN_DIAMOND_ALERTS: bool = True  # a DIAMOND plate on the Chef's Table before kickoff pages the phone channels
     # the sports filter: label -> the feed's sport_key prefixes
     MANUAL_PARLAY_SPORTS: dict[str, tuple[str, ...]] = Field(default_factory=lambda: {
         "Football": ("soccer",), "Basketball": ("basketball",), "Tennis": ("tennis",), "Cricket": ("cricket",), "Ice Hockey": ("icehockey",),

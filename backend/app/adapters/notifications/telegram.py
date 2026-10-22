@@ -20,6 +20,16 @@ API_BASE = "https://api.telegram.org"
 MESSAGE_LIMIT = 4096
 
 
+async def answer_callback(http: httpx.AsyncClient, bot_token: str, callback_id: str) -> bool:
+    """Acknowledge a tapped inline button (Group 109) so the chat stops showing it as loading; the reply itself goes back in
+    the webhook's response. Best effort: False when Telegram cannot be reached, and the token never reaches a log."""
+    try:
+        response = await http.post(f"{API_BASE}/bot{bot_token}/answerCallbackQuery", json={"callback_query_id": callback_id})
+        return response.status_code == 200 and bool(response.json().get("ok"))
+    except (httpx.HTTPError, ValueError):
+        return False
+
+
 class TelegramDispatcher(NotificationDispatcher):
     channel: ClassVar[ChannelName] = ChannelName.TELEGRAM
 
