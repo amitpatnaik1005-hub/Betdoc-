@@ -7,6 +7,7 @@ import { emergencyStop, resumeTrading, useControls } from '../lib/api';
 import { formatAgo, formatINR, formatInt, formatPct, formatRatioPct, formatTime, humanize } from '../lib/format';
 import { invalidate, runMutation, useResource } from '../lib/resource';
 import { subscribeChannel } from '../services/realtime';
+import { useAuthStore } from '../store/useAuthStore';
 import { useSystemStore } from '../store/useSystemStore';
 import { CommanderHero } from '../ui/hero';
 import { MOTIFS } from '../ui/motifs';
@@ -28,6 +29,7 @@ interface DeepHealth { status: string; environment: string; dependencies: Record
 // ---------------------------------------------------------------------------
 const SmallcaseRegistry = ({ smallcases, onStamp }: { smallcases: ReturnType<typeof useResource<Smallcase[]>>; onStamp: (on: boolean) => void }) => {
   const [openId, setOpenId] = useState<string | null>(null);
+  const isAdmin = useAuthStore((s) => s.user?.role === 'ADMIN');
   const detail = useResource(openId ? `core:smallcase:${openId}` : null, () => apiClient.get<SmallcaseDetail>(`/core/smallcases/${openId}`));
 
   const toggle = (s: Smallcase) => {
@@ -50,12 +52,13 @@ const SmallcaseRegistry = ({ smallcases, onStamp }: { smallcases: ReturnType<typ
     { key: 'cv', header: 'Cross-val', align: 'right', render: (s) => formatRatioPct(s.cross_val_score) },
     { key: 'bt', header: 'Backtests', align: 'right', render: (s) => formatInt(s.total_backtests_run) },
     { key: 'status', header: 'Status', render: (s) => <StatusBadge status={s.status} /> },
-    { key: 'act', header: '', align: 'right', render: (s) => (
+    // Toggle and stress test are admin only on the API
+    ...(isAdmin ? [{ key: 'act', header: '', align: 'right' as const, render: (s: Smallcase) => (
       <div className="flex justify-end gap-1.5">
         <Button size="sm" variant="ghost" icon={s.status === 'ACTIVE' ? 'pause' : 'play_arrow'} disabled={s.status === 'DISABLED'} onClick={() => toggle(s)}>{s.status === 'ACTIVE' ? 'Standby' : 'Activate'}</Button>
         <Button size="sm" variant="ghost" icon="bolt" onClick={() => void stress(s)}>Stress</Button>
       </div>
-    ) },
+    ) }] : []),
   ];
 
   return (
@@ -97,6 +100,7 @@ const TestBench = ({ smallcases, onStamp }: { smallcases: Smallcase[]; onStamp: 
   const [ctx, setCtx] = useState({ home_team: 'Arsenal', away_team: 'Chelsea', home_xg: '1.7', away_xg: '1.1', home: '2.05', draw: '3.6', away: '3.9' });
   const [runs, setRuns] = useState<TestRun[] | null>(null);
   const [busy, setBusy] = useState(false);
+  const isAdmin = useAuthStore((s) => s.user?.role === 'ADMIN');
   const names = new Map(smallcases.map((s) => [s.id, s.name]));
   const active = smallcases.filter((s) => s.status === 'ACTIVE').slice(0, 5);
 
@@ -124,9 +128,10 @@ const TestBench = ({ smallcases, onStamp }: { smallcases: Smallcase[]; onStamp: 
         <Field label="Home odds"><NumberInput value={ctx.home} onChange={(e) => setCtx({ ...ctx, home: e.target.value })} /></Field>
         <Field label="Draw odds"><NumberInput value={ctx.draw} onChange={(e) => setCtx({ ...ctx, draw: e.target.value })} /></Field>
         <Field label="Away odds"><NumberInput value={ctx.away} onChange={(e) => setCtx({ ...ctx, away: e.target.value })} /></Field>
-        <div className="flex items-end"><Button type="submit" variant="primary" icon="play_arrow" busy={busy} disabled={active.length === 0} className="w-full">Compare</Button></div>
+        <div className="flex items-end"><Button type="submit" variant="primary" icon="play_arrow" busy={busy} disabled={!isAdmin || active.length === 0} className="w-full">Compare</Button></div>
       </form>
-      {active.length === 0 && <p className="mt-3 text-xs text-amber-600">Activate at least one smallcase to use the bench.</p>}
+      {!isAdmin && <p className="mt-3 text-xs text-stone-400">Running the bench is admin only.</p>}
+      {isAdmin && active.length === 0 && <p className="mt-3 text-xs text-amber-600">Activate at least one smallcase to use the bench.</p>}
       {runs && (
         <ul className="mt-4 flex flex-col gap-2">
           {runs.map((r) => {
@@ -167,6 +172,7 @@ export const Core = () => {
   const [events, setEvents] = useState<(LiveEnvelope & { at: string })[]>([]);
   const [stamping, setStamping] = useState(false);
   const [bootBusy, setBootBusy] = useState(false);
+  const isAdmin = useAuthStore((s) => s.user?.role === 'ADMIN');
 
   // Engine Room conveyor belt: test bench + backtest progress pushed live.
   useEffect(
@@ -194,11 +200,13 @@ export const Core = () => {
         scene={<CoreFactoryScene isStamping={stamping} ticketsGenerated={ticketCount} className="h-[220px]" />}
         actions={
           <>
-            <Button variant="primary" icon="rocket_launch" busy={bootBusy} onClick={async () => {
-              setBootBusy(true);
-              await runMutation(() => apiClient.post<Smallcase[]>('/core/bootstrap'), { invalidate: ['core', 'commanders'], success: (r) => `Engine bootstrapped: ${r.length} smallcases registered`, errorTitle: 'Bootstrap failed' });
-              setBootBusy(false);
-            }}>Bootstrap engine</Button>
+            {isAdmin && (
+              <Button variant="primary" icon="rocket_launch" busy={bootBusy} onClick={async () => {
+                setBootBusy(true);
+                await runMutation(() => apiClient.post<Smallcase[]>('/core/bootstrap'), { invalidate: ['core', 'commanders'], success: (r) => `Engine bootstrapped: ${r.length} smallcases registered`, errorTitle: 'Bootstrap failed' });
+                setBootBusy(false);
+              }}>Bootstrap engine</Button>
+            )}
             {halted ? (
               <Button variant="danger" icon="lock_open" onClick={() => void resumeTrading(500)}>Unlock markets</Button>
             ) : (

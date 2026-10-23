@@ -49,7 +49,7 @@ def app(manager):
 
     application = FastAPI()
 
-    application.include_router(core_api.router, prefix="/api/v1/engine")
+    application.include_router(core_api.live_router, prefix="/api/v1/engine")
 
     application.dependency_overrides[core_api.get_ws_manager] = lambda: manager
 
@@ -270,7 +270,7 @@ def test_backtest_worker_streams_state(app, manager, orch, sqlite_database):
 
 def test_rejects_unauthenticated_handshake(manager):
     application = FastAPI()
-    application.include_router(core_api.router, prefix="/api/v1/engine")
+    application.include_router(core_api.live_router, prefix="/api/v1/engine")
     application.dependency_overrides[core_api.get_ws_manager] = lambda: manager
     from starlette.websockets import WebSocketDisconnect
     with TestClient(application) as client, pytest.raises(WebSocketDisconnect) as exc_info:

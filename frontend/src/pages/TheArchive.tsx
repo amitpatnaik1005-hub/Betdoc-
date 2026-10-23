@@ -7,6 +7,7 @@ import { MOTIFS } from '../ui/motifs';
 import { DivergingBars } from '../ui/charts';
 import { BackupRestoreVaultPanel } from '../components/archive/BackupRestoreVaultPanel';
 import { ClvHistoricalWarehousePanel } from '../components/archive/ClvHistoricalWarehousePanel';
+import { useAuthStore } from '../store/useAuthStore';
 import { Async, Button, ComponentGuideBanner, EmptyState, Field, KeyValues, Page, Panel, Pill, Select, StatusBadge, TextInput } from '../ui/kit';
 
 // ---------------------------------------------------------------------------
@@ -93,6 +94,7 @@ const BacktestLedger = () => {
     smallcase: '', start: new Date(Date.now() - 30 * 86_400_000).toISOString().slice(0, 10), end: new Date().toISOString().slice(0, 10),
   }));
   const [busy, setBusy] = useState(false);
+  const isAdmin = useAuthStore((s) => s.user?.role === 'ADMIN');
   const names = new Map((smallcases.data ?? []).map((s) => [s.id, s.name]));
   const smallcaseId = form.smallcase || smallcases.data?.[0]?.id || '';
 
@@ -116,8 +118,9 @@ const BacktestLedger = () => {
         </Field>
         <Field label="From"><TextInput type="date" value={form.start} onChange={(e) => setForm({ ...form, start: e.target.value })} /></Field>
         <Field label="To"><TextInput type="date" value={form.end} onChange={(e) => setForm({ ...form, end: e.target.value })} /></Field>
-        <Button type="submit" variant="primary" icon="play_circle" busy={busy} disabled={!smallcaseId}>Run backtest</Button>
+        <Button type="submit" variant="primary" icon="play_circle" busy={busy} disabled={!isAdmin || !smallcaseId}>Run backtest</Button>
       </form>
+      {!isAdmin && <p className="mb-3 text-xs text-stone-400">Running a backtest is admin only.</p>}
       {!smallcases.data?.length && smallcases.data && <p className="mb-3 text-xs text-amber-600">No smallcases yet: bootstrap the engine from Core first.</p>}
       <p className="mb-3 text-[11px] text-stone-400">The engine replays each pipeline against synthetic markets drawn per day in the range (no historical results are stored to replay).</p>
       <Async resource={backtests} isEmpty={(r) => r.length === 0} empty={<EmptyState icon="history" title="No backtests yet" />}>

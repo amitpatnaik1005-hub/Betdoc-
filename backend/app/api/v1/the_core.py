@@ -1,4 +1,7 @@
-"""The Core HTTP + WebSocket surface. Mounted under /engine by the main router."""
+"""The Core HTTP + WebSocket surface, mounted under /core by the main router.
+
+REST routes (`router`) are mounted for signed-in users and their writes are admin only; the live WebSocket
+(`live_router`) is mounted on its own and checks its token in the handshake."""
 
 
 
@@ -23,7 +26,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 
 
-from app.api.deps import WsUser, get_db
+from app.api.deps import CurrentAdmin, WsUser, get_db
 
 from app.core.database import AsyncSessionLocal
 
@@ -72,6 +75,10 @@ logger = logging.getLogger(__name__)
 
 
 router = APIRouter(tags=["Engine Room"])
+
+# A mount-level Depends(get_current_user) cannot run in a WebSocket handshake, so the live route rides its own router.
+
+live_router = APIRouter(tags=["Engine Room"])
 
 
 
@@ -267,7 +274,7 @@ async def get_engine_status(db: DbSession, orch: Orchestrator) -> EngineTelemetr
 
 @router.post("/bootstrap", response_model=list[SmallcaseRead])
 
-async def bootstrap_smallcases(db: DbSession, orch: Orchestrator) -> list[SmallcaseRead]:
+async def bootstrap_smallcases(db: DbSession, orch: Orchestrator, admin: CurrentAdmin) -> list[SmallcaseRead]:  # noqa: ARG001 - admin gate
 
     smallcases = await orch.bootstrap_smallcases(db)
 
@@ -326,6 +333,8 @@ async def toggle_smallcase(
     orch: Orchestrator,
 
     ws_manager: WsManager,
+
+    admin: CurrentAdmin,  # noqa: ARG001 - admin gate
 
 ) -> SmallcaseRead:
 
@@ -391,6 +400,8 @@ async def stress_test_smallcase(
 
     ws_manager: WsManager,
 
+    admin: CurrentAdmin,  # noqa: ARG001 - admin gate
+
 ) -> TestBenchRunRead:
 
     try:
@@ -431,6 +442,8 @@ async def run_test_bench(
 
     ws_manager: WsManager,
 
+    admin: CurrentAdmin,  # noqa: ARG001 - admin gate
+
 ) -> TestBenchRunRead:
 
     try:
@@ -466,6 +479,8 @@ async def run_test_compare(
     session_factory: SessionFactory,
 
     ws_manager: WsManager,
+
+    admin: CurrentAdmin,  # noqa: ARG001 - admin gate
 
 ) -> list[TestBenchRunRead]:
 
@@ -505,6 +520,8 @@ async def run_backtest(
 
     ws_manager: WsManager,
 
+    admin: CurrentAdmin,  # noqa: ARG001 - admin gate
+
 ) -> BacktestJobRead:
 
     try:
@@ -525,7 +542,7 @@ async def run_backtest(
 
 
 
-@router.websocket("/live")
+@live_router.websocket("/live")
 
 async def engine_room_live(websocket: WebSocket, manager: WsManager, user: WsUser) -> None:  # noqa: ARG001 - auth gate
 

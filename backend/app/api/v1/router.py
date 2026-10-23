@@ -28,7 +28,8 @@ api_router.include_router(dashboard.router, prefix="/dashboard")
 api_router.include_router(the_wire.router, prefix="/the-wire")
 api_router.include_router(the_lab.router, prefix="/lab")
 api_router.include_router(the_hive.router)
-api_router.include_router(the_core.router, prefix='/core')
+api_router.include_router(the_core.router, prefix='/core', dependencies=_authenticated)  # writes: admin
+api_router.include_router(the_core.live_router, prefix='/core')  # /core/live: token-checked in the handshake
 api_router.include_router(popular_picks.router, prefix='/popular-picks', dependencies=_authenticated)
 api_router.include_router(competitive_intel.router, prefix='/rnd/competitive-intel', dependencies=_authenticated)
 api_router.include_router(oracle_scout.router, prefix='/oracle-scout', dependencies=_authenticated)

@@ -20,7 +20,7 @@ from httpx import ASGITransport, AsyncClient
 
 
 
-from app.api.deps import get_db
+from app.api.deps import get_current_admin, get_db
 
 from app.api.v1 import the_core as core_api
 
@@ -55,6 +55,8 @@ async def client(session_factory, orch, broadcaster):
 
 
     app.dependency_overrides[get_db] = override_get_db
+
+    app.dependency_overrides[get_current_admin] = lambda: None  # admin stand-in: the role checks live in test_auth.py
 
     app.dependency_overrides[core_api.get_session_factory] = lambda: session_factory
 
