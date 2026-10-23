@@ -13,6 +13,7 @@ Developed for Amit Ashok Kumar Patnaik.
 
 from __future__ import annotations
 
+import os
 import uuid
 from collections.abc import AsyncIterator
 from datetime import UTC, datetime, timedelta
@@ -29,7 +30,7 @@ from httpx import ASGITransport, AsyncClient
 from pydantic import SecretStr
 from sqlalchemy import CheckConstraint, MetaData, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
-from sqlalchemy.pool import StaticPool
+from sqlalchemy.pool import NullPool, StaticPool
 
 from app.adapters.sports_data.football_data import parse_matches
 from app.adapters.sports_data.sportsmonks import parse_fixtures
@@ -50,6 +51,7 @@ from app.services import real_money_service as rms
 from app.workers import settlement_runner
 
 ROOT = Path(__file__).resolve().parents[2]
+TEST_POSTGRES_URL = os.environ.get("TEST_POSTGRES_URL")
 NOW = datetime(2026, 10, 23, 12, 0, tzinfo=UTC)
 KICKOFF = datetime(2026, 10, 21, 19, 0, tzinfo=UTC)  # finished well before NOW
 TABLES = (User, ExchangeAccount, BetLedger, RealBankroll, RealBetTicket, RealCashTransaction, TaxLedgerEntry, FixtureScore, UserPlacedBet,
@@ -61,11 +63,26 @@ def _settings(**overrides: Any) -> Settings:
     return get_settings().model_copy(update={**base, **overrides})
 
 
-@pytest_asyncio.fixture
-async def sessions() -> AsyncIterator[async_sessionmaker[AsyncSession]]:
+@pytest_asyncio.fixture(params=["sqlite", "postgres"])
+async def sessions(request: pytest.FixtureRequest) -> AsyncIterator[async_sessionmaker[AsyncSession]]:
+    """SQLite, and PostgreSQL where the row locks (FOR UPDATE OF ... SKIP LOCKED) and the real CHECK constraints apply."""
+    tables = [m.__table__ for m in TABLES]
+    if request.param == "postgres":
+        if not TEST_POSTGRES_URL:
+            pytest.skip("set TEST_POSTGRES_URL to a disposable PostgreSQL database")
+        engine = create_async_engine(TEST_POSTGRES_URL, poolclass=NullPool)
+        async with engine.begin() as conn:
+            await conn.run_sync(lambda sync: User.metadata.create_all(sync, tables=tables))
+        try:
+            yield async_sessionmaker(engine, expire_on_commit=False)
+        finally:
+            async with engine.begin() as conn:
+                await conn.run_sync(lambda sync: User.metadata.drop_all(sync, tables=list(reversed(tables))))
+            await engine.dispose()
+        return
     md = MetaData()
-    for model in TABLES:
-        copy = model.__table__.to_metadata(md)
+    for table in tables:
+        copy = table.to_metadata(md)
         for check in [c for c in copy.constraints if isinstance(c, CheckConstraint) and ("~" in str(c.sqltext) or "jsonb_typeof" in str(c.sqltext))]:
             copy.constraints.discard(check)
     engine = create_async_engine("sqlite+aiosqlite:///:memory:", poolclass=StaticPool)
