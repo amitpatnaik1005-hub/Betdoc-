@@ -4,19 +4,22 @@ Docs: https://the-odds-api.com/liveapi/guides/v4/. The key travels as the ``apiK
 parameter, so nothing here ever logs or raises with a URL. Each odds request costs
 ``regions x markets`` credits; ``x-requests-remaining`` / ``x-requests-used`` are tracked so the
 fleet can fail over before the account runs dry, and fetching stops under ``ODDS_QUOTA_FLOOR``.
-``GET /sports`` costs nothing and still reports the quota: it is the probe that notices a reset.
+``GET /sports`` costs nothing and still reports the quota: it is the probe that notices a reset, and (Group 112) the
+list of sports in season: a configured sport out of season is never bought (its board is recorded as empty, so the
+pre-match cadence waits its tier-1 age before asking again).
 """
 
 from __future__ import annotations
 
 import re
-from collections.abc import Sequence
+import time
+from collections.abc import Mapping, Sequence
 from datetime import UTC, datetime
 from typing import Any, ClassVar
 
 import httpx
 
-from app.adapters.ingestion.base import BaseDataIngestor, IngestionBatch, IngestionError, QuotaExhaustedError, SourcePayload
+from app.adapters.ingestion.base import BaseDataIngestor, IngestionBatch, IngestionError, ProviderAuthError, QuotaExhaustedError, SourcePayload
 from app.core import fleet_overlay
 from app.core.config import Settings
 
@@ -56,6 +59,8 @@ class OddsApiIngestor(BaseDataIngestor):
 
     # Last quota reading per process, so the floor is checked BEFORE a credit is spent.
     _last_quota: ClassVar[float | None] = None
+    # The sports The Odds API lists as in season, per process: (time.monotonic() when read, keys)
+    _season: ClassVar[tuple[float, frozenset[str]] | None] = None
 
     @classmethod
     def interval_seconds(cls, settings: Settings) -> float:
@@ -75,15 +80,39 @@ class OddsApiIngestor(BaseDataIngestor):
         await self._get_json(f"{self._settings.ODDS_API_BASE_URL.rstrip('/')}/sports", params={"apiKey": self._api_key or ""})
         return self._batch([], {"probe": True})
 
+    async def in_season(self, sports: Sequence[str]) -> tuple[list[str], list[str]]:
+        """``(to buy, out of season)``. Reads ``GET /sports`` (not metered) at most every
+        ``ODDS_API_ACTIVE_SPORTS_TTL_SECONDS``. Fails open: an unreadable or empty list leaves every sport in, so a sport
+        is never dropped on a guess; a rejected key (401/403) still raises, as the odds call would."""
+        if not self._settings.ODDS_API_SKIP_INACTIVE_SPORTS:
+            return list(sports), []
+        cached = type(self)._season
+        if cached is None or time.monotonic() - cached[0] >= self._settings.ODDS_API_ACTIVE_SPORTS_TTL_SECONDS:
+            try:
+                listing: Any = await self._get_json(f"{self._settings.ODDS_API_BASE_URL.rstrip('/')}/sports", params={"apiKey": self._api_key or ""})
+            except ProviderAuthError:
+                raise
+            except IngestionError:
+                return list(sports), []
+            active = frozenset(
+                str(s["key"]) for s in (listing if isinstance(listing, list) else []) if isinstance(s, Mapping) and s.get("key") and s.get("active") is True
+            )
+            if not active:
+                return list(sports), []
+            cached = type(self)._season = (time.monotonic(), active)
+        return [s for s in sports if s in cached[1]], [s for s in sports if s not in cached[1]]
+
     async def fetch(self, scope: Sequence[str] | None = None) -> IngestionBatch:
         floor = self._settings.ODDS_QUOTA_FLOOR
         covered = self.coverage(self._settings)
         sports = [covered[s] for s in (scope if scope is not None else covered) if s in covered]
         if not sports:
             raise IngestionError("The Odds API: no valid sport key in scope (ODDS_SPORT_KEYS)")
+        sports, out_of_season = await self.in_season(sports)
 
         base = self._settings.ODDS_API_BASE_URL.rstrip("/")
-        payloads: list[SourcePayload] = []
+        # An out-of-season sport has no events: its board is empty, recorded without spending a credit
+        payloads: list[SourcePayload] = [SourcePayload(key=sport, data=[]) for sport in out_of_season]
         for sport in sports:
             last = type(self)._last_quota
             if last is not None and last < floor:
@@ -101,4 +130,4 @@ class OddsApiIngestor(BaseDataIngestor):
             if not isinstance(data, list):
                 raise IngestionError(f"The Odds API: expected a list for {sport}, got {type(data).__name__}")
             payloads.append(SourcePayload(key=sport, data=data))
-        return self._batch(payloads, {"sports": sports, "regions": self._settings.ODDS_API_REGIONS})
+        return self._batch(payloads, {"sports": sports, "out_of_season": out_of_season, "regions": self._settings.ODDS_API_REGIONS})

@@ -42,6 +42,10 @@ _SECRET_BYTES = 48
 for _name in _GENERATED_SECRETS:
     os.environ.setdefault(_name, secrets.token_urlsafe(_SECRET_BYTES))
 os.environ.setdefault("ENCRYPTION_KEY", base64.urlsafe_b64encode(secrets.token_bytes(32)).decode())  # a Fernet key
+# Group 112: the sports-data providers' keys in backend/.env never reach a test, so no test can call a metered provider
+# with the developer's real key (a test that needs one sets its own; ODDS_API_KEY stays as the suite has always read it)
+for _name in ("THE_ODDS_API_KEY", "FOOTBALL_DATA_ORG_API_KEY", "SPORTSMONKS_API_KEY"):
+    os.environ[_name] = ""
 # Tests build their own engines (SQLite, or TEST_POSTGRES_URL); the app's default engine points at a database that does not
 # exist, so a test that forgets to override it fails instead of reaching the developer's database
 os.environ.setdefault("DATABASE_URL", "postgresql+asyncpg://betdoc_test@127.0.0.1:5432/betdoc_test_isolated")

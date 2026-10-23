@@ -193,7 +193,7 @@ export const COMMANDER_REGISTRY: Readonly<Record<CommanderId, CommanderProfile>>
   },
   ASHVATTHAMA: {
     id: "ASHVATTHAMA",
-    name: "Ashvatthama",
+    name: "Ticket Desk",  // Group 112: the header chip on /consultant and /bet-slip
     domain: "Consultant & Bet-Slip Ornament Architect",
     routePrefixes: ["/consultant", "/bet-slip"],  // the BetDoc Consultant (Group 105) and the Bet-Slip ticket (Group 106)
     networkProtocol: "HYBRID",

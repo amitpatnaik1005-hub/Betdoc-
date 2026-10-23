@@ -39,11 +39,16 @@ async def _no_wait(_: float) -> None:
     return None
 
 
+# The cadence these tests walk through is Group 101's (6h / 60 min / 60 s, tier 2 from 2h); Group 112 lengthened the
+# defaults for a 500-credit plan, which its own tests pin
+GROUP_101_TIERS = {"PRE_MATCH_TIER2_KICKOFF_SECONDS": 2 * 3600.0, "PRE_MATCH_TIER2_MAX_AGE_SECONDS": 3600.0, "PRE_MATCH_TIER3_MAX_AGE_SECONDS": 60.0}
+
+
 @pytest.fixture
 def make_deps(redis, session_factory, http, fleet_settings):
     def build(**overrides) -> FleetDeps:
         return FleetDeps(redis=redis, session_factory=session_factory, http=http, vault=VaultCrypto(Fernet.generate_key().decode()),
-                         settings=fleet_settings(**overrides), sleep=_no_wait)
+                         settings=fleet_settings(**{**GROUP_101_TIERS, **overrides}), sleep=_no_wait)
 
     return build
 

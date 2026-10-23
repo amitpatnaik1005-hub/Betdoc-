@@ -62,8 +62,19 @@ def _redis(request: Request) -> Redis | None:
     return getattr(request.app.state, "redis", None)
 
 
+# Group 112: one provider per configuration for the process, so its per-sport cache spans dashboard polls
+_ODDS_SCORES: dict[tuple[str | None, str, tuple[str, ...]], OddsApiScoreProvider] = {}
+
+
 def _odds(settings: Settings) -> OddsApiScoreProvider:
-    return OddsApiScoreProvider(settings.ODDS_API_KEY.get_secret_value() if settings.ODDS_API_KEY else None, settings.ODDS_API_BASE_URL, settings.odds_sport_keys)
+    """The Odds API scores provider, keyless (it answers nothing, spends nothing) unless WIRE_ODDS_API_SCORES_ENABLED:
+    each of its calls costs credits, and the dashboard polls every minute. ESPN's links give the scores otherwise."""
+    key = settings.odds_api_env_key() if settings.WIRE_ODDS_API_SCORES_ENABLED else None
+    ident = (None if key is None else key.get_secret_value(), settings.ODDS_API_BASE_URL, tuple(settings.odds_sport_keys))
+    if ident not in _ODDS_SCORES:
+        _ODDS_SCORES.clear()
+        _ODDS_SCORES[ident] = OddsApiScoreProvider(ident[0], ident[1], ident[2])
+    return _ODDS_SCORES[ident]
 
 
 async def _fixture(request: Request, settings: Settings, fixture_id: str) -> Fixture:

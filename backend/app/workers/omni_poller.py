@@ -27,11 +27,10 @@ from uuid import UUID
 import httpx
 from celery.signals import worker_process_init, worker_process_shutdown
 from redis import Redis
-from redis.asyncio import Redis as AsyncRedis
 from redis.exceptions import RedisError
 from sqlalchemy import update
 from sqlalchemy.exc import SQLAlchemyError
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from sqlalchemy.pool import NullPool
 
 from app.adapters.base_adapter import AdapterError, StandardizedEvent, build_adapter, parse_http_date
@@ -40,7 +39,6 @@ from app.core.config import get_settings
 from app.core.omni_keys import OmniRedisKeys
 from app.core.security_vault import (
     UnsafeTargetError,
-    VaultConfigurationError,
     VaultCrypto,
     VaultDecryptionError,
     assert_public_target,
@@ -500,29 +498,10 @@ def _buffer_for_quorum(topic: str, event: StandardizedEvent) -> None:
 @asynccontextmanager
 async def _fleet_deps() -> AsyncIterator[FleetDeps]:
     """Loop-bound clients for one asyncio.run (each Celery task gets a fresh event loop)."""
-    redis = AsyncRedis.from_url(_settings.REDIS_URL.get_secret_value(), decode_responses=True)
-    engine = create_async_engine(_settings.DATABASE_URL.get_secret_value(), poolclass=NullPool)
-    http = httpx.AsyncClient(
-        timeout=_settings.omni_http_timeout_seconds,
-        follow_redirects=False,
-        limits=httpx.Limits(max_connections=_settings.omni_http_max_connections),
-    )
-    try:
-        vault: VaultCrypto | None = get_vault_crypto()
-    except VaultConfigurationError:
-        vault = None
-    try:
-        yield FleetDeps(
-            redis=redis,
-            session_factory=async_sessionmaker(engine, expire_on_commit=False),
-            http=http,
-            vault=vault,
-            settings=_settings,
-        )
-    finally:
-        await http.aclose()
-        await redis.aclose()
-        await engine.dispose()
+    from app.services.live_sports_ingestion_service import standalone_fleet_deps  # noqa: PLC0415 - the service imports the fleet
+
+    async with standalone_fleet_deps(_settings) as deps:
+        yield deps
 
 
 @celery_app.task(name="omni.fleet.tick", ignore_result=True)

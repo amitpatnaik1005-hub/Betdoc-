@@ -11,7 +11,7 @@
 import { type CSSProperties, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { BOOKMAKER_THEMES, type MarketCard, type SelectionCard } from "../../../lib/backtest_and_parlay";
-import { type BoardWindow, type MarketColumn, useMatchBoard } from "../../../lib/match_board";
+import { type BoardFixture, type BoardWindow, type MarketColumn, useMatchBoard } from "../../../lib/match_board";
 import type { Slip } from "../../../lib/oracle";
 import { toSlipLeg, useParlaySlipStore } from "../../../store/useParlaySlipStore";
 import { Async, EmptyState, Panel } from "../../../ui/kit";
@@ -47,7 +47,9 @@ export const MatchBoard = ({ slips, onRecord }: { slips: Slip[]; onRecord: () =>
   const held = new Set(legs.map((l) => l.leg_id));
   const inSlip = (legId: string) => held.has(legId);
 
-  const pick = (card: { home: string; away: string }) => (market: MarketCard, s: SelectionCard) => toggle(toSlipLeg(card, market.market, s));
+  const pick = (card: BoardFixture) => (market: MarketCard, s: SelectionCard) => {
+    if (card.priced_from !== "stored") toggle(toSlipLeg(card, market.market, s));  // Group 112: a stored price is never slipped
+  };
   const addParlay = (slip: Slip) =>
     addMany(slip.legs.map((l) => ({ leg_id: l.leg_id, fixture: l.fixture, label: l.label, market: l.market, prices: l.prices, fair_probability: l.fair_probability })));
   const style = { "--wb-primary": theme.primary, "--wb-on-primary": theme.onPrimary, "--wb-card": theme.card, "--wb-muted": theme.muted,

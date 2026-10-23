@@ -8,7 +8,10 @@ The ingestion fleet's Odds API run (``app.services.omni_fleet``) already buys on
   again only when its most urgent fixture's tier (``app.domain.pre_match.cadence``) says its stored board is too old;
 * serves the stored boards to the desk with no network call (``list_fixtures`` / ``get_fixture``);
 * buys one sport on demand (``force_refresh``), behind a cooldown and the fleet's own breaker, quota reserve and the
-  Group 92 cache shield, so a click never spends a credit the fleet would refuse to spend.
+  Group 92 cache shield, so a click never spends a credit the fleet would refuse to spend;
+* gives a stored fixture back as the Odds API event it was kept from (``snapshot_event``, Group 112), so a stored board
+  can be read again by any consumer of the provider's format (Redis hydration, the multi-sport consensus boards)
+  without buying it twice, stamped with the time it was bought (``price_time``), never the time it is read.
 
 Prices are only ever what the provider quoted; consensus and fair odds are derived from them, never filled in.
 """
@@ -292,6 +295,54 @@ async def list_fixtures(db: AsyncSession, settings: Settings, *, sport: str | No
 
 async def get_fixture(db: AsyncSession, match_id: str) -> PreMatchOddsSnapshotModel | None:
     return (await db.execute(select(PreMatchOddsSnapshotModel).where(PreMatchOddsSnapshotModel.match_id == match_id))).scalar_one_or_none()
+
+
+async def stored_boards(db: AsyncSession, sport_keys: Sequence[str], now: datetime, settings: Settings) -> dict[str, list[PreMatchOddsSnapshotModel]]:
+    """Every stored fixture of these sports from in play (PRE_MATCH_INPLAY_WINDOW_HOURS) to PRE_MATCH_HORIZON_HOURS ahead,
+    by sport key, soonest first (Group 112)."""
+    if not sport_keys:
+        return {}
+    now = aware(now)
+    t = PreMatchOddsSnapshotModel
+    rows = (await db.execute(
+        select(t).where(t.sport_key.in_(list(sport_keys)), t.commence_time >= now - timedelta(hours=settings.PRE_MATCH_INPLAY_WINDOW_HOURS),
+                        t.commence_time <= now + timedelta(hours=settings.PRE_MATCH_HORIZON_HOURS)).order_by(t.commence_time, t.match_id)
+    )).scalars().all()
+    boards: dict[str, list[PreMatchOddsSnapshotModel]] = {}
+    for row in rows:
+        boards.setdefault(row.sport_key, []).append(row)
+    return boards
+
+
+def price_time(snapshot: PreMatchOddsSnapshotModel, market: str = "h2h") -> datetime:
+    """When the market's stored prices were bought: its own ``polled_at`` (a later fetch without that market kept the
+    older prices), else the row's last poll."""
+    stamp = _parse_time(((snapshot.markets_json or {}).get(market) or {}).get("polled_at"))
+    return stamp if stamp is not None else aware(snapshot.last_polled_at)
+
+
+def snapshot_event(snapshot: PreMatchOddsSnapshotModel, *, polled_at: datetime | None = None) -> dict[str, Any]:
+    """The stored fixture as the Odds API event it was kept from: every book and market as quoted. With ``polled_at``,
+    only the markets bought in that fetch (so a reader stamping the event with that time never ages a price wrongly).
+    Book titles are not stored; the book's key stands in (no consumer reads the title)."""
+    books: dict[str, dict[str, Any]] = {}
+    for market_key, market in (snapshot.markets_json or {}).items():
+        stamp = _parse_time(market.get("polled_at"))
+        if polled_at is not None and (stamp is None or abs((stamp - aware(polled_at)).total_seconds()) > 1.0):
+            continue
+        for book_key, book in (market.get("books") or {}).items():
+            outcomes = [dict(o) for o in book.get("outcomes") or [] if isinstance(o, Mapping)]
+            if not outcomes:
+                continue
+            updated = book.get("last_update") or market.get("polled_at")
+            entry = books.setdefault(book_key, {"key": book_key, "title": book_key, "last_update": updated, "markets": []})
+            entry["markets"].append({"key": market_key, "last_update": updated, "outcomes": outcomes})
+            if updated and (entry["last_update"] is None or str(updated) > str(entry["last_update"])):
+                entry["last_update"] = updated
+    return {
+        "id": snapshot.match_id, "sport_key": snapshot.sport_key, "commence_time": _iso(snapshot.commence_time),
+        "home_team": snapshot.home_team, "away_team": snapshot.away_team, "bookmakers": list(books.values()),
+    }
 
 
 # ================================================================ force refresh (one sport, on demand)

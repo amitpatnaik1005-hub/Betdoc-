@@ -8,7 +8,7 @@ from datetime import UTC, datetime
 from typing import Annotated, Any, Literal, Self
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from pydantic import AnyUrl, BaseModel, ConfigDict, Field, HttpUrl, SecretStr, model_validator
 from redis.asyncio import Redis
 from redis.exceptions import RedisError
@@ -22,6 +22,7 @@ from app.core.encryption import mask_api_key
 from app.core.omni_keys import OmniRedisKeys
 from app.core.security_vault import VaultCrypto
 from app.models.omni_vault import WS_STRATEGIES, OmniAuthStrategy, OmniHealth, OmniProviderConfig, OmniProviderEndpoint
+from app.services import live_sports_ingestion_service as live_ingest
 
 logger = logging.getLogger(__name__)
 
@@ -347,3 +348,31 @@ async def omni_health(request: Request, session: Annotated[AsyncSession, Depends
         redis_available=redis_available,
         providers=entries,
     )
+
+
+# ---------------------------------------------------------------- Group 112: the live sports feeds
+@router.post("/hydrate-live")
+async def hydrate_live(
+    request: Request,
+    force_refresh: bool = False,
+    hydrate_only: bool = False,
+    with_context: bool = True,
+    sports: str = Query(default="cricket,football", max_length=400, description="cricket, football, or Odds API sport keys"),
+) -> dict[str, Any]:
+    """Buy what the cadence says is due through the ingestion fleet's Odds API source (``force_refresh``: every requested
+    sport now; the breaker, reserve, floor and shield still apply), then refresh the fixtures' context; ``hydrate_only``:
+    rebuild Redis from the stored boards without any provider call. Developed for Amit Ashok Kumar Patnaik."""
+    deps = request.app.state.fleet_deps
+    names = [s for s in sports.split(",") if s.strip()]
+    if hydrate_only:
+        scope, missing = live_ingest.resolve_scope(names, deps.settings)
+        return {"status": "HYDRATED_FROM_DATABASE", "hydration": await live_ingest.hydrate(deps, sports=scope or None), "not_covered": missing,
+                "developer_credit": live_ingest.DEVELOPER_CREDIT}
+    return await live_ingest.ingest(deps, sports=names, force=force_refresh, with_context=with_context)
+
+
+@router.get("/live-ingest/status")
+async def live_ingest_status(request: Request, probe: bool = False) -> dict[str, Any]:
+    """The Odds API source, its keys (``probe``: each checked with the free ``GET /sports``), the sports in season, the
+    store, the cadence's daily spend and the context feeds. Never returns a key."""
+    return await live_ingest.status(request.app.state.fleet_deps, probe=probe)

@@ -80,6 +80,7 @@ def fleet_settings() -> Callable[..., Settings]:
             "ODDS_SPORT_KEYS": "soccer_epl",
             "POLYMARKET_LEAGUES": "epl",
             "ODDS_QUOTA_FLOOR": 10,
+            "ODDS_API_SKIP_INACTIVE_SPORTS": False,  # Group 112's in-season filter has its own tests; the stub's /sports is Polymarket's
         }
         base.update(overrides)
         return get_settings().model_copy(update=base)

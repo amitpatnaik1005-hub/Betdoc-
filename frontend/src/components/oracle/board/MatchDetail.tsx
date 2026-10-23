@@ -12,6 +12,7 @@ import { type BoardFixture, CATEGORIES, type Category, driftFor, type MatchBoard
 import type { Slip } from "../../../lib/oracle";
 import { boardTargets } from "../../../lib/prediction";
 import { ScoreBackedLegs } from "../../prediction/ScoreBackedLegs";
+import { FixtureContextChips, StoredPricesBadge } from "./FixtureContextChips";
 import { OddsBox } from "./OddsBox";
 import { TopParlays } from "./TopParlays";
 
@@ -36,7 +37,12 @@ const Verdict = ({ card, book }: { card: BoardFixture; book: string | null }) =>
       {card.projection && (
         <li>Projected score <strong style={{ color: "var(--wb-primary)" }}>{card.projection.score}</strong> ({pct(card.projection.probability)}, the single likeliest of every scoreline) · expected goals {card.projection.expected_goals[0].toFixed(2)} – {card.projection.expected_goals[1].toFixed(2)}</li>
       )}
-      {likeliest && <li>Likeliest result: <strong>{likeliest.label}</strong> at {pct(likeliest.fair_probability)} (the de-vigged consensus)</li>}
+      {likeliest && (
+        <li>
+          Likeliest result: <strong>{likeliest.label}</strong> at {pct(likeliest.fair_probability)}
+          {card.priced_from === "stored" ? " (the de-vigged consensus when the stored prices were bought)" : " (the de-vigged consensus)"}
+        </li>
+      )}
       {best && best.s.ev !== null && (
         <li>
           {best.s.ev > 0 ? "Best value" : "No selection beats its fair price; closest"}: <strong>{best.s.label}</strong> ({best.m.market}) at {priceFor(best.s, book)?.toFixed(2) ?? "—"}
@@ -67,8 +73,19 @@ export const MatchDetail = ({ card, book, inSlip, drift, onPick, onBack, parlays
       <header className="grid grid-cols-[1fr_auto_1fr] items-center gap-3 rounded-2xl p-4 text-center" style={{ background: "var(--wb-card)" }}>
         <p className="truncate text-base font-bold">{card.home}</p>
         <div className="flex flex-col items-center">
-          <span className="font-mono text-lg font-black" style={{ color: "var(--wb-primary)" }}>{card.in_play ? `${card.minutes_since_kickoff}′` : "VS"}</span>
-          <span className="text-[11px]" style={{ color: "var(--wb-muted)" }}>{card.in_play ? "since kickoff · no live score feed" : card.kickoff ? formatDateTime(card.kickoff) : "kickoff not stated"}</span>
+          <span className="font-mono text-lg font-black" style={{ color: "var(--wb-primary)" }}>
+            {card.context?.score ? `${card.context.score.home}–${card.context.score.away}` : card.in_play ? `${card.minutes_since_kickoff}′` : "VS"}
+          </span>
+          <span className="text-[11px]" style={{ color: "var(--wb-muted)" }}>
+            {card.context?.score ? `${card.context.status === "FINISHED" ? "full time" : `${card.minutes_since_kickoff ?? "—"}′ since kickoff`} · ${card.context.provider}`
+              : card.in_play ? "since kickoff · no results feed pairs this match" : card.kickoff ? formatDateTime(card.kickoff) : "kickoff not stated"}
+          </span>
+          {(card.context || card.priced_from === "stored") && (
+            <span className="mt-1 flex flex-wrap justify-center gap-1 text-[10px]">
+              {card.priced_from === "stored" && <StoredPricesBadge asOf={card.prices_as_of} ageMinutes={card.prices_age_minutes} />}
+              <FixtureContextChips context={card.context} />
+            </span>
+          )}
         </div>
         <p className="truncate text-base font-bold">{card.away}</p>
       </header>
@@ -138,7 +155,7 @@ export const MatchDetail = ({ card, book, inSlip, drift, onPick, onBack, parlays
                   <div className="mt-2 grid grid-cols-1 gap-1.5 sm:grid-cols-2 2xl:grid-cols-3">
                     {m.selections.map((s) => (
                       <OddsBox key={s.leg_id} wide selection={s} label={`${s.label} · ${pct(s.fair_probability)}`} book={book} selected={inSlip(s.leg_id)}
-                               drift={driftFor(drift, s, book)} onPick={() => onPick(m, s)} />
+                               stored={card.priced_from === "stored"} drift={driftFor(drift, s, book)} onPick={() => onPick(m, s)} />
                     ))}
                   </div>
                 )}

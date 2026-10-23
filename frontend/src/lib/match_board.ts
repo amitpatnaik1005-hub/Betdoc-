@@ -14,13 +14,42 @@ import { useResource } from "./resource";
 export type BoardWindow = "live" | "3h" | "12h" | "upcoming" | "all";
 export type MarketColumn = "winner" | "total" | "handicap";
 
+export type ContextStatus = "SCHEDULED" | "IN_PLAY" | "PAUSED" | "FINISHED" | "POSTPONED" | "SUSPENDED" | "CANCELLED" | "UNKNOWN";
+export interface Standing { position: number; points: number | null; played: number | null }
+
+/** Group 112: what Football-Data.org or Sportmonks say about the fixture, where one paired it. */
+export interface FixtureContext {
+  provider: string;
+  provider_id: string;
+  competition: string | null;
+  kickoff: { check: "CONFIRMED" | "MOVED"; provider_kickoff: string; difference_minutes: number };
+  status: ContextStatus;
+  score: { home: number; away: number } | null;
+  standings: { home: Standing | null; away: Standing | null };
+  provider_updated_at: string | null;
+  checked_at: string;
+}
+
 export interface BoardFixture extends FixtureCard {
   country: string | null;
   league_name: string | null;
   market_count: number;
   selection_count: number;
   best_ev: number | null;
+  /** Group 112: "stored" = the Odds API board as bought (no EV, nothing to add), "live" = the live market's prices. */
+  priced_from: "live" | "stored";
+  prices_as_of: string | null;
+  prices_age_minutes: number | null;
+  context: FixtureContext | null;
 }
+
+export const PROVIDER_LABEL: Record<string, string> = { "football-data.org": "Football-Data.org", sportmonks: "Sportmonks" };
+
+export const ordinal = (n: number): string => {
+  const tens = n % 100;
+  const suffix = tens >= 11 && tens <= 13 ? "th" : ({ 1: "st", 2: "nd", 3: "rd" } as Record<number, string>)[n % 10] ?? "th";
+  return `${n}${suffix}`;
+};
 
 export interface MatchBoard {
   as_of: string;
@@ -61,8 +90,14 @@ export const useMatchBoard = (sport: string | null, window: BoardWindow) =>
   useResource(`oracle:board:${sport ?? "all"}:${window}`, async () =>
     withDrift(await apiClient.get<Omit<MatchBoard, "drift">>("/oracle/board", { sport: sport ?? undefined, window })), { intervalMs: 30_000 });
 
-/** A selection's price at a skin's book; BetDoc (no book): the best retail price. */
-export const priceFor = (s: SelectionCard, book: string | null): number | undefined => (book ? s.prices[book] : s.best?.odds);
+/** A selection's price at a skin's book; BetDoc (no book): the best retail price (a stored board has no live best: its
+ * highest stored price is shown, never offered). */
+export const priceFor = (s: SelectionCard, book: string | null, stored = false): number | undefined => {
+  if (book) return s.prices[book];
+  if (s.best) return s.best.odds;
+  const storedPrices = stored ? Object.values(s.prices) : [];
+  return storedPrices.length ? Math.max(...storedPrices) : undefined;
+};
 
 /** How the shown price moved since the previous poll: at the skin's book, or at the book that supplied the best price. */
 export const driftFor = (drift: MatchBoard["drift"], s: SelectionCard, book: string | null): 1 | -1 | undefined => {

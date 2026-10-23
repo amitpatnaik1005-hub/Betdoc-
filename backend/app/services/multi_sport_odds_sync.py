@@ -5,14 +5,17 @@ Developed for Amit Ashok Kumar Patnaik | BetDoc Quantitative Sports Trading Flee
 Two Celery beat jobs drive it (``app.workers.sports_tasks``):
 
 * ``poll_multi_sport_consensus_odds`` (every ``SPORTS_ODDS_POLL_SECONDS``, 60 s): for every active sport's feed
-  keys (its primary key and its active leagues'), fetch The Odds API's head-to-head board, but each key at most
-  every ``SPORTS_FEED_MIN_INTERVAL_SECONDS`` (the quota is finite: ``x-requests-remaining`` under
-  ``ODDS_QUOTA_FLOOR`` stops the tick). Every event is normalised onto the OmniRoute venues (``onexbet`` ->
+  keys (its primary key and its active leagues'), the head-to-head board. Group 112: by default
+  (``SPORTS_ODDS_SOURCE="store"``) the board the ingestion fleet last bought for the key (``pre_match_odds_snapshots``),
+  stamped with that purchase's time: no call, no credit. ``"direct"`` fetches it from The Odds API, each key at most
+  every ``SPORTS_FEED_MIN_INTERVAL_SECONDS`` (the quota is finite: ``x-requests-remaining`` under ``ODDS_QUOTA_FLOOR``
+  stops the tick). Every event is normalised onto the OmniRoute venues (``onexbet`` ->
   ``1xbet``, Betfair net of commission) inside the FA-3 budget (``SPORTS_NORMALIZATION_BUDGET_MS``, 12 ms), given
   its de-vigged consensus and its sharp benchmark (Pinnacle, else the Betfair exchange), and stored in Redis.
 * ``screen_cross_provider_arbitrage`` (every ``SPORTS_ARB_SCREEN_SECONDS``, 30 s; the task keeps its historical name
   so running workers and beats need no change): every stored board screened across all venues for value lines (a
-  retail price over the sharp fair price by ``SPORTS_MIN_EDGE``); the edge list is stored and published live.
+  retail price over the sharp fair price by ``SPORTS_MIN_EDGE``) from boards no older than
+  ``SPORTS_VALUE_LINE_MAX_AGE_SECONDS``; the edge list is stored and published live.
   Group 96 retired cross-venue arbitrage.
 
 ``screen_multi_provider_edges`` prices one match with its sport's quantitative adapter instead of the market, so
@@ -28,7 +31,7 @@ import logging
 import time
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any
 
 import httpx
@@ -232,7 +235,8 @@ class MultiSportOddsSyncService:
             except Exception as exc:  # noqa: BLE001 - a broken vault row must not stop the poll
                 logger.warning("sports: vault lookup for %s failed (%s); falling back to settings", spec.provider_id, type(exc).__name__)
         if spec.key_setting:
-            value = getattr(self.settings, spec.key_setting, None)
+            # Group 112: The Odds API's key is read as the fleet reads it (THE_ODDS_API_KEY, else ODDS_API_KEY)
+            value = self.settings.odds_api_env_key() if spec.provider_id == "the_odds_api" else getattr(self.settings, spec.key_setting, None)
             if isinstance(value, SecretStr) and value.get_secret_value():
                 return ProviderCredential(spec, value, base_url, "settings")
         env = provider_secret(spec.env_key)
@@ -306,6 +310,8 @@ class MultiSportOddsSyncService:
             await ensure_seeded(db)
             feed_keys = await self.get_active_sports_keys(db)
             credential = await self.resolve_credential(db, "the_odds_api")
+        if s.SPORTS_ODDS_SOURCE == "store":
+            return await self._poll_from_store(sessions, redis, feed_keys)
         report: dict[str, Any] = {"feed_keys": len(feed_keys), "fetched": [], "skipped": 0, "events": 0, "errors": {}, "quota_remaining": None,
                                   "max_normalization_ms": 0.0}
         if credential is None or credential.api_key is None:
@@ -334,6 +340,33 @@ class MultiSportOddsSyncService:
                     break
         return report
 
+    async def _poll_from_store(self, sessions: async_sessionmaker[AsyncSession], redis: Redis, feed_keys: Sequence[str]) -> dict[str, Any]:
+        """Group 112: each feed key's board from the one the ingestion fleet last bought, stamped with when it was bought.
+        A feed key the fleet does not buy (not in ODDS_SPORT_KEYS) is listed as missing, never fetched here."""
+        from app.services import pre_match_odds_service as store  # noqa: PLC0415 - the store pulls in the fleet's cadence
+
+        s = self.settings
+        report: dict[str, Any] = {"source": "store", "feed_keys": len(feed_keys), "fetched": [], "missing": [], "skipped": 0, "events": 0,
+                                  "errors": {}, "quota_remaining": None, "max_normalization_ms": 0.0}
+        async with sessions() as db:
+            boards = await store.stored_boards(db, feed_keys, datetime.now(UTC), s)
+        for feed_key in feed_keys:
+            rows = boards.get(feed_key)
+            if not rows:
+                report["missing"].append(feed_key)
+                continue
+            bought = max(store.price_time(row) for row in rows)
+            events = self.normalize_board([store.snapshot_event(row, polled_at=store.price_time(row)) for row in rows], feed_key)
+            await redis.set(board_key(s, feed_key), json.dumps({"feed_key": feed_key, "fetched_at": bought.isoformat(), "source": "store",
+                                                                 "events": [e.as_dict() for e in events]}), ex=s.SPORTS_BOARD_TTL_SECONDS)
+            report["fetched"].append(feed_key)
+            report["events"] += len(events)
+            report["max_normalization_ms"] = max([report["max_normalization_ms"], *self.last_normalization_ms])
+        if report["missing"]:
+            report["reason"] = (f"{len(report['missing'])} feed key(s) not bought by the ingestion fleet (add them to ODDS_SPORT_KEYS): "
+                                f"{', '.join(report['missing'][:8])}")
+        return report
+
     async def stored_boards(self, redis: Redis) -> list[dict[str, Any]]:
         boards = []
         async for key in redis.scan_iter(match=f"{self.settings.SPORTS_PREFIX}:board:*", count=200):
@@ -350,7 +383,16 @@ class MultiSportOddsSyncService:
         s = self.settings
         edges: list[dict[str, Any]] = []
         boards = await self.stored_boards(redis)
+        stale = 0
         for board in boards:
+            # Group 112: a value line is only as good as its price; an old board lists none
+            try:
+                fetched = datetime.fromisoformat(str(board.get("fetched_at")))
+            except ValueError:
+                fetched = None
+            if fetched is None or fetched.tzinfo is None or (now - fetched).total_seconds() > s.SPORTS_VALUE_LINE_MAX_AGE_SECONDS:
+                stale += 1
+                continue
             for event in board.get("events", []):
                 edges.extend(screen_event(event, min_edge=s.SPORTS_MIN_EDGE))
         edges.sort(key=lambda e: e.get("edge_pct", 0.0), reverse=True)
@@ -362,7 +404,7 @@ class MultiSportOddsSyncService:
                 await redis.publish(edges_channel(s), payload)
         except RedisError as exc:
             logger.warning("sports: storing the edge list failed: %s", exc)
-        return {"boards": len(boards), "edges": len(edges), "value_lines": sum(1 for e in edges if e["kind"] == "value")}
+        return {"boards": len(boards), "stale_boards": stale, "edges": len(edges), "value_lines": sum(1 for e in edges if e["kind"] == "value")}
 
     async def latest_edges(self, redis: Redis) -> dict[str, Any]:
         raw = await redis.get(edges_key(self.settings))

@@ -40,9 +40,21 @@ class Settings(BaseSettings):
     BACKEND_CORS_ORIGINS: List[str] = ["http://localhost:5173", "http://127.0.0.1:5173"]
 
     ODDS_API_KEY: SecretStr | None = None
+    # Group 112: the name The Odds API's own dashboard uses; when both are set it is read first (Fleet Command's vault key
+    # still wins over either)
+    THE_ODDS_API_KEY: SecretStr | None = None
     ODDS_POLLING_INTERVAL_SEC: int = 60
     ODDS_API_BASE_URL: str = "https://api.the-odds-api.com/v4"
-    ODDS_SPORT_KEYS: str = "soccer_epl"
+    # Group 112, point b.13: international and franchise cricket, and Europe's five big football competitions. Keys out of
+    # season are skipped for free (ODDS_API_SKIP_INACTIVE_SPORTS), so listing them costs nothing until they start.
+    ODDS_SPORT_KEYS: str = (
+        "cricket_international_t20,cricket_odi,cricket_test_match,cricket_ipl,cricket_t20_blast,"
+        "soccer_epl,soccer_uefa_champs_league,soccer_spain_la_liga,soccer_italy_serie_a,soccer_germany_bundesliga"
+    )
+    # Before buying a board, read The Odds API's /sports list (not metered) and leave out sports that are not in season;
+    # the list is kept ODDS_API_ACTIVE_SPORTS_TTL_SECONDS per process. An unreadable list leaves every sport in.
+    ODDS_API_SKIP_INACTIVE_SPORTS: bool = True
+    ODDS_API_ACTIVE_SPORTS_TTL_SECONDS: float = Field(default=6 * 3600.0, gt=0)
     ODDS_API_REGIONS: str = "uk,eu"
     # Markets per /odds call. Each costs regions x markets credits: "h2h" protects the quota; add
     # "totals,spreads" for Ashoka's Over/Under and Asian handicap legs (BTTS is per event only).
@@ -538,6 +550,9 @@ class Settings(BaseSettings):
     ]
     # ---- The Wire: VIDUR's feeds become the fortress's evidence (Group 78) ----
     WIRE_SCAN_ENABLED: bool = True  # the beat's news, ESPN and weather scans
+    # Group 112: the dashboard's scores come from ESPN (free, synced by the beat). The Odds API scores call costs credits
+    # per sport on every dashboard poll, so it is off unless switched on here (then cached per sport across requests).
+    WIRE_ODDS_API_SCORES_ENABLED: bool = False
     WIRE_PREFIX: str = "betdoc:wire"  # Redis: the live channel, recent frames, ESPN links
     WIRE_RECENT_FRAMES: int = Field(default=50, ge=1, le=500)  # what a new /ws/the-wire socket is sent first
     WIRE_HTTP_TIMEOUT_SECONDS: float = Field(default=8.0, gt=0)
@@ -687,28 +702,64 @@ class Settings(BaseSettings):
     SPORTS_ARB_SCREEN_SECONDS: float = Field(default=30.0, ge=5)  # screen_cross_provider_arbitrage (historical name): the value-line screen
     SPORTS_FEED_MIN_INTERVAL_SECONDS: float = Field(default=900.0, ge=30)  # one feed key is fetched at most this often (quota)
     SPORTS_ODDS_REGIONS: str = "uk,eu,us,au"
+    # Group 112: "store" builds the consensus boards from the boards the ingestion fleet already bought
+    # (pre_match_odds_snapshots), spending no credit; "direct" buys each feed key itself (regions x 1 credits a call)
+    SPORTS_ODDS_SOURCE: Literal["store", "direct"] = "store"
+    SPORTS_VALUE_LINE_MAX_AGE_SECONDS: float = Field(default=900.0, gt=0)  # a board older than this lists no value line
     SPORTS_BOARD_TTL_SECONDS: int = Field(default=3600, ge=60)
     SPORTS_MIN_EDGE: float = Field(default=0.02, gt=0, lt=1)  # a value line: EV over the fair (model or sharp) price
     SPORTS_NORMALIZATION_BUDGET_MS: float = Field(default=12.0, gt=0)  # FA-3: one event's odds normalised within this
     SPORTS_MAX_EDGES: int = Field(default=200, ge=1, le=5000)  # the edge list kept in Redis
 
-    # ---- Pre-match rate persistence (Group 101, point b.13a) ----
+    # ---- Pre-match rate persistence (Group 101, point b.13a; Group 112's quota-safe cadence) ----
     # Every Odds API board the ingestion fleet fetches is also kept as one row per fixture (pre_match_odds_snapshots), and
     # the fleet fetches a sport only when its nearest fixture's tier says the stored board is due: tier 1 (kickoff over
     # TIER1_KICKOFF away) every TIER1_MAX_AGE, tier 2 (over TIER2_KICKOFF away) every TIER2_MAX_AGE, tier 3 (closer, or
     # in play) every TIER3_MAX_AGE, never faster than the fleet's own ODDS_POLLING_INTERVAL_SEC. One /odds call prices
     # every fixture of a sport, so the sport is the unit a credit buys. A sport with no fixture stored is on tier 1.
+    # Group 112: 6h beyond 24h, 2h from 6h to 24h, 30 min inside 6h and in play (Group 101 ran 6h / 60 min / 60 s, which
+    # a 500-credit monthly plan cannot carry: one sport in play at 60 s spends 360 credits in three hours).
     PRE_MATCH_TIERED_POLLING_ENABLED: bool = True  # False: the fleet polls every sport at its own interval (pre-Group 101)
     PRE_MATCH_HORIZON_HOURS: float = Field(default=72.0, gt=0, le=24 * 14)  # the "all" window served to the desk
     PRE_MATCH_INPLAY_WINDOW_HOURS: float = Field(default=3.0, gt=0, le=24 * 6)  # a fixture this long past kickoff is still live (tier 3)
     PRE_MATCH_RETENTION_HOURS: float = Field(default=48.0, gt=0)  # rows this long past kickoff are pruned on the next write
     PRE_MATCH_TIER1_KICKOFF_SECONDS: float = Field(default=24 * 3600.0, gt=0)
     PRE_MATCH_TIER1_MAX_AGE_SECONDS: float = Field(default=6 * 3600.0, gt=0)
-    PRE_MATCH_TIER2_KICKOFF_SECONDS: float = Field(default=2 * 3600.0, gt=0)
-    PRE_MATCH_TIER2_MAX_AGE_SECONDS: float = Field(default=3600.0, gt=0)
-    PRE_MATCH_TIER3_MAX_AGE_SECONDS: float = Field(default=60.0, gt=0)
+    PRE_MATCH_TIER2_KICKOFF_SECONDS: float = Field(default=6 * 3600.0, gt=0)
+    PRE_MATCH_TIER2_MAX_AGE_SECONDS: float = Field(default=2 * 3600.0, gt=0)
+    PRE_MATCH_TIER3_MAX_AGE_SECONDS: float = Field(default=30 * 60.0, gt=0)
     PRE_MATCH_FORCE_REFRESH_COOLDOWN_SECONDS: float = Field(default=60.0, ge=0)  # a sport fetched this recently is served, not re-bought
     PRE_MATCH_REDIS_PREFIX: str = "betdoc:pre_match"  # <prefix>:sport_polled hash: sport key -> last fetch (epoch seconds)
+
+    # ---- Live sports feeds beyond the odds (Group 112, point b.13) ----
+    # Football-Data.org (schedules, kickoff times, league tables, match status and score) and Sportmonks (fixtures, status
+    # and scores of the leagues its plan covers) are paired to the stored Odds API fixtures by team names and kickoff and
+    # kept as each fixture's context in Redis; neither prices anything, and neither settles a bet.
+    FOOTBALL_DATA_ORG_API_KEY: SecretStr | None = None
+    FOOTBALL_DATA_BASE_URL: str = "https://api.football-data.org/v4"
+    # Football-Data.org competition code -> the Odds API sport key it is paired against (the free tier's big five here)
+    FOOTBALL_DATA_COMPETITIONS: dict[str, str] = Field(default_factory=lambda: {
+        "PL": "soccer_epl", "CL": "soccer_uefa_champs_league", "PD": "soccer_spain_la_liga", "SA": "soccer_italy_serie_a", "BL1": "soccer_germany_bundesliga",
+    })
+    # Group 79 spelled it SPORTMONKS_API_KEY; both names are read
+    SPORTSMONKS_API_KEY: SecretStr | None = Field(default=None, validation_alias=AliasChoices("SPORTSMONKS_API_KEY", "SPORTMONKS_API_KEY"))
+    SPORTSMONKS_BASE_URL: str = "https://api.sportmonks.com/v3"
+    # Sportmonks league id -> Odds API sport key (its free plan's two leagues; a paid plan adds rows here)
+    SPORTSMONKS_LEAGUE_SPORT_KEYS: dict[int, str] = Field(default_factory=lambda: {271: "soccer_denmark_superliga", 501: "soccer_spl"})
+    LIVE_CONTEXT_ENABLED: bool = True
+    LIVE_CONTEXT_REFRESH_SECONDS: float = Field(default=900.0, ge=60.0)  # the beat task; one schedule call per provider a run
+    LIVE_CONTEXT_LOOKBACK_DAYS: int = Field(default=1, ge=0, le=3)  # yesterday's matches, for their final score
+    LIVE_CONTEXT_LOOKAHEAD_DAYS: int = Field(default=7, ge=1, le=9)  # Football-Data.org's free tier allows a 10-day range
+    LIVE_CONTEXT_NAME_CUTOFF: float = Field(default=0.85, gt=0.5, le=1.0)  # both sides' name similarity (the Wire's rule)
+    LIVE_CONTEXT_PAIR_WINDOW_HOURS: float = Field(default=72.0, gt=0, le=240)  # a provider kickoff this far off still pairs (and is MOVED)
+    LIVE_CONTEXT_KICKOFF_TOLERANCE_MINUTES: float = Field(default=5.0, ge=0, le=120)  # within this the kickoff is CONFIRMED
+    LIVE_CONTEXT_STANDINGS_MAX_AGE_SECONDS: float = Field(default=6 * 3600.0, ge=600)  # one table call per competition this often
+    LIVE_CONTEXT_TTL_SECONDS: int = Field(default=2 * 86400, ge=3600)
+    LIVE_CONTEXT_REDIS_PREFIX: str = "betdoc:live_context"
+    LIVE_CONTEXT_HTTP_TIMEOUT_SECONDS: float = Field(default=15.0, gt=0, le=120)
+    # The match board lists stored Odds API fixtures the live market is not pricing right now, with their stored prices,
+    # how old those are and no EV (a stale price is never vetted, staked or added to the slip from the board)
+    MATCH_BOARD_STORED_PRICES: bool = True
 
     # ---- BETDOC SCORE PREDICTION (Group 102, point b.16): presentation only; every number comes from the sport engines ----
     PREDICTION_HEATMAP_GOALS: int = Field(default=5, ge=3, le=9)  # the football heatmap's 0..N goals a side
@@ -733,7 +784,6 @@ class Settings(BaseSettings):
     ODDSPAPI_API_KEY: SecretStr | None = None
     SHARPAPI_API_KEY: SecretStr | None = None
     SPORTSDATA_IO_KEY: SecretStr | None = None
-    SPORTMONKS_API_KEY: SecretStr | None = None
     THE_RUNDOWN_API_KEY: SecretStr | None = None
     KALSHI_BASE_URL: str = "https://api.elections.kalshi.com/trade-api/v2"
     MANIFOLD_BASE_URL: str = "https://api.manifold.markets/v0"
@@ -763,6 +813,13 @@ class Settings(BaseSettings):
 
         keys = [s.strip() for s in self.ODDS_SPORT_KEYS.split(",") if s.strip()]
         return keys + [s for s in current().sports if s not in keys]
+
+    def odds_api_env_key(self) -> SecretStr | None:
+        """The environment's Odds API key (Group 112): THE_ODDS_API_KEY, else ODDS_API_KEY."""
+        for key in (self.THE_ODDS_API_KEY, self.ODDS_API_KEY):
+            if key is not None and key.get_secret_value():
+                return key
+        return None
 
     @property
     def polymarket_leagues(self) -> List[str]:

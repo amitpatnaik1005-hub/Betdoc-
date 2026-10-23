@@ -36,8 +36,12 @@ NOW = datetime(2026, 10, 22, 12, 0, tzinfo=UTC)
 H = 3600.0
 
 
+# Group 101's cadence (6h / 60 min / 60 s, tier 2 from 2h); Group 112 lengthened the defaults and pins them in its own tests
+GROUP_101_TIERS = {"PRE_MATCH_TIER2_KICKOFF_SECONDS": 2 * H, "PRE_MATCH_TIER2_MAX_AGE_SECONDS": H, "PRE_MATCH_TIER3_MAX_AGE_SECONDS": 60.0}
+
+
 def _settings(**overrides: Any) -> Settings:
-    return get_settings().model_copy(update=overrides)
+    return get_settings().model_copy(update={**GROUP_101_TIERS, **overrides})
 
 
 S = _settings()
@@ -301,6 +305,7 @@ async def client(sessions) -> AsyncIterator[AsyncClient]:
 
     app.dependency_overrides[get_db] = db
     app.dependency_overrides[pre_match_api.fleet_deps] = lambda: object()
+    app.dependency_overrides[get_settings] = lambda: S
     now = datetime.now(UTC)
     await _store(sessions, [_event("soon", kickoff=now + timedelta(hours=1)), _event("far", kickoff=now + timedelta(hours=40))], now - timedelta(minutes=10))
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:

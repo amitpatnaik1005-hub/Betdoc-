@@ -1103,7 +1103,7 @@ async def test_poll_and_screen_cycle(api: dict[str, Any]) -> None:
         events = [ODDS_EVENT] if feed == "soccer_epl" else []
         return httpx.Response(200, json=events, headers={"x-requests-remaining": "450"})
 
-    settings = get_settings().model_copy(update={"ODDS_API_KEY": None, "SPORTS_FEED_MIN_INTERVAL_SECONDS": 900.0})
+    settings = get_settings().model_copy(update={"ODDS_API_KEY": None, "SPORTS_FEED_MIN_INTERVAL_SECONDS": 900.0, "SPORTS_ODDS_SOURCE": "direct"})
     service = MultiSportOddsSyncService(api_key="poll-key", settings=settings)
     now = datetime.now(UTC)
     report = await service.poll_consensus(sessions, redis, now, transport=httpx.MockTransport(handler))

@@ -91,7 +91,9 @@ ScheduleState = Literal["enabled", "disabled", "paused", "needs_key"]
 Action = Literal["ingest", "probe"]
 
 # Built-in sources whose key may also come from a named Settings field (the pre-fleet configuration)
-ENV_KEY_FALLBACK: dict[str, str] = {"odds_api": "ODDS_API_KEY"}
+# The Settings fields a source's key is read from when Fleet Command holds none, first set wins (Group 112: the Odds
+# API dashboard's own name first)
+ENV_KEY_FALLBACK: dict[str, tuple[str, ...]] = {"odds_api": ("THE_ODDS_API_KEY", "ODDS_API_KEY")}
 _UNMAPPED_SHOWN = 25
 _background: set[asyncio.Task[Any]] = set()
 _entities_synced = False
@@ -226,15 +228,21 @@ def _env_secret_name(descriptor: SourceDescriptor) -> str | None:
     return None
 
 
+def env_key_field(descriptor: SourceDescriptor, settings: Settings) -> str | None:
+    """The Settings field the environment key comes from (its name, never its value), or None."""
+    for field_name in ENV_KEY_FALLBACK.get(descriptor.source_id, ()):
+        value = getattr(settings, field_name, None)
+        if value is not None and value.get_secret_value():
+            return field_name
+    return None
+
+
 def key_origin(row: OmniFleetSource | None, descriptor: SourceDescriptor, settings: Settings) -> str | None:
     """Where the key would come from, without decrypting it (for display and scheduling)."""
     if row is not None and row.encrypted_api_key:
         return "vault"
-    field_name = ENV_KEY_FALLBACK.get(descriptor.source_id)
-    if field_name:
-        value = getattr(settings, field_name, None)
-        if value is not None and value.get_secret_value():
-            return "environment"
+    if env_key_field(descriptor, settings) is not None:
+        return "environment"
     env_name = _env_secret_name(descriptor)
     if env_name and provider_secret(env_name) is not None:
         return "environment"
@@ -245,11 +253,9 @@ def resolve_api_key(row: OmniFleetSource | None, descriptor: SourceDescriptor, s
     """Fleet Command's vault key wins; then the environment (a Settings field or the spec's variable)."""
     if row is not None and row.encrypted_api_key and vault is not None:
         return vault.decrypt_key(row.encrypted_api_key)
-    field_name = ENV_KEY_FALLBACK.get(descriptor.source_id)
-    if field_name:
-        value = getattr(settings, field_name, None)
-        if value is not None and value.get_secret_value():
-            return str(value.get_secret_value())
+    field_name = env_key_field(descriptor, settings)
+    if field_name is not None:
+        return str(getattr(settings, field_name).get_secret_value())
     env_name = _env_secret_name(descriptor)
     secret = provider_secret(env_name) if env_name else None
     return secret.get_secret_value() if secret is not None else None
