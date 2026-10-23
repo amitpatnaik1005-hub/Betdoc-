@@ -47,6 +47,7 @@ const TheConsultant = lazy(() => import('./pages/TheConsultant').then(m => ({ de
 const TheBetSlip = lazy(() => import('./pages/TheBetSlip').then(m => ({ default: m.TheBetSlip })));
 const TheArchive = lazy(() => import('./pages/TheArchive').then(m => ({ default: m.TheArchive })));
 const ControlPanel = lazy(() => import('./pages/ControlPanel').then(m => ({ default: m.ControlPanel })));
+const TestingManual = lazy(() => import('./pages/TestingManual').then(m => ({ default: m.TestingManual })));
 
 // ---------------------------------------------------------------------------
 // UTILITIES PRESERVED FROM ORIGINAL
@@ -881,6 +882,11 @@ const App = () => {
         <Route path="/control-panel" element={
           <AnimatedRoute>
             <ControlPanel />
+          </AnimatedRoute>
+        } />
+        <Route path="/manual" element={
+          <AnimatedRoute>
+            <TestingManual />
           </AnimatedRoute>
         } />
         
