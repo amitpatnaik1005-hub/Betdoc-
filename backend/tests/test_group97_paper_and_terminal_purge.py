@@ -32,6 +32,7 @@ from app.models import Base, User
 from app.models.consultant import ConsultantVerdictModel
 from app.models.real_money import RealBetTicket, RealTicketStatus
 from app.models.tax_and_fx import CurrencyExchangeRate, TaxLedgerEntry
+from app.models.user_bets_ledger import UserPlacedBet
 from app.models.the_hive import BotStatus, LegendaryBot
 from app.services.commander_supervisor import PROBES, ProbeContext
 
@@ -84,7 +85,7 @@ def test_paper_models_are_unmapped_and_the_tax_ledger_stands_alone() -> None:
 async def sessions() -> AsyncIterator[async_sessionmaker[AsyncSession]]:
     engine = create_async_engine("sqlite+aiosqlite:///:memory:", poolclass=StaticPool, connect_args={"check_same_thread": False})
     async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all, tables=[User.__table__, RealBetTicket.__table__, TaxLedgerEntry.__table__, CurrencyExchangeRate.__table__,
+        await conn.run_sync(Base.metadata.create_all, tables=[User.__table__, UserPlacedBet.__table__, RealBetTicket.__table__, TaxLedgerEntry.__table__, CurrencyExchangeRate.__table__,
                                                                   ConsultantVerdictModel.__table__])
     yield async_sessionmaker(engine, expire_on_commit=False)
     await engine.dispose()

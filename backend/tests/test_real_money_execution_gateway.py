@@ -45,13 +45,16 @@ from app.models.real_money import (
     RealTicketStatus,
     RealTransactionType,
 )
-from app.models.user_bets_ledger import FixtureScore
+from app.models.consultant import ConsultantVerdictModel
+from app.models.user_bets_ledger import FixtureScore, UserPlacedBet
 from app.services import real_money_service as rms
 
 DEVELOPER_CREDIT = "Amit Ashok Kumar Patnaik"
 
 TABLES: list[Table] = [
     User.__table__,  # type: ignore[list-item]
+    ConsultantVerdictModel.__table__,  # type: ignore[list-item]  - Group 114: a ticket links its verdict
+    UserPlacedBet.__table__,  # type: ignore[list-item]  - and its Oracle bet
     RealBankroll.__table__,  # type: ignore[list-item]
     RealBetTicket.__table__,  # type: ignore[list-item]
     RealCashTransaction.__table__,  # type: ignore[list-item]

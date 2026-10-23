@@ -4,7 +4,8 @@
  * book's own badge, notches and a perforation, each leg with its sport, fixture, selection (emerald), the book's code and
  * the price as signed, then the money: KUMBHA's Kelly stake, the gross return, the take-home after Section 194BA's TDS
  * and the stop-loss floor. The barcode is Code 39 of the ticket number (a scanner reads it back). Always light, in either
- * theme: it is a printed object. The booking code is the user's own note, kept outside the seal.
+ * theme: it is a printed object. The booking code is the user's own note, kept outside the seal. Under it (Group 114) the
+ * handcrafted desk locks the stake for the slip placed by hand and weighs the book's cashout once it is in play.
  * Developed for Amit Ashok Kumar Patnaik.
  */
 import { useState } from "react";
@@ -12,6 +13,7 @@ import { TIER_STYLE } from "../../lib/backtest_and_parlay";
 import { code39 } from "../../lib/barcode";
 import { BetdocLogo } from "../../ui/brand";
 import { inr, type Ticket } from "../../lib/slip_ornament";
+import { HandcraftedPlacementDesk } from "./HandcraftedPlacementDesk";
 
 const pct = (p: number | null | undefined, digits = 1) => (p === null || p === undefined ? "—" : `${(p * 100).toFixed(digits)}%`);
 const signedPct = (p: number | null | undefined) => (p === null || p === undefined ? "—" : `${p >= 0 ? "+" : ""}${pct(p)}`);
@@ -176,6 +178,9 @@ export const LuxuryBetCardOrnament = ({ ticket, onSaveBooking, saving }: { ticke
         </div>
         {!valid && <p className="mt-1 text-[11px] text-rose-700">3 to 32 letters, digits, dashes or underscores, starting with a letter or digit.</p>}
       </section>
+
+      {/* Group 114: lock the stake for the slip placed by hand, then the book's cashout weighed in play */}
+      <HandcraftedPlacementDesk ticket={ticket} code={code} codeValid={valid} />
 
       {/* the barcode, then the seal */}
       <div className="border-t border-stone-200 bg-white px-5 pb-4 pt-5 sm:px-6">

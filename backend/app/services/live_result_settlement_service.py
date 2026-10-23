@@ -15,7 +15,9 @@ free results feeds and settles every ledger from it:
    overwritten; a final score is never replaced.
 3. ``settle_real_tickets``: each placed ticket with a score and a market the grader can read settles through the desk's
    own ``settle_ticket`` (the bankroll, the cash ledger, the 30% TDS and its tax-ledger row, the stop-loss and cool-down).
-   Nothing it cannot read is voided: it stays placed and is reported.
+   Nothing it cannot read is voided: it stays placed and is reported. A ticket placed from the Bet-Slip (Group 114)
+   settles as its Oracle bet settled, at that bet's return (a parlay leg by leg; a void leg shortens the odds), through
+   ``realize_ticket``; the sweep settles the Oracle's bets first.
 4. ``settle_exchange_orders``: each accepted order graded the same way, its payout by the Arena's own rule (P&L = payout
    - stake). TDS is recorded only for an order a real exchange accepted (an adapter registered in
    ``app.exchanges.factory``); today every exchange account routes to the mock exchange, so no order there moved money
@@ -244,6 +246,7 @@ class LedgerReport:
     won: int = 0
     lost: int = 0
     void: int = 0
+    cashed_out: int = 0  # Group 114: a Bet-Slip ticket whose Oracle bet recorded the book's cashout
     pending_ungradeable: int = 0  # a score is there but the market or selection cannot be read: left for a person
     gross_payout: Decimal = Decimal("0.00")
     tds_withheld: Decimal = Decimal("0.00")
@@ -257,11 +260,13 @@ class LedgerReport:
             self.won += 1
         elif result in ("LOST", "HALF_LOST"):
             self.lost += 1
+        elif result == "CASHED_OUT":
+            self.cashed_out += 1
         else:
             self.void += 1
 
     def as_dict(self) -> dict[str, Any]:
-        return {"settled": self.settled, "won": self.won, "lost": self.lost, "void": self.void, "pending_ungradeable": self.pending_ungradeable,
+        return {"settled": self.settled, "won": self.won, "lost": self.lost, "void": self.void, "cashed_out": self.cashed_out, "pending_ungradeable": self.pending_ungradeable,
                 "gross_payout": str(self.gross_payout), "tds_withheld": str(self.tds_withheld), "net_post_tax": str(self.net_post_tax),
                 "tax_entries": self.tax_entries, "rows": self.rows}
 
@@ -287,7 +292,12 @@ async def settle_real_tickets(session: AsyncSession, settings: Settings, now: da
         select(RealBetTicket).where(RealBetTicket.status == RealTicketStatus.PLACED.value).order_by(RealBetTicket.id).with_for_update(skip_locked=True)
     )).scalars())
     scores = {s.fixture_id: s for s in (await session.execute(select(FixtureScore).where(FixtureScore.fixture_id.in_({t.match_id for t in tickets})))).scalars()} if tickets else {}
+    linked = [t.user_placed_bet_id for t in tickets if t.user_placed_bet_id is not None]
+    bets = {b.id: b for b in (await session.execute(select(UserPlacedBet).where(UserPlacedBet.id.in_(linked)))).scalars()} if linked else {}
     for ticket in tickets:
+        if ticket.user_placed_bet_id is not None:
+            await _settle_from_bet(session, settings, ticket, bets.get(ticket.user_placed_bet_id), now, report)
+            continue
         score = scores.get(ticket.match_id)
         if score is None or not ticket.settleable_from_score:
             continue
@@ -315,6 +325,31 @@ async def settle_real_tickets(session: AsyncSession, settings: Settings, now: da
         report.rows.append({"ticket": ticket.ticket_reference, "result": settled.status, "gross": str(settled.gross_return), "tds": str(settled.tds_deducted),
                             "payout": str(settled.settlement_payout), "source": score.source})
     return report
+
+
+async def _settle_from_bet(session: AsyncSession, settings: Settings, ticket: RealBetTicket, bet: UserPlacedBet | None, now: datetime,
+                           report: LedgerReport) -> None:
+    """Group 114: a ticket placed from the Bet-Slip, at what its Oracle bet returned (WON, HALF_WON, VOID, HALF_LOST,
+    LOST, or CASHED_OUT when the book's cashout was recorded on the bet)."""
+    if bet is None or bet.status == PlacedStatus.PENDING.value:
+        return
+    if bet.return_inr is None:
+        report.rows.append({"ticket": ticket.ticket_reference, "refused": f"its Oracle bet is {bet.status} without a return"})
+        return
+    try:
+        async with session.begin_nested():
+            settled = await rms.realize_ticket(session, settings, ticket, bet.return_inr, status=bet.status, now=now,
+                                               notes=f"Settled as its Oracle bet settled ({bet.status.replace('_', ' ').lower()}, {bet.settlement_source or 'automated'})")
+    except rms.RealMoneyError as exc:
+        report.rows.append({"ticket": ticket.ticket_reference, "refused": f"{exc.code}: {exc}"})
+        return
+    report.count(settled.status)
+    report.gross_payout += settled.gross_return
+    report.tds_withheld += settled.tds_deducted
+    report.net_post_tax += settled.settlement_payout
+    report.tax_entries += 1 if settled.tds_deducted > 0 else 0
+    report.rows.append({"ticket": ticket.ticket_reference, "result": settled.status, "gross": str(settled.gross_return), "tds": str(settled.tds_deducted),
+                        "payout": str(settled.settlement_payout), "source": "oracle_bet"})
 
 
 def exchange_order_payout(stake: Decimal, odds: Decimal, result: LegResult) -> Decimal:

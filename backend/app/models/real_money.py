@@ -65,6 +65,7 @@ class RealTicketStatus(StrEnum):
     PUSH = "PUSH"
     VOID = "VOID"
     CANCELLED = "CANCELLED"
+    CASHED_OUT = "CASHED_OUT"  # Group 114: the trader took the book's cashout; the amount realised is the return
 
 
 OPEN_STATUSES = frozenset({RealTicketStatus.PENDING_PLACEMENT.value, RealTicketStatus.PLACED.value})
@@ -131,6 +132,7 @@ class RealBetTicket(Base):
     __tablename__ = "real_bet_tickets"
     __table_args__ = (
         UniqueConstraint("ticket_reference"),
+        UniqueConstraint("verdict_id"),  # uq_real_bet_tickets_verdict_id: a signed slip is placed once (Group 114)
         CheckConstraint("placed_stake >= 0", name="ticket_stake_positive"),
         CheckConstraint("target_odds > 1", name="target_odds_valid"),
         CheckConstraint("placed_odds IS NULL OR placed_odds > 1", name="placed_odds_valid"),
@@ -167,6 +169,10 @@ class RealBetTicket(Base):
     quote_market: Mapped[str | None] = mapped_column(String(64), nullable=True)
     quote_selection: Mapped[str | None] = mapped_column(String(32), nullable=True)
     settleable_from_score: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    # Group 114: a slip placed from the Bet-Slip keeps its signed verdict and the Oracle bet that tracks its legs; the
+    # ticket then settles (or is cashed out) as that bet does, so a parlay settles leg by leg from the scores
+    verdict_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("consultant_verdicts.id", ondelete="SET NULL"), nullable=True)
+    user_placed_bet_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("user_placed_bets.id", ondelete="SET NULL"), nullable=True, index=True)
 
     status: Mapped[str] = mapped_column(String(32), default=RealTicketStatus.PENDING_PLACEMENT.value, nullable=False)
     gross_return: Mapped[Decimal] = mapped_column(MONEY, default=Decimal("0.00"), nullable=False)

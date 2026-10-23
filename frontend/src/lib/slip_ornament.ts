@@ -73,6 +73,28 @@ export interface Ticket {
   mailto_url: string;
   sms_url: string;
   deliveries: TicketDelivery[];
+  /** Group 114: the real-money ticket this slip was placed as, once the placement is confirmed */
+  placement: TicketPlacement | null;
+}
+
+export interface TicketPlacement {
+  ticket_reference: string;
+  status: string;
+  bookmaker: string;
+  booking_code: string | null;
+  placed_stake: string;
+  placed_odds: string | null;
+  placed_at: string | null;
+  stop_loss_pct: number;
+  stop_loss_floor_inr: string;
+  monitor_active: boolean;
+  current_win_prob: number | null;
+  fair_value_inr: string | null;
+  gross_return: string;
+  settlement_payout: string;
+  net_profit: string;
+  tds_deducted: string;
+  settled_at: string | null;
 }
 
 export interface TicketRow {

@@ -135,6 +135,8 @@ class RealBetTicketResponse(BaseModel):
     quote_market: str | None = None
     quote_selection: str | None = None
     settleable_from_score: bool
+    verdict_id: str | None = None  # Group 114: the signed verdict a Bet-Slip ticket was placed from
+    user_placed_bet_id: str | None = None  # and the Oracle bet that settles it
     status: str
     gross_return: float
     settlement_payout: float
@@ -172,6 +174,81 @@ class OddsCheckResponse(BaseModel):
     odds_decay_detected: bool
     is_suspended: bool
     as_of: str | None = None
+    developer_name: str = DEVELOPER_CREDIT
+
+
+# ================================================================ Group 114: the handcrafted desk
+class ConfirmHandcraftedPlacementRequest(_In):
+    report_id: uuid.UUID = Field(description="The Consultant verdict (report) id the Bet-Slip was issued for")
+    booking_code: str = Field(min_length=2, max_length=32, description="The booking code the bookmaker issued for the placed slip")
+    placed_odds: float | None = Field(default=None, gt=1.0, le=1000.0, description="What the book gave; omitted: the ticket's odds")
+    placed_stake_inr: float | None = Field(default=None, gt=0, le=1e9, description="What was staked; omitted: the verdict's stake")
+    override_odds_decay: bool = False
+
+
+class HandcraftedPlacementResponse(BaseModel):
+    ticket: RealBetTicketResponse
+    booking_code: str | None = None
+    user_placed_bet_id: str
+    stop_loss_pct: float
+    stop_loss_floor_inr: float
+    monitor: dict[str, Any] | None = None
+    monitor_note: str | None = None
+    replayed: bool = False
+    developer_name: str = DEVELOPER_CREDIT
+
+
+class CashoutEvaluationResponse(BaseModel):
+    ticket_reference: str
+    advice: Literal["HOLD", "CASHOUT_ADVISED", "STOP_LOSS_BREACH"]
+    message: str
+    current_offer: float
+    fair_value: float
+    stop_loss_floor: float
+    stop_loss_pct: float
+    hold_ratio: float | None = None
+    target_profit_pct: float
+    win_probability: float
+    probability_source: Literal["LIVE", "LAST_TICK", "ENTRY"]
+    placed_stake: float
+    placed_odds: float | None = None
+    twin_call: dict[str, str] | None = None
+    developer_name: str = DEVELOPER_CREDIT
+
+
+class ExecuteCashoutRequest(_In):
+    ticket_reference: str = Field(min_length=1, max_length=32)
+    cashout_amount_inr: float = Field(gt=0, le=1e9, description="What the book paid for the cashout (gross)")
+    reason: str = Field(default="CASHOUT_ADVISED", max_length=32, description="STOP_LOSS_BREACH, CASHOUT_ADVISED, HOLD or a twin pullout reason")
+
+
+class ExecuteCashoutResponse(BaseModel):
+    ticket_reference: str
+    status: str
+    gross_cashout: float
+    placed_stake: float
+    net_winnings: float
+    tds_deducted: float
+    net_payout: float
+    net_profit: float
+    liquid_cash_balance: float
+    locked_exposure: float
+    monitor_closed: bool
+    developer_name: str = DEVELOPER_CREDIT
+
+
+class VaultReconciliationResponse(BaseModel):
+    reconciled: bool  # the cash ledger agrees with liquid cash (exposure is always brought to the open tickets)
+    open_tickets_count: int
+    previous_exposure: float
+    locked_exposure: float
+    exposure_drift: float
+    adjusted: bool
+    liquid_cash: float
+    ledger_cash: float
+    cash_drift: float
+    total_bankroll: float
+    checked_at: str
     developer_name: str = DEVELOPER_CREDIT
 
 

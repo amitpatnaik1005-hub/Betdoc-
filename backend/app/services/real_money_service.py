@@ -37,6 +37,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import Settings
+from app.core.events import publish_event
 from app.domain.wagering.legs import translate
 from app.domain.wagering.tax import financial_year, section_115bbj
 from app.domain.sports.registry import SportAdapterRegistry
@@ -84,6 +85,7 @@ BOOK_PREFIX = {RealBookmaker.PARIMATCH.value: "PM", RealBookmaker.ONEXBET.value:
 BOOK_VENUE = {RealBookmaker.PARIMATCH.value: "parimatch", RealBookmaker.ONEXBET.value: "1xbet"}
 
 LOSING = frozenset({RealTicketStatus.LOST.value, RealTicketStatus.HALF_LOST.value})
+PAYING = frozenset({RealTicketStatus.WON.value, RealTicketStatus.HALF_WON.value, RealTicketStatus.CASHED_OUT.value})
 REFUNDING = frozenset({RealTicketStatus.PUSH.value, RealTicketStatus.VOID.value, RealTicketStatus.CANCELLED.value})
 SETTLED_OUTCOMES = frozenset({
     RealTicketStatus.WON.value,
@@ -357,14 +359,9 @@ def format_clipboard_slip(
     )
 
 
-async def create_execution_ticket(
-    db: AsyncSession,
-    redis: Redis | None,
-    settings: Settings,
-    user_id: uuid.UUID,
-    req: TicketRequest,
-    now: datetime,
-) -> RealBetTicket:
+async def execution_gate(db: AsyncSession, redis: Redis | None, settings: Settings, user_id: uuid.UUID, bookmaker: str, now: datetime) -> RealBankroll:
+    """Everything that stops a real wager: CHANAKYA's kill switch, a book's emergency lock (Group 86), SHIVAJI's 15%
+    daily stop-loss latch and the cool-down after consecutive losses. Returns the bankroll it read."""
     # 1. Check Chanakya kill switch
     is_halted = await kill_switch_state(db, redis, settings)
     if is_halted:
@@ -373,8 +370,8 @@ async def create_execution_ticket(
     # 1b. Group 86: a book under an emergency safety lock takes no ticket
     from app.services.emergency_kill_switch_service import bookmaker_locked  # noqa: PLC0415 - the fortress imports the control panel
 
-    if await bookmaker_locked(redis, settings, req.bookmaker):
-        raise RealMoneyError("BOOKMAKER_LOCKED", f"{req.bookmaker} is under an emergency safety lock (Control Panel).", 423)
+    if await bookmaker_locked(redis, settings, bookmaker):
+        raise RealMoneyError("BOOKMAKER_LOCKED", f"{bookmaker} is under an emergency safety lock (Control Panel).", 423)
 
     # 2. Get bankroll & verify Shivaji circuit breakers
     bankroll = await get_or_create_bankroll(db, user_id, now)
@@ -396,6 +393,19 @@ async def create_execution_ticket(
             423,
             seconds_remaining=rem,
         )
+    return bankroll
+
+
+async def create_execution_ticket(
+    db: AsyncSession,
+    redis: Redis | None,
+    settings: Settings,
+    user_id: uuid.UUID,
+    req: TicketRequest,
+    now: datetime,
+) -> RealBetTicket:
+    # 1-2. The kill switch, the book's lock and SHIVAJI's breakers
+    bankroll = await execution_gate(db, redis, settings, user_id, req.bookmaker, now)
 
     # 3. Calculate True Edge and Minimum Odds Floor
     p = Decimal(str(req.true_probability))
@@ -518,7 +528,7 @@ async def confirm_placement(
     if stake > bankroll.cash_balance:
         raise RealMoneyError(
             "INSUFFICIENT_FUNDS",
-            f"Stake of ₹{stake:,.2f} exceeds available liquid cash of ₹{bankroll.cash_balance:,.2f}",
+            f"Stake of ₹{stake:,.2f} exceeds available liquid cash of ₹{bankroll.cash_balance:,.2f}. Please deposit funds into Todar Mal's Vault.",
             400,
             available=float(bankroll.cash_balance),
         )
@@ -740,9 +750,8 @@ async def settle_ticket(
     elif final_outcome == RealTicketStatus.LOST.value:
         bankroll.locked_exposure -= stake
         bankroll.realized_pnl -= stake
-        bankroll.daily_realized_loss += stake
-        bankroll.consecutive_losses += 1
         net_profit = -stake
+        _record_loss(bankroll, stake, settings, user_id, now)
 
         db.add(RealCashTransaction(
             user_id=user_id,
@@ -757,26 +766,6 @@ async def settle_ticket(
             created_at=now,
         ))
 
-        # Check Shivaji Stop-Loss: 15% daily drawdown
-        start_bal = bankroll.daily_starting_balance
-        if start_bal > ZERO:
-            loss_pct = float(bankroll.daily_realized_loss / start_bal)
-            if loss_pct >= settings.REAL_DAILY_DRAWDOWN_PCT:
-                bankroll.stop_loss_triggered = True
-                bankroll.stop_loss_until = _next_midnight_ist(now)
-                logger.warning(
-                    f"SHIVAJI STOP-LOSS TRIPPED for user {user_id}: daily loss ₹{bankroll.daily_realized_loss:,.2f} "
-                    f"reached {loss_pct*100:.1f}% >= 15%."
-                )
-
-        # Check consecutive loss cool-down: 3 losses -> 30m cool-down
-        if bankroll.consecutive_losses >= settings.REAL_LOSS_STREAK_LIMIT:
-            bankroll.cooldown_until = now + timedelta(minutes=settings.REAL_COOLDOWN_MINUTES)
-            logger.warning(
-                f"SHIVAJI COOL-DOWN ACTIVATED for user {user_id}: {bankroll.consecutive_losses} consecutive losses. "
-                f"Cool-down until {bankroll.cooldown_until}."
-            )
-
     # 4. Half Lost Scenario
     elif final_outcome == RealTicketStatus.HALF_LOST.value:
         half_stake = _round_paisa(stake / TWO)
@@ -786,8 +775,7 @@ async def settle_ticket(
         bankroll.locked_exposure -= stake
         bankroll.cash_balance += payout
         bankroll.realized_pnl -= half_stake
-        bankroll.daily_realized_loss += half_stake
-        bankroll.consecutive_losses += 1
+        _record_loss(bankroll, half_stake, settings, user_id, now)  # Group 114: a half loss counts toward the daily drawdown too
 
         db.add(RealCashTransaction(
             user_id=user_id,
@@ -839,6 +827,95 @@ async def settle_ticket(
 
     await db.flush()
     return ticket
+
+
+def _record_loss(bankroll: RealBankroll, loss: Decimal, settings: Settings, user_id: uuid.UUID, now: datetime) -> None:
+    """SHIVAJI's accounting of a realised loss: the day's loss and the losing streak, the 15% daily stop-loss latch (until
+    00:00 IST) and the cool-down after REAL_LOSS_STREAK_LIMIT losses in a row."""
+    bankroll.daily_realized_loss += loss
+    bankroll.consecutive_losses += 1
+    start_bal = bankroll.daily_starting_balance
+    if start_bal > ZERO:
+        loss_pct = float(bankroll.daily_realized_loss / start_bal)
+        if loss_pct >= settings.REAL_DAILY_DRAWDOWN_PCT:
+            bankroll.stop_loss_triggered = True
+            bankroll.stop_loss_until = _next_midnight_ist(now)
+            logger.warning(f"SHIVAJI STOP-LOSS TRIPPED for user {user_id}: daily loss ₹{bankroll.daily_realized_loss:,.2f} reached {loss_pct*100:.1f}%.")
+    if bankroll.consecutive_losses >= settings.REAL_LOSS_STREAK_LIMIT:
+        bankroll.cooldown_until = now + timedelta(minutes=settings.REAL_COOLDOWN_MINUTES)
+        logger.warning(f"SHIVAJI COOL-DOWN ACTIVATED for user {user_id}: {bankroll.consecutive_losses} consecutive losses, until {bankroll.cooldown_until}.")
+
+
+async def realize_ticket(
+    db: AsyncSession,
+    settings: Settings,
+    ticket: RealBetTicket,
+    gross: Decimal,
+    *,
+    status: str,
+    now: datetime,
+    notes: str | None = None,
+) -> RealBetTicket:
+    """Group 114: a placed ticket closed at what the book actually paid: a cashout the trader took, or the return of the
+    Oracle bet that tracks a parlay's legs (a void leg shortens the odds, so stake x odds would overstate it).
+
+    Gross Payout = the amount; Net Winnings = max(0, Gross - stake); TDS = 30% of Net Winnings (Section 115BBJ, withheld
+    under 194BA, ledgered); Payout = Gross - TDS; P&L = Payout - stake. The locked stake leaves exposure, the payout joins
+    liquid cash, and a loss counts toward SHIVAJI's breakers."""
+    if ticket.status != RealTicketStatus.PLACED.value:
+        raise RealMoneyError("NOT_PLACED", f"Ticket {ticket.ticket_reference} is {ticket.status}, not placed", 409)
+    if gross < ZERO:
+        raise RealMoneyError("INVALID_AMOUNT", "The amount realised cannot be negative", 422)
+    bankroll = await get_or_create_bankroll(db, ticket.user_id, now)
+    stake, gross = ticket.placed_stake, _round_paisa(gross)
+    breakdown = section_115bbj(gross, stake)
+    tds, payout = breakdown.tds, gross - breakdown.tds
+    net_profit = payout - stake
+    before = bankroll.cash_balance
+    ref = ticket.ticket_reference
+    what = "Cashout taken" if status == RealTicketStatus.CASHED_OUT.value else f"{status.replace('_', ' ').title()} return"
+
+    bankroll.locked_exposure = max(ZERO, bankroll.locked_exposure - stake)
+    bankroll.cash_balance = before + payout
+    if gross > ZERO:
+        # a winning return or a cashout is a payout; a void slip, or a half loss's half stake, comes back as a refund
+        kind = RealTransactionType.BET_PAYOUT_CREDIT if status in PAYING else RealTransactionType.BET_REFUND
+        db.add(RealCashTransaction(user_id=ticket.user_id, ticket_id=ticket.id, transaction_type=kind.value, amount=gross,
+                                   currency="INR", balance_before=before, balance_after=before + gross, reference_id=ref,
+                                   description=f"{what} on {ref}: ₹{gross:,.2f} on a ₹{stake:,.2f} stake", created_at=now))
+    else:
+        db.add(RealCashTransaction(user_id=ticket.user_id, ticket_id=ticket.id, transaction_type=RealTransactionType.BET_STAKE_FORFEITED.value, amount=stake,
+                                   currency="INR", balance_before=before, balance_after=before, reference_id=ref, description=f"Stake forfeited on {ref}", created_at=now))
+    if tds > ZERO:
+        db.add(RealCashTransaction(user_id=ticket.user_id, ticket_id=ticket.id, transaction_type=RealTransactionType.TDS_WITHHOLDING_DEBIT.value, amount=tds,
+                                   currency="INR", balance_before=before + gross, balance_after=bankroll.cash_balance, reference_id=ref,
+                                   description=f"Section 115BBJ 30% TDS withheld on the ₹{breakdown.net_winnings:,.2f} net winnings of {ref}", created_at=now))
+        db.add(TaxLedgerEntry(user_id=ticket.user_id, paper_bet_id=None, mode="LIVE", gross_payout=breakdown.gross_payout, stake=breakdown.stake,
+                              net_winnings=breakdown.net_winnings, tds_rate=float(breakdown.tds_rate), tds_amount=tds, net_post_tax_payout=breakdown.net_post_tax_payout,
+                              currency="INR", jurisdiction="IN", section="115BBJ", financial_year=financial_year(now), created_at=now))
+    bankroll.gross_winnings += breakdown.net_winnings
+    bankroll.total_tds_deducted += tds
+    bankroll.realized_pnl += net_profit
+    if net_profit < ZERO:
+        _record_loss(bankroll, -net_profit, settings, ticket.user_id, now)
+    elif net_profit > ZERO:
+        bankroll.consecutive_losses = 0
+    bankroll.high_water_mark = max(bankroll.high_water_mark, bankroll.cash_balance + bankroll.locked_exposure)
+    bankroll.updated_at = now
+
+    ticket.status = status
+    ticket.gross_return, ticket.settlement_payout, ticket.net_profit, ticket.tds_deducted = gross, payout, net_profit, tds
+    ticket.settled_at = now
+    if notes:
+        ticket.notes = (ticket.notes + " | " + notes) if ticket.notes else notes
+    await db.flush()
+    return ticket
+
+
+async def announce(redis: Redis | None, action: str, user_id: uuid.UUID, **detail: Any) -> None:
+    """Group 114: the desk's own event on the bus (placement, cashout, reconcile), after the commit: every open view of
+    the vault, the Bet-Slip and the Oracle's P&L refetches."""
+    await publish_event(redis, {"type": "real_money", "section": "real-money", "action": action, "user_id": str(user_id), **detail})
 
 
 def _resolve_scorecard_outcome(ticket: RealBetTicket, scorecard: dict[str, Any]) -> str:
@@ -995,6 +1072,8 @@ def ticket_view(ticket: RealBetTicket) -> dict[str, Any]:
         "quote_market": ticket.quote_market,
         "quote_selection": ticket.quote_selection,
         "settleable_from_score": ticket.settleable_from_score,
+        "verdict_id": str(ticket.verdict_id) if ticket.verdict_id else None,
+        "user_placed_bet_id": str(ticket.user_placed_bet_id) if ticket.user_placed_bet_id else None,
         "status": ticket.status,
         "gross_return": float(ticket.gross_return),
         "settlement_payout": float(ticket.settlement_payout),

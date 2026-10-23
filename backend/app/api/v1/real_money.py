@@ -13,6 +13,12 @@ trader places ASHVATTHAMA's ticket on Parimatch (or 1xBet) by hand and confirms 
 * ``GET  /active-tickets``, ``/history``, ``/transactions``: the open tickets, every ticket, the cash ledger
 * ``GET  /tickets/{reference}/odds-check``: the book's live price against the floor (line drift)
 * ``GET  /tax-certificate``: the financial year's TDS certificate for the live desk
+* ``POST /confirm-handcrafted-placement``: a Bet-Slip placed by hand: the seal checked, the stake locked, the Oracle
+  bet that settles it and the twin's in-play watch (Group 114)
+* ``GET  /tickets/{ticket}/cashout-evaluation?offer_inr=``: the book's live cashout offer: HOLD, CASHOUT_ADVISED or
+  STOP_LOSS_BREACH
+* ``POST /cashout``: the cashout taken at the book, with Section 115BBJ's 30% TDS on the net winnings
+* ``POST /reconcile``: locked exposure brought to the open tickets; liquid cash checked against its ledger
 
 Refusals answer ``{"detail": {"code", "message", ...}}``: 400 (insufficient funds, odds decayed), 404, 409 (state),
 422 (validation, no edge, stake over the 5% ceiling), 423 (SHIVAJI's stop-loss or cool-down, the kill switch).
@@ -35,18 +41,27 @@ from app.models.tax_and_fx import TaxLedgerEntry
 from app.models.real_money import RealBetTicket
 from app.schemas.real_money import (
     DEVELOPER_CREDIT,
+    CashoutEvaluationResponse,
+    ConfirmHandcraftedPlacementRequest,
     ConfirmPlacementRequest,
     CreateRealTicketRequest,
     DepositRequest,
+    ExecuteCashoutRequest,
+    ExecuteCashoutResponse,
+    HandcraftedPlacementResponse,
     OddsCheckResponse,
     RealBankrollResponse,
     RealBetTicketResponse,
     RealCashTransactionResponse,
     SettleRealTicketRequest,
     TaxCertificateResponse,
+    VaultReconciliationResponse,
     WithdrawRequest,
 )
+from app.services import handcrafted_execution_service as hes
+from app.services import live_cashout_service as lcs
 from app.services import real_money_service as rms
+from app.services import vault_reconciliation_service as vrs
 
 Db = Annotated[AsyncSession, Depends(get_db)]
 AppSettings = Annotated[Settings, Depends(get_settings)]
@@ -254,3 +269,76 @@ async def get_tax_certificate(
         "issued_at": datetime.now(UTC).isoformat(),
         "developer_name": DEVELOPER_CREDIT,
     }
+
+# ================================================================ Group 114: the handcrafted desk
+@router.post("/confirm-handcrafted-placement", response_model=HandcraftedPlacementResponse, summary="Confirm a Bet-Slip Placed by Hand")
+async def confirm_handcrafted_placement(
+    payload: ConfirmHandcraftedPlacementRequest,
+    request: Request,
+    db: Db,
+    settings: AppSettings,
+    current_user: CurrentUser,
+) -> dict[str, Any]:
+    redis = _redis(request)
+    try:
+        placement = await hes.confirm_slip_placement(
+            db, redis, settings, current_user.id, payload.report_id, payload.booking_code, datetime.now(UTC),
+            placed_odds=None if payload.placed_odds is None else Decimal(str(payload.placed_odds)),
+            placed_stake=None if payload.placed_stake_inr is None else Decimal(str(payload.placed_stake_inr)),
+            override_odds_decay=payload.override_odds_decay,
+        )
+        await db.commit()
+    except rms.RealMoneyError as exc:
+        await db.rollback()
+        raise _fail(exc) from exc
+    if not placement.replayed:
+        ticket = placement.ticket
+        await rms.announce(redis, "placement", current_user.id, ticket_reference=ticket.ticket_reference, stake=str(ticket.placed_stake),
+                           odds=str(ticket.placed_odds), bookmaker=ticket.bookmaker, booking_code=ticket.bookmaker_slip_id)
+    return hes.placement_dict(placement)
+
+
+@router.get("/tickets/{ticket}/cashout-evaluation", response_model=CashoutEvaluationResponse, summary="Evaluate the Book's Cashout Offer")
+async def evaluate_cashout_offer(
+    ticket: str,
+    request: Request,
+    db: Db,
+    settings: AppSettings,
+    current_user: CurrentUser,
+    offer_inr: Annotated[float, Query(gt=0, le=1e9, description="The bookmaker's live cashout offer, in rupees")],
+) -> dict[str, Any]:
+    try:
+        evaluation = await lcs.evaluate(db, _redis(request), settings, current_user.id, ticket, Decimal(str(offer_inr)), datetime.now(UTC))
+    except rms.RealMoneyError as exc:
+        raise _fail(exc) from exc
+    return evaluation.as_dict()
+
+
+@router.post("/cashout", response_model=ExecuteCashoutResponse, summary="Record the Cashout Taken at the Book")
+async def record_cashout(
+    payload: ExecuteCashoutRequest,
+    request: Request,
+    db: Db,
+    settings: AppSettings,
+    current_user: CurrentUser,
+) -> dict[str, Any]:
+    try:
+        cashout = await lcs.execute_cashout(db, settings, current_user.id, payload.ticket_reference, Decimal(str(payload.cashout_amount_inr)),
+                                            payload.reason, datetime.now(UTC))
+        await db.commit()
+    except rms.RealMoneyError as exc:
+        await db.rollback()
+        raise _fail(exc) from exc
+    t = cashout.ticket
+    await rms.announce(_redis(request), "cashout", current_user.id, ticket_reference=t.ticket_reference, gross=str(t.gross_return),
+                       tds=str(t.tds_deducted), payout=str(t.settlement_payout), net_profit=str(t.net_profit))
+    return cashout.as_dict()
+
+
+@router.post("/reconcile", response_model=VaultReconciliationResponse, summary="Reconcile the Vault")
+async def reconcile_vault(request: Request, db: Db, current_user: CurrentUser) -> dict[str, Any]:
+    report = await vrs.reconcile(db, current_user.id, datetime.now(UTC))
+    await db.commit()
+    if report["adjusted"]:
+        await rms.announce(_redis(request), "reconcile", current_user.id, exposure_drift=report["exposure_drift"])
+    return report

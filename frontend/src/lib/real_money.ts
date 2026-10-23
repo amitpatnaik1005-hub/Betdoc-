@@ -4,6 +4,10 @@
  *
  * TODAR MAL's real cash vault (deposits, withdrawals, the cash ledger), the settled ticket history and the
  * Section 115BBJ 30% TDS certificate. Tickets settle on the server from recorded final scores.
+ *
+ * Group 114, the handcrafted desk: a Bet-Slip the user placed by hand is confirmed here (the stake locked), the book's
+ * live cashout offer is weighed against fair value and the stop-loss floor, the cashout taken is recorded with its TDS,
+ * and the vault's exposure is reconciled against its open tickets. BetDoc never places a bet or takes a cashout.
  */
 
 import { apiClient } from "../api/client";
@@ -20,7 +24,8 @@ export type RealTicketStatus =
   | "HALF_LOST"
   | "PUSH"
   | "VOID"
-  | "CANCELLED";
+  | "CANCELLED"
+  | "CASHED_OUT"; // Group 114: the cashout the user took at the book
 
 export type RealTransactionType =
   | "DEPOSIT"
@@ -85,6 +90,8 @@ export interface RealBetTicket {
   quote_market: string | null;
   quote_selection: string | null;
   settleable_from_score: boolean;
+  verdict_id: string | null; // Group 114: the signed verdict a Bet-Slip ticket was placed from
+  user_placed_bet_id: string | null; // and the Oracle bet that settles it
   status: RealTicketStatus;
   gross_return: number;
   settlement_payout: number;
@@ -137,6 +144,103 @@ export interface DepositInput {
 export interface WithdrawInput {
   amount: number;
   notes?: string | null;
+}
+
+// ========================================================================= GROUP 114: THE HANDCRAFTED DESK
+
+export interface HandcraftedPlacementPayload {
+  report_id: string;
+  booking_code: string;
+  placed_odds?: number;
+  placed_stake_inr?: number;
+  override_odds_decay?: boolean;
+}
+
+export interface HandcraftedPlacement {
+  ticket: RealBetTicket;
+  booking_code: string | null;
+  user_placed_bet_id: string;
+  stop_loss_pct: number;
+  stop_loss_floor_inr: number;
+  monitor: Record<string, unknown> | null;
+  monitor_note: string | null;
+  replayed: boolean;
+  developer_name: string;
+}
+
+export type CashoutAdvice = "HOLD" | "CASHOUT_ADVISED" | "STOP_LOSS_BREACH";
+
+export interface CashoutEvaluation {
+  ticket_reference: string;
+  advice: CashoutAdvice;
+  message: string;
+  current_offer: number;
+  fair_value: number;
+  stop_loss_floor: number;
+  stop_loss_pct: number;
+  hold_ratio: number | null;
+  target_profit_pct: number;
+  win_probability: number;
+  /** LIVE: every open leg priced now; LAST_TICK: the in-play watch's last priced tick; ENTRY: the probability at placement */
+  probability_source: "LIVE" | "LAST_TICK" | "ENTRY";
+  placed_stake: number;
+  placed_odds: number | null;
+  twin_call: { reason: string; action: string } | null;
+  developer_name: string;
+}
+
+export interface CashoutResult {
+  ticket_reference: string;
+  status: string;
+  gross_cashout: number;
+  placed_stake: number;
+  net_winnings: number;
+  tds_deducted: number;
+  net_payout: number;
+  net_profit: number;
+  liquid_cash_balance: number;
+  locked_exposure: number;
+  monitor_closed: boolean;
+  developer_name: string;
+}
+
+export interface ReconciliationReport {
+  reconciled: boolean;
+  open_tickets_count: number;
+  previous_exposure: number;
+  locked_exposure: number;
+  exposure_drift: number;
+  adjusted: boolean;
+  liquid_cash: number;
+  ledger_cash: number;
+  cash_drift: number;
+  total_bankroll: number;
+  checked_at: string;
+  developer_name: string;
+}
+
+/** The Bet-Slip placed by hand at the book: the seal checked, the stake locked, the Oracle bet and the in-play watch. */
+export async function confirmHandcraftedPlacement(payload: HandcraftedPlacementPayload): Promise<HandcraftedPlacement> {
+  const result = await apiClient.post<HandcraftedPlacement>("/real-money/confirm-handcrafted-placement", payload);
+  invalidate("real_money", "bet-slip", "oracle");
+  return result;
+}
+
+/** The book's live cashout offer against fair value and the stop-loss floor (nothing is written). */
+export const evaluateCashoutOffer = (ticketReference: string, offerInr: number) =>
+  apiClient.get<CashoutEvaluation>(`/real-money/tickets/${encodeURIComponent(ticketReference)}/cashout-evaluation`, { offer_inr: offerInr });
+
+/** The cashout the user took at the book: 30% TDS on the net winnings, the payout into liquid cash. */
+export async function executeCashout(ticketReference: string, cashoutAmountInr: number, reason: string = "CASHOUT_ADVISED"): Promise<CashoutResult> {
+  const result = await apiClient.post<CashoutResult>("/real-money/cashout", { ticket_reference: ticketReference, cashout_amount_inr: cashoutAmountInr, reason });
+  invalidate("real_money", "bet-slip", "oracle");
+  return result;
+}
+
+export async function reconcileRealVault(): Promise<ReconciliationReport> {
+  const result = await apiClient.post<ReconciliationReport>("/real-money/reconcile");
+  invalidate("real_money");
+  return result;
 }
 
 // ========================================================================= API CALLS

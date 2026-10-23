@@ -5,6 +5,8 @@ six delivery channels. Developed for Amit Ashok Kumar Patnaik.
 * ``view``: one ticket (``app.domain.slip_ornament.ticket``) with its text channels: the coupon (1-click copy), the
   WhatsApp, SMS and mail deep links. Print / PDF and the PNG poster are drawn by the browser from the same figures.
 * ``record_booking``: the bookmaker's booking code once the user placed the slip (kept outside the seal).
+* ``issued`` / ``mark_booked``: the verdict, its record and its ticket, and the booking code, for the real-money desk's
+  handcrafted placement (Group 114), which also puts the placed ticket on the view (``placement``).
 * ``export_docx``: the editable Word ticket with the Consultant's diagnostic report (``docx_bytes``).
 * ``send``: the ticket through one of the Sentinel's configured channels (Telegram, Twilio SMS, Email), to the
   administrators' own chats, phones or inboxes: an administrator's action, logged as a BET_SLIP alert with its
@@ -73,10 +75,17 @@ def _deliveries(record: BetSlipTicketModel | None) -> list[dict[str, Any]]:
     return list(reversed((record.deliveries or []) if record is not None else []))
 
 
-def _view(ticket: tk.Ticket, record: BetSlipTicketModel | None) -> dict[str, Any]:
+def _view(ticket: tk.Ticket, record: BetSlipTicketModel | None, placement: dict[str, Any] | None = None) -> dict[str, Any]:
     return {**ticket.as_dict(), "coupon_text": tk.coupon_text(ticket), "sms_text": tk.sms_text(ticket), "whatsapp_url": tk.whatsapp_url(ticket),
             "mailto_url": tk.mailto_url(ticket), "sms_url": tk.sms_url(ticket), "deliveries": _deliveries(record),
-            "booking_recorded_at": None if record is None or record.booking_recorded_at is None else record.booking_recorded_at.isoformat()}
+            "booking_recorded_at": None if record is None or record.booking_recorded_at is None else record.booking_recorded_at.isoformat(),
+            "placement": placement}
+
+
+async def _placement(session: AsyncSession, settings: Settings, verdict_id: uuid.UUID) -> dict[str, Any] | None:
+    from app.services.handcrafted_execution_service import placement_view  # noqa: PLC0415 - the real-money desk imports this module
+
+    return await placement_view(session, settings, verdict_id)
 
 
 async def tickets(session: AsyncSession, settings: Settings, user_id: uuid.UUID, limit: int, now: datetime) -> list[dict[str, Any]]:
@@ -104,7 +113,23 @@ async def tickets(session: AsyncSession, settings: Settings, user_id: uuid.UUID,
 async def view(session: AsyncSession, settings: Settings, user_id: uuid.UUID, report_id: uuid.UUID, now: datetime) -> dict[str, Any]:
     row = await _verdict(session, user_id, report_id)
     record = await _record(session, row.id)
-    return _view(_issue(row, record, settings, now), record)
+    return _view(_issue(row, record, settings, now), record, await _placement(session, settings, row.id))
+
+
+async def issued(session: AsyncSession, settings: Settings, user_id: uuid.UUID, report_id: uuid.UUID,
+                 now: datetime) -> tuple[ConsultantVerdictModel, BetSlipTicketModel | None, tk.Ticket]:
+    """The user's verdict, its record and its ticket, the seal re-checked (OrnamentRefusal: not found, broken seal,
+    not an approval, no stake)."""
+    row = await _verdict(session, user_id, report_id)
+    record = await _record(session, row.id)
+    return row, record, _issue(row, record, settings, now)
+
+
+async def mark_booked(session: AsyncSession, row: ConsultantVerdictModel, code: str, now: datetime) -> BetSlipTicketModel:
+    """The booking code on the ticket's record (the caller commits)."""
+    record = await _record_for(session, row, now)
+    record.booking_code, record.booking_recorded_at = code, now
+    return record
 
 
 async def _record_for(session: AsyncSession, row: ConsultantVerdictModel, now: datetime) -> BetSlipTicketModel:
@@ -122,7 +147,7 @@ async def record_booking(session: AsyncSession, settings: Settings, user_id: uui
     record = await _record_for(session, row, now)
     record.booking_code, record.booking_recorded_at = code, (now if code else None)
     await session.commit()
-    return _view(_issue(row, record, settings, now), record)
+    return _view(_issue(row, record, settings, now), record, await _placement(session, settings, row.id))
 
 
 async def export_docx(session: AsyncSession, settings: Settings, user_id: uuid.UUID, report_id: uuid.UUID, now: datetime) -> tuple[str, bytes]:

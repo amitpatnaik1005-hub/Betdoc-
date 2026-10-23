@@ -42,6 +42,7 @@ from app.domain.result_settlement import Waiting, canonical_leg, grade, match_re
 from app.domain.wagering.tax import financial_year, section_115bbj
 from app.models import BetLedger, ExchangeAccount, User
 from app.models.cfo_vault import MarketResult
+from app.models.consultant import ConsultantVerdictModel
 from app.models.odds import OddsSnapshot
 from app.models.real_money import RealBankroll, RealBetTicket, RealCashTransaction
 from app.models.tax_and_fx import TaxLedgerEntry
@@ -54,8 +55,8 @@ ROOT = Path(__file__).resolve().parents[2]
 TEST_POSTGRES_URL = os.environ.get("TEST_POSTGRES_URL")
 NOW = datetime(2026, 10, 23, 12, 0, tzinfo=UTC)
 KICKOFF = datetime(2026, 10, 21, 19, 0, tzinfo=UTC)  # finished well before NOW
-TABLES = (User, ExchangeAccount, BetLedger, RealBankroll, RealBetTicket, RealCashTransaction, TaxLedgerEntry, FixtureScore, UserPlacedBet,
-          UserPlacedLeg, OddsSnapshot, MarketResult)
+TABLES = (User, ExchangeAccount, BetLedger, ConsultantVerdictModel, UserPlacedBet, UserPlacedLeg, RealBankroll, RealBetTicket, RealCashTransaction,
+          TaxLedgerEntry, FixtureScore, OddsSnapshot, MarketResult)  # Group 114: a ticket references its verdict and its Oracle bet
 
 
 def _settings(**overrides: Any) -> Settings:

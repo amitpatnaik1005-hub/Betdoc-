@@ -13,6 +13,8 @@ import { toast } from "../store/useToastStore";
 import { OMNI_WILDCARD_TOPIC, OmniSocket } from "./OmniGateway";
 
 const MONEY_SECTIONS = ["arena", "vault", "ledger", "capital", "dashboard", "telemetry", "the-vault"];
+// Group 114: what a real-money write moves: the vault, the Bet-Slip and the Oracle's P&L
+const REAL_MONEY_FANOUT = [...MONEY_SECTIONS, "real_money", "bet-slip", "oracle"];
 
 /** Backend section (first path segment after /api/v1/) -> resource prefixes to refetch. */
 const SECTION_FANOUT: Record<string, string[]> = {
@@ -31,6 +33,8 @@ const SECTION_FANOUT: Record<string, string[]> = {
   signals: ["signals", "arena"],
   // Fleet Command writes under /api/v1/omni/fleet; CFO executions, settlements and risk settings under /api/v1/omni
   omni: ["fleet", "cfo"],
+  // Group 114: the real-money desk
+  "real-money": REAL_MONEY_FANOUT,
 };
 
 function handleBusEvent(data: unknown): void {
@@ -50,6 +54,11 @@ function handleBusEvent(data: unknown): void {
     invalidate(...MONEY_SECTIONS, "real_money", "oracle", "bet-slip", "commanders");
     const settled = Number((event as BusEvent & { settled?: number }).settled ?? 0);
     if (settled > 0) toast.info(`${settled} bet${settled === 1 ? "" : "s"} settled from final scores`, "Bankroll, open positions and P&L are updated.");
+    return;
+  }
+  if (event.type === "real_money") {
+    // Group 114: the desk's own event (placement, cashout, reconcile): every other open view refetches
+    invalidate(...REAL_MONEY_FANOUT);
     return;
   }
   if (event.type === "fleet") {

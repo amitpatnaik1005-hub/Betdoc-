@@ -817,6 +817,8 @@ class Settings(BaseSettings):
     REAL_LOSS_STREAK_LIMIT: int = Field(default=3, ge=1, le=20)  # 3 consecutive losses
     REAL_COOLDOWN_MINUTES: int = Field(default=30, ge=1, le=1440)  # 30-minute cool-down
     REAL_SETTLE_INTERVAL_SECONDS: float = Field(default=60.0, ge=10)
+    # Group 114: a slip placed by hand from the Bet-Slip is watched for a cashout this far over its stake
+    REAL_CASHOUT_TARGET_PROFIT_PCT: float = Field(default=0.80, gt=0, le=100)
 
     @property
     def odds_sport_keys(self) -> List[str]:

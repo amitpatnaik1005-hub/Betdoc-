@@ -74,7 +74,7 @@ export const TheBetSlip = () => {
         steps={[
           "Approve a slip in the BetDoc Consultant: only a gold-grade verdict whose seal holds gets a ticket",
           "Find each leg at the book by its fixture and the book's own code, check the prices are still the ticket's, place it by hand",
-          "Record the booking code the book gives you, then copy, print, export or send the ticket",
+          "Record the booking code the book gives you and lock the stake in Todar Mal's vault; while it plays, weigh the book's cashout offer here",
         ]}
         kpiCodes={["SLIP_SCORE", "KELLY_STAKE", "EV", "OVERROUND"]}
       />
