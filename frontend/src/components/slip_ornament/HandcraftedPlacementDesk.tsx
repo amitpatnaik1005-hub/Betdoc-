@@ -184,7 +184,7 @@ const CashoutModal = ({ placement, offer, advice, onClose }: { placement: Ticket
 };
 
 /** A placed slip: the live badge, the stop-loss floor, the cashout quote and the cashout taken. */
-const InPlayDesk = ({ placement, bookLabel }: { placement: TicketPlacement; bookLabel: string }) => {
+export const InPlayDesk = ({ placement, bookLabel }: { placement: TicketPlacement; bookLabel: string }) => {
   const [offer, setOffer] = useState("");
   // the server's answer for one offer; shown only while that offer is still the one typed
   const [answer, setAnswer] = useState<{ offer: number; evaluation: CashoutEvaluation | null; problem: string | null } | null>(null);

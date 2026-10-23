@@ -820,6 +820,28 @@ class Settings(BaseSettings):
     # Group 114: a slip placed by hand from the Bet-Slip is watched for a cashout this far over its stake
     REAL_CASHOUT_TARGET_PROFIT_PCT: float = Field(default=0.80, gt=0, le=100)
 
+    # ---- Street-smart synthesizer, system splitter, daily market health (Group 115) ----
+    # Legs come only from the live board (Ashoka's candidates), priced at the desk's book within the quote age Ashoka
+    # vets with; nothing is filled in when the board is thin.
+    SYNTH_HORIZON_HOURS: float = Field(default=48.0, gt=0, le=72)  # legs kicking off within this window
+    SYNTH_MIN_LEG_PROBABILITY: float = Field(default=0.60, gt=0, lt=1)  # an anchor: the consensus gives it at least this
+    SYNTH_MIN_LEG_EV: float = Field(default=0.0, ge=-0.5, le=1)  # and the book pays at least fair for it (0: no negative-EV leg)
+    SYNTH_MIN_LEGS: int = Field(default=4, ge=2, le=20)  # the fewest legs a synthesized slip stops at
+    SYNTH_MAX_LEGS: int = Field(default=20, ge=2, le=20)  # the Oracle ledger settles at most 20 legs
+    SYNTH_MAX_SPORT_SHARE: float = Field(default=0.5, gt=0, le=1)  # no sport fills more of the slip while another sport is priced
+    SYNTH_SPLIT_SHARES: tuple[Decimal, Decimal, Decimal] = (Decimal("0.40"), Decimal("0.40"), Decimal("0.20"))  # Fortress, Growth, Moonshot
+    SYNTH_SPLIT_MIN_LEGS: int = Field(default=5, ge=5, le=20)  # three nested tickets need at least 3, 4 and 5 legs
+    SYNTH_TELEGRAM_TTL_SECONDS: int = Field(default=6 * 3600, ge=60)  # a chat's last /synthesize, for its /split
+    MARKET_HEALTH_HOUR: int = Field(default=7, ge=0, le=23)  # the daily intimation, SENTINEL_TIMEZONE: before the 08:00 hype
+    MARKET_HEALTH_MINUTE: int = Field(default=55, ge=0, le=59)
+    MARKET_HEALTH_REST_BELOW: int = Field(default=60, ge=1, le=100)  # under this: REST_DAY (a warning goes to the phone)
+    MARKET_HEALTH_PRIME_FROM: int = Field(default=80, ge=1, le=100)  # from this: PRIME_HARVEST (the anchors go to the phone)
+    MARKET_HEALTH_MARGIN_ELEVATED: float = Field(default=0.055, gt=0, lt=1)  # the desk books' average Match Odds overround
+    MARKET_HEALTH_MARGIN_SEVERE: float = Field(default=0.075, gt=0, lt=1)
+    MARKET_HEALTH_TOP_TIER: int = Field(default=1, ge=1, le=5)  # a "Tier-1" fixture: its league's registry tier at most this
+    MARKET_HEALTH_ABSENCES_PER_SIDE: int = Field(default=3, ge=1)  # this many active OUT/SUSPENDED players: a depleted squad
+    MARKET_HEALTH_WIRE_LOOKBACK_HOURS: float = Field(default=48.0, gt=0)  # rotation news this recent counts
+
     @property
     def odds_sport_keys(self) -> List[str]:
         """ODDS_SPORT_KEYS, then the sports the Vault activated (``app.core.fleet_overlay``)."""

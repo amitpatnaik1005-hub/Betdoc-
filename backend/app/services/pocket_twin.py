@@ -15,6 +15,9 @@ written for the chat:
 * ``/vault``: the CFO bankroll, KUMBHA's drawdown regime, the last 24 hours' settled P&L, the bookmaker accounts and
   the active stop-loss shields;
 * ``/ask <question>``: the Scout Oracle (Group 100), briefed on the linked account's live book.
+* Group 115: ``/today``: TODAR MAL's market health (``market_health_service``); ``/synthesize <stake> <odds> [book]``:
+  the street-smart multi-sport slip from the live board; ``/split [stake]``: that slip, priced again, as the Fortress,
+  Growth and Moonshot tickets. Recording the tickets stays in the PWA.
 
 Account commands need the chat linked to a BetDoc account: a one-time code from the PWA, sent as ``/link CODE`` (or
 through the bot's ``t.me`` deep link). Nothing is placed, staked or moved from a chat; money moves stay in the PWA.
@@ -23,6 +26,7 @@ through the bot's ``t.me`` deep link). Nothing is placed, staked or moved from a
 from __future__ import annotations
 
 import html
+import json
 import re
 import secrets
 import uuid
@@ -511,3 +515,110 @@ async def ask(sessions: async_sessionmaker[AsyncSession], settings: Settings, us
         except ScoutDomainError as exc:
             return TwinReply(f"🤖 {esc(exc.message)}", outcome="REFUSED")
     return TwinReply(f"🤖 <b>Scout Oracle</b>\n{esc(entry.oracle_response)}\n<i>Answered by {_SOURCES.get(source, source)}.</i>", outcome="ASKED", detail={"source": source})
+
+
+# ================================================================ Group 115: when to bet, the street-smart slip, its split
+_TIER_SIGN = {"REST_DAY": "⏸️", "SELECTIVE": "⚠️", "PRIME_HARVEST": "🔥"}
+SYNTH_USAGE = "Usage: /synthesize &lt;stake&gt; &lt;odds&gt; [parimatch|1xbet], e.g. /synthesize 250 20 for ₹250 toward ₹5,000."
+_BOOK_ARGS = {"parimatch": "parimatch", "pm": "parimatch", "1xbet": "1xbet", "1x": "1xbet", "onexbet": "1xbet"}
+
+
+def _last_key(settings: Settings, chat_id: int | None) -> str:
+    return f"{SentinelKeys(settings).prefix}:synth:last:{chat_id}"
+
+
+async def today(sessions: async_sessionmaker[AsyncSession], redis: Redis | None, settings: Settings, now: datetime) -> TwinReply:
+    """TODAR MAL's market health for today, evaluated now (``market_health_service``)."""
+    from app.services import market_health_service as health  # noqa: PLC0415 - the board loads on use
+
+    try:
+        async with sessions() as db:
+            snapshot, _ = await health.evaluate(db, redis, settings, now)
+            await db.commit()
+    except health.MarketHealthUnavailable as exc:
+        return TwinReply(f"📊 The market cannot be scored right now: {esc(exc)}", outcome="NO_MARKET")
+    margin = snapshot.average_bookmaker_margin
+    lines = [f"{_TIER_SIGN.get(snapshot.advisory_tier, '📊')} <b>Market health {snapshot.health_score}/100 · {esc(snapshot.advisory_tier.replace('_', ' '))}</b>",
+             esc(snapshot.advisory_message), "",
+             f"Fixtures today at Parimatch/1xBet: {snapshot.active_fixtures_count} · margin {'not measured' if margin is None else pct(margin)} · "
+             f"rotation/absence risk {'not measured' if snapshot.rotation_risks_count is None else snapshot.rotation_risks_count} · anchors {snapshot.anchors_count}"]
+    if snapshot.deductions:
+        lines.append("Deductions: " + "; ".join(f"{esc(d['reason'])} (-{d['points']})" for d in snapshot.deductions))
+    if snapshot.top_anchors:
+        lines.append("Anchors: " + ", ".join(f"{esc(a['label'])} @ {esc(a['odds'])} ({esc(ASHOKA_BOOKMAKERS.get(a['book'], a['book']))})"
+                                            for a in snapshot.top_anchors[:3]))
+    lines.append("<i>Developed for Amit Ashok Kumar Patnaik</i>")
+    keyboard = rows([{"text": "🧮 Synthesize ₹250 → ₹5,000", "callback_data": "/synthesize 250 20"}],
+                    [url_button(settings, "Open the synthesizer", "/oracle?tab=builder&mode=synthesizer")])
+    return TwinReply("\n".join(lines), keyboard, "TODAY", {"tier": snapshot.advisory_tier, "score": snapshot.health_score})
+
+
+async def synthesize(redis: Redis | None, settings: Settings, now: datetime, chat_id: int | None, args: Sequence[str]) -> TwinReply:
+    """The street-smart slip toward stake x odds at the book (``street_smart_synthesizer``), kept for this chat's /split."""
+    from app.services import street_smart_synthesizer as synth  # noqa: PLC0415
+
+    try:
+        stake, odds = Decimal(args[0].lstrip("₹").replace(",", "")), Decimal(args[1].rstrip("xX"))
+    except (IndexError, InvalidOperation):
+        return TwinReply(SYNTH_USAGE, outcome="BAD_ARGUMENT")
+    book = _BOOK_ARGS.get(args[2].casefold(), "") if len(args) > 2 else "parimatch"  # the desk's primary account
+    if not book or not stake.is_finite() or not odds.is_finite() or stake <= 0 or odds <= 1 or stake > Decimal("1000000") or odds > Decimal("100000"):
+        return TwinReply(SYNTH_USAGE, outcome="BAD_ARGUMENT")
+    try:
+        result = await synth.synthesize_for(redis, settings, now, stake=stake, target_return=(stake * odds).quantize(Decimal("0.01")), book=book)
+    except synth.SynthesisError as exc:
+        return TwinReply(f"🧮 {esc(exc.message)}", outcome="REFUSED")
+    if not result["legs"]:
+        return TwinReply(f"🧮 {esc(result['shortfall'])}", outcome="EMPTY")
+    head = (f"🧮 <b>Street-smart slip · {result['leg_count']} legs @ {Decimal(result['total_odds']):.2f}x · {esc(result['book_label'])}</b>\n"
+            f"₹{Decimal(result['target_stake_inr']):,.2f} returns ₹{Decimal(result['projected_return_inr']):,.2f} · wins {pct(result['joint_probability'])} · "
+            f"EV {signed_pct(result['joint_ev'])} · {esc(' + '.join(result['sports_represented']))}")
+    legs = [f"{i}) {esc(leg['fixture'])}: {esc(leg['label'])} [{esc(leg['code'])}] @ {esc(leg['odds'])} (fair {pct(leg['fair_probability'])})"
+            for i, leg in enumerate(result["legs"], 1)]
+    text = "\n".join([head, "", *legs] + ([f"\n⚠️ {esc(result['shortfall'])}"] if result["shortfall"] else []) + ["", "<i>You place it yourself at the book.</i>"])
+    if redis is not None:
+        try:
+            await redis.set(_last_key(settings, chat_id), json.dumps({"leg_ids": [leg["leg_id"] for leg in result["legs"]], "book": book, "stake": str(stake)}),
+                            ex=settings.SYNTH_TELEGRAM_TTL_SECONDS)
+        except (RedisError, OSError):
+            pass
+    keyboard = rows([{"text": "🛡️ Split into 3 tickets", "callback_data": "/split"}] if result["leg_count"] >= settings.SYNTH_SPLIT_MIN_LEGS else [],
+                    [url_button(settings, "Open the synthesizer", "/oracle?tab=builder&mode=synthesizer")])
+    return TwinReply(text[:4000], keyboard, "SYNTHESIZED", {"legs": result["leg_count"], "odds": result["total_odds"], "book": book,
+                                                          "reached_target": result["reached_target"]})
+
+
+async def split(redis: Redis | None, settings: Settings, now: datetime, chat_id: int | None, args: Sequence[str]) -> TwinReply:
+    """This chat's last /synthesize, priced again and split into the Fortress, Growth and Moonshot tickets."""
+    from app.services import street_smart_synthesizer as synth  # noqa: PLC0415
+
+    raw = None
+    if redis is not None:
+        try:
+            raw = await redis.get(_last_key(settings, chat_id))
+        except (RedisError, OSError):
+            raw = None
+    if not raw:
+        return TwinReply("🛡️ Nothing to split yet: send /synthesize &lt;stake&gt; &lt;odds&gt; first.", outcome="EMPTY")
+    last = json.loads(raw)
+    try:
+        stake = Decimal(args[0].lstrip("₹").replace(",", "")) if args else Decimal(last["stake"])
+    except InvalidOperation:
+        return TwinReply("Usage: /split [session stake], e.g. /split 250", outcome="BAD_ARGUMENT")
+    if not stake.is_finite() or stake <= 0 or stake > Decimal("1000000"):
+        return TwinReply("Usage: /split [session stake], e.g. /split 250", outcome="BAD_ARGUMENT")
+    try:
+        result = synth.split_payload(await synth.split_for(redis, settings, now, leg_ids=last["leg_ids"], session_stake=stake, book=last["book"]), last["book"])
+    except synth.SynthesisError as exc:
+        return TwinReply(f"🛡️ {esc(exc.message)}", outcome="REFUSED")
+    lines = [f"🛡️ <b>System split · ₹{stake:,.2f} session · {esc(result['book_label'])}</b>"]
+    for key in ("slip_a_fortress", "slip_b_growth", "slip_c_moonshot"):
+        slip = result[key]
+        lines.append(f"<b>Slip {slip['tier']} · {esc(slip['tier_name'])}</b>: {slip['leg_count']} legs @ {Decimal(slip['odds']):.2f}x · "
+                     f"₹{Decimal(slip['stake_inr']):,.2f} returns ₹{Decimal(slip['projected_payout_inr']):,.2f} · wins {pct(slip['win_probability'])}")
+    lines += ["", esc(result["formula_explanation"]), "",
+              f"Chance the session returns its stake: {pct(result['recover_stake_probability'])} · expected return "
+              f"₹{Decimal(result['expected_session_return_inr']):,.2f} (one ticket of every leg: {pct(result['single_ticket']['probability'])})",
+              "<i>Record the three tickets in BetDoc (Oracle → Bet builder → Street-smart), place each by hand, then confirm its booking code.</i>"]
+    keyboard = rows([url_button(settings, "Record the tickets", "/oracle?tab=builder&mode=synthesizer")])
+    return TwinReply("\n".join(lines)[:4000], keyboard, "SPLIT", {"shield": result["capital_shield_active"], "legs": len(last["leg_ids"])})

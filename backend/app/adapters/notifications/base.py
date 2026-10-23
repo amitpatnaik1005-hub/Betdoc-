@@ -59,6 +59,8 @@ class OutboundMessage:
         return EMOJI[self.severity]
 
     def headline(self) -> str:
+        if self.kind == AlertKind.MARKET_HEALTH:
+            return self.title  # Group 115: the day's advice carries its own sign (rest or prime)
         return f"{self.emoji} [{self.severity}] {self.title}" if self.kind != AlertKind.MARKET_HYPE else f"{self.emoji} {self.title}"
 
     def plain(self, limit: int) -> str:

@@ -3,6 +3,8 @@
     sentinel.dependency_health     every SENTINEL_HEALTH_INTERVAL_SECONDS (30s): Postgres, Redis, bookmaker APIs
     sentinel.liveness_check        every SENTINEL_HEARTBEAT_SECONDS (5s): the dead man's switch on Garuda
     sentinel.market_forecast_hype  daily at SENTINEL_HYPE_HOUR:SENTINEL_HYPE_MINUTE, SENTINEL_TIMEZONE (08:00 IST)
+    sentinel.market_health         daily at MARKET_HEALTH_HOUR:MARKET_HEALTH_MINUTE (07:55 IST): TODAR MAL's rest-day or
+                                   prime-day intimation (Group 115); when it goes out, the 08:00 hype stands down
 
 Without a Celery worker (development, or Celery itself down), ``SentinelWatchdog`` runs the same three
 inside the API: one process at a time (a Redis lease), standing down while a Celery worker heartbeats.
@@ -86,6 +88,17 @@ async def _hype() -> dict[str, Any]:
         return await sentinel_hype.market_forecast_hype(redis, settings)
 
 
+async def _market_health() -> dict[str, Any]:
+    from app.services import market_health_service  # noqa: PLC0415 - the board and the synthesizer load on use
+
+    async with _resources() as (redis, sessions, settings):
+        try:
+            return await market_health_service.intimate(sessions, redis, settings, datetime.now(UTC))
+        except market_health_service.MarketHealthUnavailable as exc:
+            logger.warning("market health not scored: %s", exc)
+            return {"sent": False, "reason": str(exc)}
+
+
 @celery_app.task(name="sentinel.dependency_health", ignore_result=True)
 def dependency_health() -> dict[str, Any]:
     return asyncio.run(_health())
@@ -101,6 +114,11 @@ def market_forecast_hype() -> dict[str, Any]:
     return asyncio.run(_hype())
 
 
+@celery_app.task(name="sentinel.market_health", ignore_result=True)
+def market_health() -> dict[str, Any]:
+    return asyncio.run(_market_health())
+
+
 class SentinelWatchdog:
     """The three checks inside the API process, while no Celery worker is alive."""
 
@@ -113,6 +131,7 @@ class SentinelWatchdog:
         self._renew = redis.register_script(_RENEW) if redis is not None else None
         self._health_at = float("-inf")
         self._hype_checked_day: str | None = None
+        self._health_checked_day: str | None = None
 
     async def _lead(self) -> bool:
         """The lease, or True when Redis cannot be asked (then every process watches: Redis is the news)."""
@@ -140,7 +159,26 @@ class SentinelWatchdog:
         if time.monotonic() - self._health_at >= self.settings.SENTINEL_HEALTH_INTERVAL_SECONDS:
             self._health_at = time.monotonic()
             await self.health.check()
+        await self._maybe_market_health()
         await self._maybe_hype()
+
+    async def _maybe_market_health(self) -> None:
+        """Group 115: the day's market-health intimation, once, when no worker sent it at MARKET_HEALTH_HOUR."""
+        from app.services import market_health_service  # noqa: PLC0415
+
+        now = datetime.now(UTC)
+        if self.redis is None or not market_health_service.is_due(now, self.settings):
+            return
+        day = now.astimezone(ZoneInfo(self.settings.SENTINEL_TIMEZONE)).date()
+        if self._health_checked_day == day.isoformat():
+            return
+        self._health_checked_day = day.isoformat()
+        try:
+            if await self.redis.exists(sentinel_hype.market_health_sent_key(self.keys, day)):
+                return
+            await market_health_service.intimate(self.session_factory, self.redis, self.settings, now)
+        except (RedisError, OSError, market_health_service.MarketHealthUnavailable):
+            self._health_checked_day = None  # try again on the next tick
 
     async def _maybe_hype(self) -> None:
         now = datetime.now(UTC)

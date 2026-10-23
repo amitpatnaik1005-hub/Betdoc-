@@ -40,6 +40,7 @@ from sqlalchemy import (
     UniqueConstraint,
     Uuid,
 )
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.types import JSON
 
@@ -173,6 +174,9 @@ class RealBetTicket(Base):
     # ticket then settles (or is cashed out) as that bet does, so a parlay settles leg by leg from the scores
     verdict_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("consultant_verdicts.id", ondelete="SET NULL"), nullable=True)
     user_placed_bet_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("user_placed_bets.id", ondelete="SET NULL"), nullable=True, index=True)
+    # Group 115: a multi-leg ticket the desk built (the system splitter), its legs as priced when it was recorded; on
+    # placement they become the Oracle bet that settles it. None: a single-market ticket, or one placed from the Bet-Slip
+    legs: Mapped[list[dict[str, Any]] | None] = mapped_column(JSON(none_as_null=True).with_variant(JSONB(none_as_null=True), "postgresql"), nullable=True)
 
     status: Mapped[str] = mapped_column(String(32), default=RealTicketStatus.PENDING_PLACEMENT.value, nullable=False)
     gross_return: Mapped[Decimal] = mapped_column(MONEY, default=Decimal("0.00"), nullable=False)

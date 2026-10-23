@@ -50,7 +50,9 @@ from app.services.sentinel_health import GARUDA, read_health
 
 logger = logging.getLogger("betdoc.sentinel.commands")
 
-COMMANDS = ("/halt", "/resume", "/status", "/help", "/start", "/matches", "/score", "/chef", "/consultant", "/slip", "/vault", "/ask", "/link", "/unlink")
+COMMANDS = ("/halt", "/resume", "/status", "/help", "/start", "/matches", "/score", "/chef", "/consultant", "/slip", "/vault", "/ask", "/link", "/unlink",
+            "/today", "/synthesize", "/split")
+MARKET_COMMANDS = frozenset({"/today", "/synthesize", "/split"})  # Group 115: the market's, no account needed
 ACCOUNT_COMMANDS = frozenset({"/chef", "/consultant", "/slip", "/vault"})  # read the linked account
 HELP = (
     "<b>BetDoc Sentinel</b>\n"
@@ -65,12 +67,16 @@ HELP = (
     "/slip: your latest Bet-Slip ticket\n"
     "/vault: bankroll, drawdown regime, stop-loss shields\n"
     "/ask &lt;question&gt;: the Scout Oracle\n"
+    "/today: TODAR MAL's market health: rest, selective or prime\n"
+    "/synthesize &lt;stake&gt; &lt;odds&gt; [book]: a street-smart multi-sport slip from the live board\n"
+    "/split [stake]: that slip as the Fortress, Growth and Moonshot tickets\n"
     "/link CODE: link this chat to your BetDoc account (the code is in Command Center → Pocket Twin)"
 )
 MENU = [
     [{"text": "🏟️ Matches", "callback_data": "/matches"}, {"text": "🎯 Score", "callback_data": "/score"}],
     [{"text": "👨‍🍳 Chef's Table", "callback_data": "/chef"}, {"text": "🩺 Consultant", "callback_data": "/consultant"}],
     [{"text": "🎟️ Bet-Slip", "callback_data": "/slip"}, {"text": "🛡️ Vault", "callback_data": "/vault"}, {"text": "📊 Status", "callback_data": "/status"}],
+    [{"text": "📈 Today", "callback_data": "/today"}, {"text": "🧮 Synthesize ₹250 → ₹5,000", "callback_data": "/synthesize 250 20"}],
 ]
 
 
@@ -164,7 +170,7 @@ class CommandCenter:
             reply = CommandReply(HELP, "HELP", True, keyboard=MENU)
         elif command in ("/link", "/unlink"):
             reply = await self.link(update, args[0] if args else None) if command == "/link" else await self.unlink(update)
-        elif command in ("/matches", "/score", "/chef", "/consultant", "/slip", "/vault", "/ask"):
+        elif command in ("/matches", "/score", "/chef", "/consultant", "/slip", "/vault", "/ask", *MARKET_COMMANDS):
             reply = await self.pocket(update, command, args, config)
         else:
             reply = CommandReply(f"Unknown command. {HELP}", "UNKNOWN", True)
@@ -185,6 +191,12 @@ class CommandCenter:
             answer = await twin.score(self.session_factory, self.redis, self.settings, now, args)
         elif command == "/ask":
             answer = await twin.ask(self.session_factory, self.settings, None if user is None else user.id, args)
+        elif command == "/today":
+            answer = await twin.today(self.session_factory, self.redis, self.settings, now)
+        elif command == "/synthesize":
+            answer = await twin.synthesize(self.redis, self.settings, now, update.chat_id, args)
+        elif command == "/split":
+            answer = await twin.split(self.redis, self.settings, now, update.chat_id, args)
         elif command == "/chef":
             answer = await twin.chef(self.session_factory, self.redis, self.settings, user.id, now, args)  # type: ignore[union-attr]
         elif command == "/consultant":

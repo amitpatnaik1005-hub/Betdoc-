@@ -186,6 +186,15 @@ class ConfirmHandcraftedPlacementRequest(_In):
     override_odds_decay: bool = False
 
 
+class ConfirmTicketPlacementRequest(_In):
+    """Group 115: a ticket the desk recorded (a system split), placed by hand at the book."""
+
+    booking_code: str = Field(min_length=2, max_length=32, description="The booking code the bookmaker issued for the placed ticket")
+    placed_odds: float | None = Field(default=None, gt=1.0, le=1e6, description="What the book gave; omitted: the ticket's odds")
+    placed_stake_inr: float | None = Field(default=None, gt=0, le=1e9, description="What was staked; omitted: the ticket's stake")
+    override_odds_decay: bool = False
+
+
 class HandcraftedPlacementResponse(BaseModel):
     ticket: RealBetTicketResponse
     booking_code: str | None = None

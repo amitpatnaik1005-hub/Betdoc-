@@ -204,17 +204,79 @@ async def confirm_slip_placement(
     await db.flush()
 
     # 6. the twin's in-play watch, with the verdict's stop-loss
-    policy = slm.StopLossPolicy.from_settings(settings)
-    monitor, note = None, None
-    try:
-        monitor = await inplay.start(db, redis, settings, bet, now, target_profit_pct=settings.REAL_CASHOUT_TARGET_PROFIT_PCT,
-                                     stop_loss_pct=ticket.stop_pct or None)
-    except (inplay.NoLivePrice, ValueError) as exc:  # a system's lines settle separately; a leg without a probability
-        note = f"In-play watch not started: {exc}"
-    stop = policy.clamp(monitor.stop_loss_pct if monitor is not None else (ticket.stop_pct or None))
+    monitor, note, stop = await _watch(db, redis, settings, bet, now, ticket.stop_pct or None)
     bankroll = await rms.get_or_create_bankroll(db, user_id, now)
     logger.info("handcrafted placement %s: ₹%s at %s on %s (%s)", row_ticket.ticket_reference, stake, odds, real_book.value, code)
     return Placement(row_ticket, bet, bankroll, monitor, note, stop)
+
+
+async def _watch(db: AsyncSession, redis: Redis | None, settings: Settings, bet: UserPlacedBet, now: datetime,
+                 stop_pct: float | None) -> tuple[TwinInPlayMonitor | None, str | None, float]:
+    """The twin's in-play watch on a placed bet (the stop-loss given, else the policy's), or why it did not start."""
+    monitor, note = None, None
+    try:
+        monitor = await inplay.start(db, redis, settings, bet, now, target_profit_pct=settings.REAL_CASHOUT_TARGET_PROFIT_PCT, stop_loss_pct=stop_pct)
+    except (inplay.NoLivePrice, ValueError) as exc:  # a system's lines settle separately; a leg without a probability
+        note = f"In-play watch not started: {exc}"
+    stop = slm.StopLossPolicy.from_settings(settings).clamp(monitor.stop_loss_pct if monitor is not None else stop_pct)
+    return monitor, note, stop
+
+
+async def confirm_ticket_placement(
+    db: AsyncSession,
+    redis: Redis | None,
+    settings: Settings,
+    user_id: uuid.UUID,
+    ticket_reference: str,
+    booking_code: str,
+    now: datetime,
+    *,
+    placed_odds: Decimal | None = None,
+    placed_stake: Decimal | None = None,
+    override_odds_decay: bool = False,
+) -> Placement:
+    """Group 115: a multi-leg ticket the desk recorded (the system splitter), placed by hand at the book: the gate, the
+    stake locked against its booking code, its legs as the Oracle bet that settles it, and the in-play watch."""
+    code = booking_code.strip()
+    if not code:
+        raise rms.RealMoneyError("NO_BOOKING_CODE", "Copy the booking code the bookmaker issued for the ticket.", 422)
+    ticket = (await db.execute(select(RealBetTicket).where(RealBetTicket.ticket_reference == ticket_reference,
+                                                          RealBetTicket.user_id == user_id))).scalar_one_or_none()
+    if ticket is None:
+        raise rms.RealMoneyError("TICKET_NOT_FOUND", f"Ticket {ticket_reference} does not exist", 404)
+    if ticket.status == RealTicketStatus.PLACED.value and ticket.bookmaker_slip_id == code and ticket.user_placed_bet_id is not None:
+        bet = await db.get(UserPlacedBet, ticket.user_placed_bet_id)
+        monitor = None if bet is None else await _monitor(db, bet.id)
+        stop = slm.StopLossPolicy.from_settings(settings).clamp(None if monitor is None else monitor.stop_loss_pct)
+        return Placement(ticket, bet, await rms.get_or_create_bankroll(db, user_id, now), monitor, None, stop, replayed=True)  # type: ignore[arg-type]
+    if not ticket.legs:
+        raise rms.RealMoneyError("NOT_A_DESK_TICKET", f"Ticket {ticket_reference} has no recorded legs: confirm it on the desk's own placement.", 409)
+    if ticket.status != RealTicketStatus.PENDING_PLACEMENT.value:
+        raise rms.RealMoneyError("INVALID_STATE", f"Ticket {ticket_reference} is already {ticket.status}", 409)
+    odds = rms._round_odds(placed_odds if placed_odds is not None else ticket.target_odds)  # noqa: SLF001
+    stake = rms._round_paisa(placed_stake if placed_stake is not None else ticket.recommended_stake)  # noqa: SLF001
+    placed_book = {RealBookmaker.PARIMATCH.value: PlacedBookmaker.PARIMATCH, RealBookmaker.ONEXBET.value: PlacedBookmaker.ONEXBET}[ticket.bookmaker]
+    structure = STRAIGHT_BY_LEGS.get(len(ticket.legs), PlacedStructure.ACCUMULATOR)
+    try:
+        request = PlaceBetRequest(
+            slip_id=ticket.ticket_reference[-32:], source="ASHOKA", bookmaker=placed_book, structure=structure, stake_inr=stake, placed_odds=odds, placed_at=now,
+            legs=[{"fixture_id": leg["fixture_id"], "home": leg["home"], "away": leg["away"], "sport_key": leg.get("sport_key"), "league": leg.get("league"),
+                   "kickoff": leg.get("kickoff"), "market": leg["market"], "selection": leg["selection"], "odds": Decimal(str(leg["odds"])),
+                   "fair_probability": leg.get("fair_probability")} for leg in ticket.legs],  # type: ignore[misc]
+            notes=f"System ticket {ticket.ticket_reference} placed by hand, booking code {code}",
+        )
+    except (ValidationError, KeyError) as exc:
+        raise rms.RealMoneyError("UNTRACKABLE_SLIP", f"The ticket's legs cannot be tracked leg by leg: {exc}", 422) from exc
+    await rms.execution_gate(db, redis, settings, user_id, ticket.bookmaker, now)
+    await rms.confirm_placement(db=db, settings=settings, user_id=user_id, ticket_ref=ticket.ticket_reference, placed_odds=odds, placed_stake=stake,
+                                slip_id=code, override_odds_decay=override_odds_decay)
+    bet = await user_pnl_tracker.record_bet(db, user_id, request, now)
+    bet.booking_code = code
+    ticket.user_placed_bet_id = bet.id
+    await db.flush()
+    monitor, note, stop = await _watch(db, redis, settings, bet, now, None)
+    logger.info("system ticket placed %s: ₹%s at %s on %s (%s)", ticket.ticket_reference, stake, odds, ticket.bookmaker, code)
+    return Placement(ticket, bet, await rms.get_or_create_bankroll(db, user_id, now), monitor, note, stop)
 
 
 def placement_dict(placement: Placement) -> dict[str, Any]:
@@ -230,8 +292,11 @@ def placement_dict(placement: Placement) -> dict[str, Any]:
 async def placement_view(session: AsyncSession, settings: Settings, verdict_id: uuid.UUID) -> dict[str, Any] | None:
     """The real ticket a Bet-Slip was placed as, for its view: status, stake, the stop-loss floor, the watch."""
     ticket = (await session.execute(select(RealBetTicket).where(RealBetTicket.verdict_id == verdict_id))).scalar_one_or_none()
-    if ticket is None:
-        return None
+    return None if ticket is None else await ticket_placement(session, settings, ticket)
+
+
+async def ticket_placement(session: AsyncSession, settings: Settings, ticket: RealBetTicket) -> dict[str, Any]:
+    """A real ticket as the placement desks show it (the Bet-Slip, the system tickets): status, stake, the stop-loss floor, the watch."""
     monitor = None if ticket.user_placed_bet_id is None else await _monitor(session, ticket.user_placed_bet_id)
     stop = slm.StopLossPolicy.from_settings(settings).clamp(None if monitor is None else monitor.stop_loss_pct)
     return {
@@ -246,4 +311,4 @@ async def placement_view(session: AsyncSession, settings: Settings, verdict_id: 
     }
 
 
-__all__ = ["BOOKS", "Placement", "confirm_slip_placement", "placement_dict", "placement_view"]
+__all__ = ["BOOKS", "Placement", "confirm_slip_placement", "confirm_ticket_placement", "placement_dict", "placement_view", "ticket_placement"]

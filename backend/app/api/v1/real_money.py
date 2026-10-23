@@ -19,6 +19,8 @@ trader places ASHVATTHAMA's ticket on Parimatch (or 1xBet) by hand and confirms 
   STOP_LOSS_BREACH
 * ``POST /cashout``: the cashout taken at the book, with Section 115BBJ's 30% TDS on the net winnings
 * ``POST /reconcile``: locked exposure brought to the open tickets; liquid cash checked against its ledger
+* ``POST /tickets/{reference}/confirm-handcrafted``: a recorded system ticket (Group 115's splitter) placed by hand: the
+  gate, the stake locked, its legs as the Oracle bet that settles it, the in-play watch
 
 Refusals answer ``{"detail": {"code", "message", ...}}``: 400 (insufficient funds, odds decayed), 404, 409 (state),
 422 (validation, no edge, stake over the 5% ceiling), 423 (SHIVAJI's stop-loss or cool-down, the kill switch).
@@ -44,6 +46,7 @@ from app.schemas.real_money import (
     CashoutEvaluationResponse,
     ConfirmHandcraftedPlacementRequest,
     ConfirmPlacementRequest,
+    ConfirmTicketPlacementRequest,
     CreateRealTicketRequest,
     DepositRequest,
     ExecuteCashoutRequest,
@@ -283,6 +286,34 @@ async def confirm_handcrafted_placement(
     try:
         placement = await hes.confirm_slip_placement(
             db, redis, settings, current_user.id, payload.report_id, payload.booking_code, datetime.now(UTC),
+            placed_odds=None if payload.placed_odds is None else Decimal(str(payload.placed_odds)),
+            placed_stake=None if payload.placed_stake_inr is None else Decimal(str(payload.placed_stake_inr)),
+            override_odds_decay=payload.override_odds_decay,
+        )
+        await db.commit()
+    except rms.RealMoneyError as exc:
+        await db.rollback()
+        raise _fail(exc) from exc
+    if not placement.replayed:
+        ticket = placement.ticket
+        await rms.announce(redis, "placement", current_user.id, ticket_reference=ticket.ticket_reference, stake=str(ticket.placed_stake),
+                           odds=str(ticket.placed_odds), bookmaker=ticket.bookmaker, booking_code=ticket.bookmaker_slip_id)
+    return hes.placement_dict(placement)
+
+
+@router.post("/tickets/{ticket_reference}/confirm-handcrafted", response_model=HandcraftedPlacementResponse, summary="Confirm a System Ticket Placed by Hand")
+async def confirm_system_ticket(
+    ticket_reference: str,
+    payload: ConfirmTicketPlacementRequest,
+    request: Request,
+    db: Db,
+    settings: AppSettings,
+    current_user: CurrentUser,
+) -> dict[str, Any]:
+    redis = _redis(request)
+    try:
+        placement = await hes.confirm_ticket_placement(
+            db, redis, settings, current_user.id, ticket_reference, payload.booking_code, datetime.now(UTC),
             placed_odds=None if payload.placed_odds is None else Decimal(str(payload.placed_odds)),
             placed_stake=None if payload.placed_stake_inr is None else Decimal(str(payload.placed_stake_inr)),
             override_odds_decay=payload.override_odds_decay,

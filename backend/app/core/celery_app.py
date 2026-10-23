@@ -190,6 +190,11 @@ celery_app.conf.update(
             "task": "sentinel.market_forecast_hype",
             "schedule": ZonedCrontab(minute=_settings.SENTINEL_HYPE_MINUTE, hour=_settings.SENTINEL_HYPE_HOUR, zone=_settings.SENTINEL_TIMEZONE),
         },
+        # Group 115: TODAR MAL's "when to bet": a rest-day warning or a prime day to the phone, before the hype
+        "sentinel-market-health": {
+            "task": "sentinel.market_health",
+            "schedule": ZonedCrontab(minute=_settings.MARKET_HEALTH_MINUTE, hour=_settings.MARKET_HEALTH_HOUR, zone=_settings.SENTINEL_TIMEZONE),
+        },
     },
 )
 

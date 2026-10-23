@@ -49,7 +49,7 @@ class TelegramDispatcher(NotificationDispatcher):
             "text": message.html(MESSAGE_LIMIT),
             "parse_mode": "HTML",
             "disable_web_page_preview": True,
-            "disable_notification": message.severity.rank < 2 and message.kind != "MARKET_HYPE",  # quiet for INFO/WARNING
+            "disable_notification": message.severity.rank < 2 and message.kind not in ("MARKET_HYPE", "MARKET_HEALTH"),  # quiet for INFO/WARNING
         }
 
     async def deliver(self, message: OutboundMessage, done: set[str]) -> None:

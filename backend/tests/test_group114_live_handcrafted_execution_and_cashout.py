@@ -492,7 +492,8 @@ async def test_the_four_endpoints_end_to_end(sessions: async_sessionmaker[AsyncS
 def test_the_migration_adds_cashed_out_over_every_spelling_of_the_old_check() -> None:
     script = ScriptDirectory.from_config(Config(str(ROOT / "backend" / "alembic.ini")))
     revision = script.get_revision("f114a8b7c2d1")
-    assert revision is not None and revision.down_revision == "e106b4d2c9a7" and script.get_heads() == ["f114a8b7c2d1"]
+    assert revision is not None and revision.down_revision == "e106b4d2c9a7"
+    assert "f114a8b7c2d1" in {r.revision for r in script.walk_revisions()} and len(script.get_heads()) == 1  # in the one line of history
     source = (ROOT / "backend" / "alembic" / "versions" / "f114a8b7c2d1_add_cashed_out_status_to_real_bet_tickets.py").read_text(encoding="utf-8")
     assert "ck_real_bet_tickets_ck_real_bet_tickets_status_valid" in source and "'CASHED_OUT'" in source  # the live, double-prefixed name
     assert "uq_real_bet_tickets_verdict_id" in source and "fk_real_bet_tickets_user_placed_bet_id_user_placed_bets" in source

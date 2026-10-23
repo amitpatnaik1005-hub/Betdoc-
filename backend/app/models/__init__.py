@@ -247,3 +247,4 @@ from app.models.backup_vault import BackupRestoreAuditModel, BackupSnapshotManif
 from app.models.pre_match_odds import PreMatchOddsSnapshotModel  # noqa: E402,F401  (Group 101)
 from app.models.consultant import ConsultantVerdictModel  # noqa: E402,F401  (Group 105)
 from app.models.slip_ornament import BetSlipTicketModel  # noqa: E402,F401  (Group 106)
+from app.models.market_health import DailyMarketHealthSnapshot, MarketAdvisoryTier  # noqa: E402,F401  (Group 115)

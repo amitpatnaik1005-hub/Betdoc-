@@ -14,7 +14,8 @@ A line is picked by a hash of the date, skipping the last few used, so mornings 
 alert is INFO and rides the routing matrix's ``HYPE`` row (Telegram and SMS by default). Whoever runs
 first (Celery beat, or the API's watchdog catching up after a late start) sends it; a per-day key
 makes sure nobody sends it twice. The numbers travel with the hype: the message never claims more
-than the board shows, and the risk guard still decides every stake.
+than the board shows, and the risk guard still decides every stake. Group 115: on a morning TODAR MAL's market-health
+intimation already went out (a rest day or a prime day, ``market_health_service``), the hype stands down.
 """
 
 from __future__ import annotations
@@ -203,6 +204,11 @@ def summary(forecast: MarketForecast) -> str:
     return "\n".join(lines)
 
 
+def market_health_sent_key(keys: SentinelKeys, day: date) -> str:
+    """Set once TODAR MAL's market-health intimation (Group 115) went out for ``day``: that morning's hype stands down."""
+    return f"{keys.prefix}:market-health:sent:{day.isoformat()}"
+
+
 def is_due(now: datetime, settings: Settings) -> bool:
     """Between the configured time and ``CATCH_UP_HOURS`` after it, local time."""
     local = now.astimezone(ZoneInfo(settings.SENTINEL_TIMEZONE))
@@ -222,7 +228,9 @@ async def market_forecast_hype(redis: Redis, settings: Settings, *, now: datetim
         line_id, template = pick_line(tier, forecast.day, recent)
         title = render(template, forecast)
         result.update(line_id=line_id, title=title, body=summary(forecast))
-        if not dry_run and await redis.set(f"{keys.prefix}:hype:sent:{forecast.day.isoformat()}", line_id, nx=True, ex=2 * 86_400):
+        if not dry_run and await redis.exists(market_health_sent_key(keys, forecast.day)):
+            result["suppressed_by"] = "market_health"  # Group 115: the day's rest or prime intimation already spoke
+        elif not dry_run and await redis.set(f"{keys.prefix}:hype:sent:{forecast.day.isoformat()}", line_id, nx=True, ex=2 * 86_400):
             alert = SentinelAlert(
                 kind=AlertKind.MARKET_HYPE,
                 severity=Severity.INFO,
