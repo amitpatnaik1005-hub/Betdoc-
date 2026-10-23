@@ -1,6 +1,6 @@
 /**
  * The Pocket Twin's thumb bar (Group 109, point b.10): five one-thumb targets along the bottom of a phone (under 768px;
- * wider screens keep the sidebar). The Oracle's match board, Score Prediction (The Lab), BetDoc Consultant, the
+ * wider screens keep the sidebar). The Oracle's match board, its Score engine (Group 111), BetDoc Consultant, the
  * Oracle's slip on the manual workbench with its leg count, and The Vault. It sits above the home indicator
  * (safe-area inset) and under any full-screen sheet. Developed for Amit Ashok Kumar Patnaik.
  */
@@ -16,8 +16,8 @@ interface Tab {
 }
 
 const TABS: Tab[] = [
-  { key: "oracle", label: "Oracle", icon: "auto_awesome", to: "/oracle?tab=board", active: (p, q) => p === "/oracle" && q.get("tab") !== "builder" },
-  { key: "score", label: "Score", icon: "scoreboard", to: "/lab#score-prediction", active: (p) => p === "/lab" },
+  { key: "oracle", label: "Oracle", icon: "travel_explore", to: "/oracle?tab=board", active: (p, q) => p === "/oracle" && !["builder", "score", "engine"].includes(q.get("tab") ?? "") },
+  { key: "score", label: "Score", icon: "scoreboard", to: "/oracle?tab=score", active: (p, q) => p === "/oracle" && ["score", "engine"].includes(q.get("tab") ?? "") },
   { key: "consultant", label: "Consultant", icon: "stethoscope", to: "/consultant", active: (p) => p === "/consultant" },
   { key: "slip", label: "Slip", icon: "confirmation_number", to: "/oracle?tab=builder&mode=manual", active: (p, q) => p === "/oracle" && q.get("tab") === "builder" },
   { key: "vault", label: "Vault", icon: "account_balance", to: "/vault", active: (p) => p === "/vault" },

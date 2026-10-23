@@ -6,6 +6,7 @@
  */
 import { apiClient } from "../api/client";
 import type { Tier } from "./backtest_and_parlay";
+import { code39 } from "./barcode";
 import { useResource } from "./resource";
 
 export interface TicketLeg {
@@ -141,13 +142,23 @@ export const inr = (value: string | number | null | undefined): string => {
 };
 
 // ---------------------------------------------------------------- channel 4: the poster
-const POSTER = { width: 1080, ivory: "#FDFCF7", gold: "#C89B3C", goldInk: "#9A7424", emerald: "#059669", ink: "#1C1917", muted: "#78716C", rule: "#E7E5E4", rose: "#BE123C" };
+// Group 111: pure white paper, a gold foil strip, BetDoc's seal beside the book's badge, a Code 39 barcode of the ticket number
+const POSTER = { width: 1080, paper: "#FFFFFF", gold: "#C89B3C", goldInk: "#8A6A1F", emerald: "#047857", ink: "#1C1917", muted: "#78716C", rule: "#E7E5E4", rose: "#BE123C" };
 const SANS = "Inter, 'Segoe UI', Roboto, Arial, sans-serif";
 const MONO = "'JetBrains Mono', Consolas, Menlo, monospace";
 
 const xml = (value: unknown): string =>
   String(value ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&apos;");
 const clip = (text: string, max: number): string => (text.length > max ? `${text.slice(0, max - 1)}…` : text);
+
+/** The ticket number's Code 39 bars, centred on cx and scaled to the width given (black on the white paper so it scans). */
+const barcodeSvg = (value: string, cx: number, top: number, width: number, height: number, ink: string): string => {
+  const code = code39(value);
+  if (!code) return "";
+  const k = width / code.width;
+  const left = cx - width / 2;
+  return code.bars.map((b) => `<rect x="${(left + b.x * k).toFixed(2)}" y="${top}" width="${(b.width * k).toFixed(2)}" height="${height}" fill="${ink}"/>`).join("");
+};
 
 /** The ticket as an SVG poster: the same layout and figures as the card, drawn for a 1080px-wide image. */
 export const posterSvg = (t: Ticket): { svg: string; width: number; height: number } => {
@@ -156,7 +167,8 @@ export const posterSvg = (t: Ticket): { svg: string; width: number; height: numb
   const legTop = 330;
   const legHeight = 112;
   const moneyTop = legTop + t.legs.length * legHeight + 24;
-  const height = moneyTop + 330;
+  const barcodeTop = moneyTop + 232;
+  const height = barcodeTop + 236;
   const text = (x: number, y: number, body: string, size: number, opts: { fill?: string; weight?: number; family?: string; anchor?: string; spacing?: number } = {}) =>
     `<text x="${x}" y="${y}" font-family="${xml(opts.family ?? SANS)}" font-size="${size}" font-weight="${opts.weight ?? 400}" fill="${opts.fill ?? P.ink}"` +
     `${opts.anchor ? ` text-anchor="${opts.anchor}"` : ""}${opts.spacing ? ` letter-spacing="${opts.spacing}"` : ""}>${xml(body)}</text>`;
@@ -175,8 +187,8 @@ export const posterSvg = (t: Ticket): { svg: string; width: number; height: numb
   }).join("");
   const money = [
     ["KELLY STAKE", `${inr(t.stake_inr)}${t.stake_usd ? ` ($${t.stake_usd})` : ""}`, P.ink],
-    ["RETURNS", inr(t.payout_inr), P.ink],
-    ["TAKE HOME AFTER TDS", inr(t.take_home_inr), P.emerald],
+    ["GROSS RETURN", inr(t.payout_inr), P.ink],
+    [`NET AFTER ${t.tds_rate_pct ?? 30}% TDS`, inr(t.take_home_inr), P.emerald],
     ["STOP-LOSS FLOOR", inr(t.stop_loss_floor_inr), P.rose],
   ].map(([label, value, colour], i) => {
     const x = 72 + i * ((W - 144) / 4);
@@ -184,14 +196,15 @@ export const posterSvg = (t: Ticket): { svg: string; width: number; height: numb
   }).join("");
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${height}" viewBox="0 0 ${W} ${height}">
 <rect x="0" y="0" width="${W}" height="${height}" fill="#F5F5F4"/>
-<rect x="16" y="16" width="${W - 32}" height="${height - 32}" rx="36" fill="${P.ivory}" stroke="${P.gold}" stroke-width="5"/>
-<rect x="18" y="18" width="${W - 36}" height="56" rx="34" fill="${P.gold}" fill-opacity="0.10"/>
-${text(64, 54, `BETDOC BET-SLIP · ${t.ticket_no}`, 20, { fill: P.goldInk, weight: 700, family: MONO, spacing: 3 })}
-<line x1="18" y1="74" x2="${W - 18}" y2="74" stroke="${P.gold}" stroke-width="3" stroke-dasharray="14 10"/>
-<circle cx="112" cy="156" r="48" fill="${P.gold}"/><circle cx="112" cy="156" r="38" fill="none" stroke="${P.ivory}" stroke-width="3"/>
-${text(112, 168, "BD", 32, { weight: 900, anchor: "middle", fill: P.ink })}
-${text(184, 128, "BETDOC QUANTITATIVE SEAL", 18, { fill: P.gold, weight: 800, spacing: 2 })}
-${text(184, 170, clip(t.verdict.title, 30), 38, { weight: 900 })}
+<rect x="16" y="16" width="${W - 32}" height="${height - 32}" rx="36" fill="${P.paper}" stroke="${P.rule}" stroke-width="3"/>
+<path d="M16 74 V52 a36 36 0 0 1 36 -36 H${W - 52} a36 36 0 0 1 36 36 V74 Z" fill="${P.gold}"/>
+${text(64, 54, `BETDOC OFFICIAL BET-SLIP · ${t.ticket_no}`, 20, { fill: P.ink, weight: 800, family: MONO, spacing: 3 })}
+${text(W - 64, 54, `${t.kind.replace(/_/g, " ").toUpperCase()} · ${t.legs.length} LEG${t.legs.length === 1 ? "" : "S"}`, 18, { fill: P.ink, weight: 700, family: MONO, anchor: "end", spacing: 2 })}
+<line x1="18" y1="214" x2="${W - 18}" y2="214" stroke="#D6D3D1" stroke-width="3" stroke-dasharray="14 10"/>
+<rect x="64" y="108" width="96" height="96" rx="24" fill="${P.ink}"/><rect x="66" y="110" width="92" height="92" rx="22" fill="none" stroke="${P.gold}" stroke-width="3" stroke-opacity="0.6"/>
+${text(112, 168, "BD", 34, { weight: 900, anchor: "middle", fill: P.gold })}
+${text(184, 128, "BETDOC QUANTITATIVE DESK", 20, { fill: P.ink, weight: 900, spacing: 1 })}
+${text(184, 170, clip(t.verdict.title, 30), 36, { weight: 900, fill: P.emerald })}
 ${text(184, 202, clip(`Signed ${t.signed_at_local}`, 56), 20, { fill: P.muted })}
 <rect x="${W - 300}" y="122" width="232" height="64" rx="16" fill="${xml(t.badge.background)}" stroke="${xml(t.badge.foreground)}" stroke-width="3"/>
 ${text(W - 184, 164, clip(t.book_label.toUpperCase(), 16), 26, { weight: 900, family: MONO, anchor: "middle", fill: t.badge.foreground, spacing: 2 })}
@@ -204,9 +217,11 @@ ${legs}
 ${money}
 ${text(64, moneyTop + 170, `Booking code: ${t.booking_code ?? "not recorded yet"}`, 22, { weight: 700, family: MONO })}
 ${t.fresh ? "" : text(64, moneyTop + 202, `Prices as signed ${t.age_minutes} min ago: re-check them at ${t.book_label} before placing.`, 18, { fill: "#9A3412" })}
+${barcodeSvg(t.ticket_no, W / 2, barcodeTop, 560, 72, P.ink)}
+${text(W / 2, barcodeTop + 104, t.ticket_no.split("").join(" "), 20, { weight: 700, family: MONO, anchor: "middle" })}
 <path d="M18 ${height - 104} H${W - 18} V${height - 52} a34 34 0 0 1 -34 34 H52 a34 34 0 0 1 -34 -34 Z" fill="${P.ink}"/>
 ${text(W / 2, height - 70, `SEAL ${t.seal.slice(0, 32)}…`, 17, { fill: "#E7E5E4", family: MONO, anchor: "middle", spacing: 1 })}
-${text(W / 2, height - 40, t.watermark, 17, { fill: "#A8A29E", anchor: "middle" })}
+${text(W / 2, height - 40, `Official Quantitative Slip · Developed for ${t.architect || "Amit Ashok Kumar Patnaik"}`, 17, { fill: "#A8A29E", anchor: "middle" })}
 </svg>`;
   return { svg, width: W, height };
 };

@@ -347,7 +347,7 @@ def test_the_pwa_is_installable_and_the_thumb_bar_is_wired() -> None:
     nav = (src / "components" / "layout" / "MobileBottomNav.tsx").read_text(encoding="utf-8")
     app = (src / "App.tsx").read_text(encoding="utf-8")
     assert "<MobileBottomNav" in app and "md:hidden" in nav and "material-symbols-outlined" in nav and "lucide-react" not in nav
-    for target in ("/oracle", "/lab", "/consultant", "/vault", "tab=builder"):
+    for target in ("/oracle", "tab=score", "/consultant", "/vault", "tab=builder"):  # Score: The Oracle's Score engine tab since Group 111
         assert target in nav, target
     panel = (src / "components" / "mobile" / "PocketTwinPanel.tsx").read_text(encoding="utf-8")
     assert "/mobile/telegram/link-code" in (src / "lib" / "pocket_twin.ts").read_text(encoding="utf-8") and "<PocketTwinPanel" in (src / "pages" / "CommandCenter.tsx").read_text(encoding="utf-8")

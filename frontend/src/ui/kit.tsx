@@ -15,6 +15,7 @@ import {
   useRef,
   useState,
 } from "react";
+import { createPortal } from "react-dom";
 import { animate, motion, useMotionValue, useReducedMotion, useTransform } from "framer-motion";
 import type { ResourceResult } from "../lib/resource";
 import { formatAgo } from "../lib/format";
@@ -25,7 +26,7 @@ import { CARD_VARIANTS, GRID_VARIANTS, ITEM_VARIANTS, LIST_VARIANTS, SPRING } fr
 const cx = (...parts: (string | false | null | undefined)[]): string => parts.filter(Boolean).join(" ");
 
 // --------------------------------------------------------------------------- layout
-export const Page = ({ children }: { children: ReactNode }) => {
+export const Page = ({ children, dense = false }: { children: ReactNode; dense?: boolean }) => {
   // Group 107: the Infinity / Flexi view lifts the reading width so the workspace runs edge to edge
   const infinity = useUIStore((s) => s.isInfinityView);
   return (
@@ -33,7 +34,9 @@ export const Page = ({ children }: { children: ReactNode }) => {
       variants={GRID_VARIANTS}
       initial="hidden"
       animate="show"
-      className={cx("mx-auto grid w-full grid-cols-1 gap-x-6 gap-y-10 py-8 lg:grid-cols-12 lg:py-10", infinity ? "max-w-none" : "max-w-7xl")}
+      // Group 111: a dense page (a trading desk) keeps its first screen for the work: tighter rhythm, less top margin
+      className={cx("mx-auto grid w-full grid-cols-1 gap-x-6 lg:grid-cols-12", dense ? "gap-y-4 py-4 lg:py-5" : "gap-y-10 py-8 lg:py-10",
+                    infinity ? "max-w-none" : "max-w-7xl")}
     >
       {children}
     </motion.div>
@@ -566,81 +569,114 @@ export const KpiGlossaryPill = ({ kpi }: { kpi: string }) => {
   );
 };
 
-export interface ComponentGuideBannerProps {
+export interface ComponentGuideModalProps {
   moduleName: string;
   purpose: string;
   steps: [string, string, string];
   kpiCodes?: string[];
   className?: string;
 }
+export type ComponentGuideBannerProps = ComponentGuideModalProps;
 
-const bannerKey = (moduleName: string): string => `betdoc:banner:${moduleName}`;
-
-/** Every section's opening: what it is for, how to use it in three steps, and its key figures. Collapsing is remembered. */
-export const ComponentGuideBanner = ({ moduleName, purpose, steps, kpiCodes = [], className }: ComponentGuideBannerProps) => {
-  const bodyId = useId();
-  const [collapsed, setCollapsed] = useState(() => {
-    try {
-      return localStorage.getItem(bannerKey(moduleName)) === "collapsed";
-    } catch {
-      return false;
-    }
-  });
-
-  const toggle = () => {
-    const next = !collapsed;
-    setCollapsed(next);
-    try {
-      localStorage.setItem(bannerKey(moduleName), next ? "collapsed" : "open");
-    } catch {
-      // storage unavailable (private window): the choice lasts for this visit only
-    }
+/** Every section's guide (Group 111): a one-line ribbon (what the section is for, its key figures) that opens the full
+ * guide (the purpose, three steps, the figures explained) in a sheet. The sheet is portalled to the page so no animated
+ * ancestor can clip it; Escape, the backdrop or the button close it, and focus returns to the Guide button. */
+export const ComponentGuideBanner = ({ moduleName, purpose, steps, kpiCodes = [], className }: ComponentGuideModalProps) => {
+  const [isOpen, setIsOpen] = useState(false);
+  const titleId = useId();
+  const trigger = useRef<HTMLButtonElement>(null);
+  const sheet = useRef<HTMLDivElement>(null);
+  const close = () => {
+    setIsOpen(false);
+    trigger.current?.focus();
   };
+
+  useEffect(() => {
+    if (!isOpen) return;
+    sheet.current?.focus();
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        setIsOpen(false);
+        trigger.current?.focus();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [isOpen]);
 
   return (
     <section
-      aria-label={`${moduleName} quick guide`}
-      className={cx("rounded-2xl border border-stone-200/80 bg-stone-50/90 p-4 sm:p-5 dark:border-white/[0.08] dark:bg-stone-900/60", className)}
+      aria-label={`${moduleName} guide`}
+      className={cx(
+        "flex min-h-9 min-w-0 items-center justify-between gap-3 rounded-2xl border border-stone-200/70 bg-white/70 px-3 py-1.5 dark:border-white/[0.07] dark:bg-stone-900/50",
+        className,
+      )}
     >
-      <div className="flex items-center justify-between gap-3">
-        <div className="flex min-w-0 items-center gap-2">
-          <span className="grid size-6 shrink-0 place-items-center rounded-lg bg-[#C89B3C]/10 text-[#9A7424] dark:text-[#E3BE63]" aria-hidden="true">
-            <span className="material-symbols-outlined text-[15px]">school</span>
-          </span>
-          <h2 className="truncate font-display text-xs font-bold uppercase tracking-wider text-stone-800 dark:text-stone-200">{moduleName} · quick guide</h2>
-        </div>
+      <div className="flex min-w-0 items-center gap-2">
+        <span className="material-symbols-outlined shrink-0 text-[17px] text-[#C89B3C]" aria-hidden="true">school</span>
+        <h2 className="shrink-0 text-xs font-semibold text-stone-800 dark:text-stone-100">{moduleName}</h2>
+        <p className="hidden min-w-0 truncate text-[11px] text-stone-500 md:block dark:text-stone-400" title={purpose}>{purpose}</p>
+      </div>
+      <div className="flex shrink-0 items-center gap-1.5">
+        <span className="hidden items-center gap-1 lg:flex">
+          {kpiCodes.slice(0, 3).map((code) => <KpiGlossaryPill key={code} kpi={code} />)}
+        </span>
         <button
+          ref={trigger}
           type="button"
-          onClick={toggle}
-          aria-expanded={!collapsed}
-          aria-controls={bodyId}
-          className="inline-flex shrink-0 items-center gap-0.5 rounded-full px-2 py-1 text-[11px] font-medium text-stone-500 transition-colors hover:bg-stone-900/[0.04] hover:text-stone-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#C89B3C]/50 dark:text-stone-400 dark:hover:bg-white/[0.05] dark:hover:text-stone-100"
+          onClick={() => setIsOpen(true)}
+          aria-haspopup="dialog"
+          aria-label={`Open the guide to ${moduleName}`}
+          className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-semibold text-[#9A7424] transition-colors hover:bg-[#C89B3C]/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#C89B3C]/50 dark:text-[#E3BE63]"
         >
-          {collapsed ? "Show guide" : "Hide"}
-          <span className="material-symbols-outlined text-[14px]" aria-hidden="true">{collapsed ? "expand_more" : "expand_less"}</span>
+          <span className="material-symbols-outlined text-[16px]" aria-hidden="true">help</span>
+          Guide
         </button>
       </div>
 
-      {!collapsed && (
-        <div id={bodyId} className="mt-3 space-y-3 border-t border-stone-200/60 pt-3 dark:border-white/[0.05]">
-          <p className="text-[13px] leading-relaxed text-stone-700 dark:text-stone-300">{purpose}</p>
-          <ol className="grid grid-cols-1 gap-2 md:grid-cols-3">
-            {steps.map((step, idx) => (
-              <li key={idx} className="flex items-start gap-2 rounded-xl bg-white/80 p-2.5 text-xs leading-snug text-stone-600 dark:bg-stone-800/40 dark:text-stone-300">
-                <span className="grid size-5 shrink-0 place-items-center rounded-full bg-[#C89B3C]/15 font-mono text-[10px] font-bold text-[#9A7424] dark:text-[#E3BE63]" aria-hidden="true">
-                  {idx + 1}
+      {isOpen && typeof document !== "undefined" && createPortal(
+        <div className="fixed inset-0 z-[70] flex items-end justify-center bg-stone-950/50 p-3 backdrop-blur-sm sm:items-center sm:p-4" role="presentation"
+             onClick={(e) => e.target === e.currentTarget && close()}>
+          <div ref={sheet} role="dialog" aria-modal="true" aria-labelledby={titleId} tabIndex={-1}
+               className="w-full max-w-lg rounded-3xl bg-white p-5 shadow-soft-lg outline-none sm:p-6 dark:bg-stone-900 dark:ring-1 dark:ring-white/10">
+            <div className="flex items-start justify-between gap-3">
+              <div className="flex min-w-0 items-center gap-2">
+                <span className="grid size-8 shrink-0 place-items-center rounded-xl bg-[#C89B3C]/15 text-[#9A7424] dark:text-[#E3BE63]" aria-hidden="true">
+                  <span className="material-symbols-outlined text-[18px]">school</span>
                 </span>
-                <span>{step}</span>
-              </li>
-            ))}
-          </ol>
-          {kpiCodes.length > 0 && (
-            <div className="flex flex-wrap items-center gap-1.5">
-              <span className="text-[10px] font-semibold uppercase tracking-wide text-stone-400">Key figures</span>
-              {kpiCodes.map((code) => <KpiGlossaryPill key={code} kpi={code} />)}
+                <h2 id={titleId} className="min-w-0 font-display text-base font-bold text-stone-900 dark:text-stone-100">{moduleName}</h2>
+              </div>
+              <button type="button" onClick={close} aria-label="Close the guide"
+                      className="grid size-8 shrink-0 place-items-center rounded-xl text-stone-500 transition-colors hover:bg-stone-100 dark:hover:bg-white/[0.06]">
+                <span className="material-symbols-outlined text-[20px]" aria-hidden="true">close</span>
+              </button>
             </div>
-          )}
-        </div>
+            <p className="mt-4 text-sm leading-relaxed text-stone-700 dark:text-stone-200">{purpose}</p>
+            <ol className="mt-4 flex flex-col gap-2">
+              {steps.map((step, idx) => (
+                <li key={idx} className="flex items-start gap-2.5 rounded-2xl bg-stone-50 p-3 text-xs leading-snug text-stone-700 dark:bg-white/[0.04] dark:text-stone-300">
+                  <span className="grid size-5 shrink-0 place-items-center rounded-full bg-[#C89B3C]/15 font-mono text-[10px] font-bold text-[#9A7424] dark:text-[#E3BE63]" aria-hidden="true">
+                    {idx + 1}
+                  </span>
+                  <span>{step}</span>
+                </li>
+              ))}
+            </ol>
+            {kpiCodes.length > 0 && (
+              <div className="mt-4 flex flex-wrap items-center gap-1.5">
+                <span className="text-[10px] font-semibold uppercase tracking-wide text-stone-400">Key figures</span>
+                {kpiCodes.map((code) => <KpiGlossaryPill key={code} kpi={code} />)}
+              </div>
+            )}
+            <div className="mt-5 flex justify-end">
+              <button type="button" onClick={close}
+                      className="rounded-full bg-[#C89B3C] px-4 py-2 text-xs font-bold text-stone-950 transition-colors hover:bg-[#D9AC4D] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#C89B3C]/50">
+                Got it
+              </button>
+            </div>
+          </div>
+        </div>,
+        document.body,
       )}
     </section>
   );

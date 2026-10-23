@@ -29,7 +29,7 @@ let beforeInfinity: { left: boolean; right: boolean } | null = null;
 
 export const useUIStore = create<UIState>((set, get) => ({
   isCompact: compactNow(),
-  isLeftCollapsed: compactNow(),
+  isLeftCollapsed: true,  // Group 111: the 56px icon rail on desktops, the closed drawer on phones
   isRightCollapsed: startsNarrow,
   isInfinityView: false,
   toggleLeft: () => set((s) => ({ isLeftCollapsed: !s.isLeftCollapsed })),
@@ -45,7 +45,7 @@ export const useUIStore = create<UIState>((set, get) => ({
       beforeInfinity = { left: s.isLeftCollapsed, right: s.isRightCollapsed };
       set({ isInfinityView: true, isLeftCollapsed: true, isRightCollapsed: true });
     } else {
-      const back = beforeInfinity ?? { left: s.isCompact, right: startsNarrow };
+      const back = beforeInfinity ?? { left: true, right: startsNarrow };
       beforeInfinity = null;
       set({ isInfinityView: false, isLeftCollapsed: back.left, isRightCollapsed: back.right });
     }
@@ -56,6 +56,6 @@ export const useUIStore = create<UIState>((set, get) => ({
 if (hasWindow) {
   // Crossing into phone width closes both overlays so content is never hidden behind them.
   window.matchMedia(COMPACT_QUERY).addEventListener('change', (e) => {
-    useUIStore.setState(e.matches ? { isCompact: true, isLeftCollapsed: true, isRightCollapsed: true } : { isCompact: false, isLeftCollapsed: false });
+    useUIStore.setState(e.matches ? { isCompact: true, isLeftCollapsed: true, isRightCollapsed: true } : { isCompact: false, isLeftCollapsed: true });
   });
 }

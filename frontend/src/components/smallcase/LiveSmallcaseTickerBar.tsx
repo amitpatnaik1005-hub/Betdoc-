@@ -2,7 +2,9 @@
  * The live smallcases at a glance (Group 107, point b.8): the six baskets as ASHOKA's market fills them right now, each
  * with KUMBHA's stake across its legs, its expected return and its chance of ending in profit. An empty basket says why.
  * Load puts a basket's legs on the Oracle's shared slip (asking first when the slip already holds legs); Inspect opens
- * its holdings, risk and the components it runs on. Developed for Amit Ashok Kumar Patnaik.
+ * its holdings, risk and the components it runs on. `compact` (The Oracle's first screen, Group 111) shows each basket
+ * as one chip (its kind, legs, name and expected return) that opens the same inspector, where Load lives.
+ * Developed for Amit Ashok Kumar Patnaik.
  */
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
@@ -32,7 +34,7 @@ export const LoadBasketButton = ({ basket, afterLoad, size = "sm" }: { basket: B
   );
 };
 
-export const LiveSmallcaseTickerBar = ({ toWorkbenchOnLoad = false }: { toWorkbenchOnLoad?: boolean }) => {
+export const LiveSmallcaseTickerBar = ({ toWorkbenchOnLoad = false, compact = false }: { toWorkbenchOnLoad?: boolean; compact?: boolean }) => {
   const board = useSmallcases();
   const live = useSmallcaseFeed() === "open";  // the push is up: boards arrive as the market moves
   const navigate = useNavigate();
@@ -41,7 +43,7 @@ export const LiveSmallcaseTickerBar = ({ toWorkbenchOnLoad = false }: { toWorkbe
   const afterLoad = toWorkbenchOnLoad ? () => navigate("/oracle?tab=builder&mode=manual") : undefined;
   const inspected = board.data?.baskets.find((b) => b.id === open) ?? null;
   return (
-    <section aria-label="Live smallcases" className="flex min-w-0 flex-col gap-2 rounded-3xl bg-white/70 p-3 shadow-soft dark:bg-stone-900/50">
+    <section aria-label="Live smallcases" className={`flex min-w-0 flex-col rounded-3xl bg-white/70 shadow-soft dark:bg-stone-900/50 ${compact ? "gap-1.5 p-2.5" : "gap-2 p-3"}`}>
       <div className="flex flex-wrap items-center justify-between gap-2 px-1 text-[11px]">
         <span className="flex items-center gap-2 font-semibold text-stone-700 dark:text-stone-200">
           <span className="relative flex size-2" aria-hidden="true" title={live ? "Pushed live as the market moves" : "Polled every 30 seconds"}>
@@ -49,7 +51,7 @@ export const LiveSmallcaseTickerBar = ({ toWorkbenchOnLoad = false }: { toWorkbe
             <span className={`relative inline-flex size-2 rounded-full ${live ? "bg-emerald-500" : "bg-stone-400"}`} />
           </span>
           Live smallcases
-          <span className="font-normal text-stone-500 dark:text-stone-400">baskets of positive-EV singles from ASHOKA's market, sized by KUMBHA</span>
+          {!compact && <span className="font-normal text-stone-500 dark:text-stone-400">baskets of positive-EV singles from ASHOKA's market, sized by KUMBHA</span>}
         </span>
         {board.data && (
           <span className="font-mono text-stone-500 dark:text-stone-400">
@@ -58,8 +60,33 @@ export const LiveSmallcaseTickerBar = ({ toWorkbenchOnLoad = false }: { toWorkbe
           </span>
         )}
       </div>
-      <Async resource={board} skeletonRows={2}>
-        {(d) => (
+      <Async resource={board} skeletonRows={compact ? 1 : 2}>
+        {(d) => compact ? (
+          <ul className="grid grid-cols-2 gap-1.5 sm:grid-cols-3 2xl:grid-cols-6">
+            {d.baskets.map((b) => {
+              const live = b.status === "LIVE" && b.risk;
+              return (
+                <li key={b.id} className="min-w-0">
+                  <button type="button" onClick={() => setOpen(b.id)}
+                          title={`${b.name}: ${live ? b.scope : b.empty_reason}. Inspect its holdings and risk, and load it.`}
+                          className={`flex w-full min-w-0 flex-col gap-0.5 rounded-2xl border px-2.5 py-1.5 text-left transition-colors hover:border-[#C89B3C]/60 ${live ? "border-stone-200 bg-white dark:border-white/[0.08] dark:bg-stone-900" : "border-dashed border-stone-200 dark:border-white/[0.06]"}`}>
+                    <span className="truncate text-[10px] font-semibold uppercase tracking-wide text-stone-500 dark:text-stone-400">
+                      {TIER_LABEL[b.tier].label} · {b.holdings.length} leg{b.holdings.length === 1 ? "" : "s"}
+                    </span>
+                    <span className="flex min-w-0 items-baseline justify-between gap-2">
+                      <span className="truncate text-xs font-bold text-stone-900 dark:text-stone-100">{b.name}</span>
+                      {live && b.risk ? (
+                        <span className={`shrink-0 font-mono text-[11px] font-semibold ${b.risk.expected_return >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-rose-600"}`}>{pct(b.risk.expected_return, 1, true)}</span>
+                      ) : (
+                        <span className="shrink-0 text-[10px] text-stone-400 dark:text-stone-500">empty</span>
+                      )}
+                    </span>
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+        ) : (
           <ul className="grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-6">
             {d.baskets.map((b) => {
               const tier = TIER_LABEL[b.tier];
@@ -90,7 +117,7 @@ export const LiveSmallcaseTickerBar = ({ toWorkbenchOnLoad = false }: { toWorkbe
           </ul>
         )}
       </Async>
-      {board.data && <p className="px-1 text-[10px] text-stone-400 dark:text-stone-500">Computed {formatAgo(board.data.computed_at)}. Nothing is placed from here: a loaded basket is inspected against the 15 pillars in the workbench.</p>}
+      {board.data && !compact && <p className="px-1 text-[10px] text-stone-400 dark:text-stone-500">Computed {formatAgo(board.data.computed_at)}. Nothing is placed from here: a loaded basket is inspected against the 15 pillars in the workbench.</p>}
       {inspected && board.data && <BasketInspector basket={inspected} board={board.data} onClose={() => setOpen(null)} afterLoad={afterLoad} />}
     </section>
   );

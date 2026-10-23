@@ -31,9 +31,12 @@ const BetdocVector = ({
 
 export const BetdocLogo = ({
   variant = 'full',
+  compact = false,
   className = '',
 }: {
   readonly variant?: LogoVariant;
+  /** The mark at 40px, for the 56px rail (Group 111). */
+  readonly compact?: boolean;
   readonly className?: string;
 }): ReactElement => {
   if (variant === 'mark') {
@@ -41,11 +44,11 @@ export const BetdocLogo = ({
       <span
         role="img"
         aria-label="betdoc"
-        className={`grid size-12 shrink-0 place-items-center rounded-2xl bg-[#1c1917] shadow-soft ${className}`}
+        className={`grid shrink-0 place-items-center bg-[#1c1917] shadow-soft ${compact ? 'size-10 rounded-xl' : 'size-12 rounded-2xl'} ${className}`}
       >
         <BetdocVector
           variant="mark"
-          className="size-7"
+          className={compact ? 'size-6' : 'size-7'}
         />
       </span>
     );

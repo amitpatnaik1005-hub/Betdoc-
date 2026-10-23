@@ -80,7 +80,6 @@ export const MatchBoard = ({ slips, onRecord }: { slips: Slip[]; onRecord: () =>
                         {openId && !open && (
                           <p className="rounded-xl p-3 text-xs" style={{ background: "var(--wb-card)" }}>That fixture has left the board (no longer quoted in this window).</p>
                         )}
-                        {slips.length > 0 && <TopParlays slips={slips.slice(0, TOP_PARLAYS)} book={theme.book} inSlip={inSlip} onAdd={addParlay} />}
                         <h3 className="text-[11px] font-bold uppercase tracking-wider" style={{ color: "var(--wb-muted)" }}>
                           {window === "live" ? "Live" : "Live and upcoming"} · {fixtures.length} of {b.total} fixture{b.total === 1 ? "" : "s"}
                         </h3>
@@ -96,6 +95,8 @@ export const MatchBoard = ({ slips, onRecord }: { slips: Slip[]; onRecord: () =>
                           </ul>
                         )}
                         {!b.steam_readable && <p className="text-[11px]" style={{ color: "var(--wb-muted)" }}>Sharp steam is unreadable right now.</p>}
+                        {/* Group 111: the fixtures first (the Chef's Table's parlay of the day sits above the board), then Ashoka's top parlays */}
+                        {slips.length > 0 && <TopParlays slips={slips.slice(0, TOP_PARLAYS)} book={theme.book} inSlip={inSlip} onAdd={addParlay} />}
                       </>
                     )}
                   </div>

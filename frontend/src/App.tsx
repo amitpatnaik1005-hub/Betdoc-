@@ -196,7 +196,7 @@ const StatTile = ({ label, value, icon, motionPreset, tone = 'neutral', changeKe
   const t = TONE_STYLE[tone];
 
   return (
-    <div className="flex min-w-0 flex-1 items-center gap-2 px-3 py-1.5 sm:min-w-[7.5rem] sm:flex-none sm:gap-2.5 sm:px-3.5 sm:py-2">
+    <div className="flex min-w-0 flex-1 items-center gap-2 px-3 py-1.5 sm:min-w-[7.5rem] sm:flex-none sm:gap-2.5 sm:px-3.5">
       <AnimatedGlyph
         icon={icon}
         motionPreset={motionPreset}
@@ -257,9 +257,9 @@ const StageHeader = (): ReactElement => {
   const pnlIcon = dayPnl > 0 ? 'trending_up' : dayPnl < 0 ? 'trending_down' : 'trending_flat';
 
   return (
-    // Group 99: one 56px row whenever the column is wide enough; otherwise the figures wrap under the title rather than
-    // squeezing it (the title block keeps at least 15rem, the tiles never shrink)
-    <header className="sticky top-0 z-30 flex min-h-[56px] shrink-0 flex-wrap items-center justify-between gap-x-4 gap-y-2 bg-[#F8F6F0]/80 px-4 py-1.5 backdrop-blur-xl backdrop-saturate-150 sm:px-6 dark:bg-stone-950/75">
+    // Group 111: one 48px row whenever the column is wide enough (Group 99's was 56px); otherwise the figures wrap under
+    // the title rather than squeezing it (the title block keeps at least 15rem, the tiles never shrink)
+    <header className="sticky top-0 z-30 flex min-h-[48px] shrink-0 flex-wrap items-center justify-between gap-x-4 gap-y-1 bg-[#F8F6F0]/80 px-4 py-1 backdrop-blur-xl backdrop-saturate-150 sm:px-6 dark:bg-stone-950/75">
       <div className="flex min-w-[15rem] flex-1 items-center gap-3">
         {isCompact && (
           <button type="button" onClick={toggleLeft} aria-label="Open navigation" className="-ml-1 grid size-10 shrink-0 place-items-center rounded-2xl text-stone-600 transition-transform duration-300 hover:bg-stone-900/5 active:scale-95 dark:text-stone-300 dark:hover:bg-white/5">
@@ -408,20 +408,27 @@ const RouteFallback = (): ReactElement => {
 // ---------------------------------------------------------------------------
 const SPRING = { type: 'spring', stiffness: 170, damping: 26, mass: 0.9 } as const;
 
-const NAV_ITEMS: readonly { to: string; label: string; icon: string; bot: CommanderId }[] = [
-  { to: '/command-center', label: 'Command Center', icon: 'dashboard',       bot: 'KAUTILYA' },
-  { to: '/arena',          label: 'The Arena',      icon: 'sports_esports',  bot: 'BAJIRAO'  },
-  { to: '/oracle',         label: 'Oracle',         icon: 'auto_awesome',    bot: 'ASHOKA'   },
+type NavItem = { to: string; label: string; icon: string; bot: CommanderId };
+
+// Group 111: six sections on the rail, in the order a bet is worked; the other six one press away under More (the logo
+// opens the Command Center), and the command palette reaches all twelve
+const PRIMARY_NAV: readonly NavItem[] = [
+  { to: '/oracle',         label: 'Oracle',         icon: 'travel_explore',  bot: 'ASHOKA'   },
   { to: '/consultant',     label: 'BetDoc Consultant', icon: 'medical_services', bot: 'ASHVATTHAMA' },
   { to: '/bet-slip',       label: 'Bet-Slip',       icon: 'confirmation_number', bot: 'ASHVATTHAMA' },
-  { to: '/lab',            label: 'The Lab',        icon: 'science',         bot: 'PANINI'   },
-  { to: '/hive',           label: 'The Hive',       icon: 'hive',            bot: 'VIDUR'    },
-  { to: '/vault',          label: 'The Vault',      icon: 'account_balance', bot: 'KUMBHA'   },
   { to: '/wire',           label: 'The Wire',       icon: 'newspaper',       bot: 'VIDUR'    },
+  { to: '/vault',          label: 'The Vault',      icon: 'account_balance', bot: 'KUMBHA'   },
+  { to: '/control-panel',  label: 'Settings',       icon: 'settings',        bot: 'KAUTILYA' },
+];
+const MORE_NAV: readonly NavItem[] = [
+  { to: '/command-center', label: 'Command Center', icon: 'dashboard',       bot: 'KAUTILYA' },
+  { to: '/lab',            label: 'The Lab',        icon: 'science',         bot: 'PANINI'   },
+  { to: '/arena',          label: 'The Arena',      icon: 'sports_esports',  bot: 'BAJIRAO'  },
+  { to: '/hive',           label: 'The Hive',       icon: 'hive',            bot: 'VIDUR'    },
   { to: '/archive',        label: 'Archive',        icon: 'inventory_2',     bot: 'TODAR MAL'},
   { to: '/core',           label: 'Core',           icon: 'memory',          bot: 'PRATAP'   },
-  { to: '/control-panel',  label: 'Control Panel',  icon: 'settings',        bot: 'KAUTILYA' },
 ];
+const NAV_ITEMS: readonly NavItem[] = [...PRIMARY_NAV, ...MORE_NAV];
 
 const STATUS_DOT: Record<string, string> = {
   WORKING: 'bg-sky-400', ONLINE: 'bg-emerald-400', DEGRADED: 'bg-amber-400', FATAL: 'bg-rose-400', SLEEPING: 'bg-amber-400',
@@ -436,73 +443,105 @@ const commanderTooltip = (context: string, commander: LiveCommander | undefined)
     commander?.probeLatencyMs != null ? `probe ${formatProbeLatency(commander.probeLatencyMs)}` : null,
   ].filter(Boolean).join(' · ');
 
-const SidebarNav = ({ collapsed }: { collapsed: boolean }) => {
+// The rail's row: icon-centred in the 56px rail, icon and label in the open one
+const railRow = (collapsed: boolean): string => (collapsed ? 'justify-center gap-0 px-0' : 'gap-3 px-3');
+
+const RailLink = ({ item: { to, label, icon, bot }, collapsed }: { item: NavItem; collapsed: boolean }) => {
   const { byId } = useCommanders();
+  const commander = byId.get(bot);
+  const status = commander?.status ?? 'NO SIGNAL';
   return (
-    <nav className="flex-1 overflow-y-auto px-3 py-2 scrollbar-hide" aria-label="Sections">
+    <li>
+      <NavLink
+        to={to}
+        title={commanderTooltip(`${label} · ${COMMANDER_REGISTRY[bot].name}`, commander)}
+        className={({ isActive }) =>
+          [
+            `group relative flex items-center ${railRow(collapsed)} rounded-2xl py-2.5 text-sm font-medium transition-[color,background-color,transform] duration-300 active:scale-[0.98]`,
+            isActive
+              ? 'text-stone-900 dark:text-stone-50'
+              : 'text-stone-500 hover:bg-stone-900/[0.03] hover:text-stone-900 dark:text-stone-400 dark:hover:bg-white/[0.04] dark:hover:text-stone-100',
+          ].join(' ')
+        }
+      >
+        {({ isActive }) => (
+          <>
+            {isActive && (
+              <motion.span
+                layoutId="nav-active-pill"
+                className="absolute inset-0 rounded-2xl bg-white shadow-soft dark:bg-stone-800/80 dark:shadow-none"
+                transition={SPRING}
+              />
+            )}
+            <span
+              className={[
+                'material-symbols-outlined relative shrink-0 text-xl transition-all',
+                isActive ? 'text-[var(--accent-text)]' : '',
+              ].join(' ')}
+            >
+              {icon}
+            </span>
+            <motion.span
+              className={`relative whitespace-nowrap overflow-hidden leading-none ${collapsed ? 'flex-none' : 'flex-1'}`}
+              animate={{
+                opacity: collapsed ? 0 : 1,
+                width: collapsed ? 0 : 'auto',
+                marginLeft: collapsed ? 0 : undefined,
+              }}
+              transition={SPRING}
+            >
+              {label}
+            </motion.span>
+            <span
+              aria-label={`${COMMANDER_REGISTRY[bot].name} ${status}`}
+              className={[
+                'size-1.5 shrink-0 rounded-full',
+                collapsed ? 'absolute right-1.5 top-1.5' : 'relative',  // out of the flow on the rail, so the icon centres
+                STATUS_DOT[status] ?? 'bg-stone-300 dark:bg-stone-600',
+                status === 'WORKING' ? 'animate-breathe' : '',
+              ].join(' ')}
+            />
+          </>
+        )}
+      </NavLink>
+    </li>
+  );
+};
+
+const SidebarNav = ({ collapsed }: { collapsed: boolean }) => {
+  const { pathname } = useLocation();
+  const inMore = MORE_NAV.some(({ to }) => pathname === to || pathname.startsWith(`${to}/`));
+  const [moreOpen, setMoreOpen] = useState(inMore);
+  // arriving on one of More's pages (a link, the palette) opens the group, so the page's row is always on the rail
+  const [wasInMore, setWasInMore] = useState(inMore);
+  if (inMore !== wasInMore) {
+    setWasInMore(inMore);
+    if (inMore) setMoreOpen(true);
+  }
+  const open = moreOpen || inMore;
+  return (
+    <nav className={`flex-1 overflow-y-auto py-2 scrollbar-hide ${collapsed ? 'px-2' : 'px-3'}`} aria-label="Sections">
       <ul className="flex flex-col gap-0.5">
-        {NAV_ITEMS.map(({ to, label, icon, bot }) => {
-          const commander = byId.get(bot);
-          const status = commander?.status ?? 'NO SIGNAL';
-          return (
-            <li key={to}>
-              <NavLink
-                to={to}
-                title={commanderTooltip(`${label} · ${COMMANDER_REGISTRY[bot].name}`, commander)}
-                className={({ isActive }) =>
-                  [
-                    'group relative flex items-center gap-3 rounded-2xl px-3 py-2.5 text-sm font-medium transition-[color,background-color,transform] duration-300 active:scale-[0.98]',
-                    isActive
-                      ? 'text-stone-900 dark:text-stone-50'
-                      : 'text-stone-500 hover:bg-stone-900/[0.03] hover:text-stone-900 dark:text-stone-400 dark:hover:bg-white/[0.04] dark:hover:text-stone-100',
-                  ].join(' ')
-                }
-              >
-                {({ isActive }) => (
-                  <>
-                    {isActive && (
-                      <motion.span
-                        layoutId="nav-active-pill"
-                        className="absolute inset-0 rounded-2xl bg-white shadow-soft dark:bg-stone-800/80 dark:shadow-none"
-                        transition={SPRING}
-                      />
-                    )}
-                    <span
-                      className={[
-                        'material-symbols-outlined relative shrink-0 text-xl transition-all',
-                        collapsed ? 'mx-auto' : '',
-                        isActive ? 'text-[var(--accent-text)]' : '',
-                      ].join(' ')}
-                    >
-                      {icon}
-                    </span>
-                    <motion.span
-                      className="relative flex-1 whitespace-nowrap overflow-hidden leading-none"
-                      animate={{
-                        opacity: collapsed ? 0 : 1,
-                        width: collapsed ? 0 : 'auto',
-                        marginLeft: collapsed ? 0 : undefined,
-                      }}
-                      transition={SPRING}
-                    >
-                      {label}
-                    </motion.span>
-                    <span
-                      aria-label={`${COMMANDER_REGISTRY[bot].name} ${status}`}
-                      className={[
-                        'relative size-1.5 shrink-0 rounded-full',
-                        collapsed ? 'absolute right-2 top-2' : '',
-                        STATUS_DOT[status] ?? 'bg-stone-300 dark:bg-stone-600',
-                        status === 'WORKING' ? 'animate-breathe' : '',
-                      ].join(' ')}
-                    />
-                  </>
-                )}
-              </NavLink>
-            </li>
-          );
-        })}
+        {PRIMARY_NAV.map((item) => <RailLink key={item.to} item={item} collapsed={collapsed} />)}
       </ul>
+      <button
+        type="button"
+        onClick={() => setMoreOpen(!open)}
+        disabled={inMore}
+        aria-expanded={open}
+        aria-controls="rail-more"
+        title={inMore ? 'The open page is in More' : open ? 'Fewer sections' : 'More sections: Command Center, The Lab, The Arena, The Hive, Archive, Core'}
+        className={`mt-1 flex w-full items-center ${railRow(collapsed)} rounded-2xl py-2 text-xs font-semibold uppercase tracking-wide text-stone-400 transition-colors duration-300 enabled:hover:bg-stone-900/[0.03] enabled:hover:text-stone-700 dark:text-stone-500 dark:enabled:hover:bg-white/[0.04] dark:enabled:hover:text-stone-200`}
+      >
+        <span className="material-symbols-outlined shrink-0 text-xl" aria-hidden="true">{open ? 'expand_less' : 'more_horiz'}</span>
+        {!collapsed && <span className="flex-1 text-left">More</span>}
+        {collapsed && <span className="sr-only">More sections</span>}
+      </button>
+      {open && (
+        <ul id="rail-more" className="flex flex-col gap-0.5" aria-label="More sections">
+          {MORE_NAV.map((item) => <RailLink key={item.to} item={item} collapsed={collapsed} />)}
+        </ul>
+      )}
     </nav>
   );
 };
@@ -535,12 +574,14 @@ const Sidebar = ({ theme, onToggleTheme }: { theme: string; onToggleTheme: () =>
     </AnimatePresence>
     <motion.aside
       layout
-      animate={{ width: hidden ? 0 : isLeftCollapsed ? 80 : 264 }}
+      animate={{ width: hidden ? 0 : isLeftCollapsed ? 56 : 248 }}  // Group 111: a 56px icon rail
       transition={SPRING}
       aria-hidden={hidden || undefined}
       className={`${isCompact ? 'fixed left-0 top-0 z-50 rounded-r-3xl bg-white/75 shadow-soft-lg backdrop-blur-xl backdrop-saturate-150 dark:bg-stone-900/80' : 'sticky top-0 z-40 bg-white/50 dark:bg-stone-900/40'} ${hidden ? 'invisible' : ''} flex h-screen shrink-0 flex-col overflow-hidden`}
     >
-      <div className="flex items-center overflow-hidden px-4 pb-4 pt-6 sm:pb-6 sm:pt-8">
+      {/* Group 111: the logo opens the Command Center, the desk's overview */}
+      <NavLink to="/command-center" title="Command Center" aria-label="BetDoc · Command Center"
+               className={`flex items-center overflow-hidden ${isLeftCollapsed ? 'px-2 pb-3 pt-4' : 'px-4 pb-4 pt-5'}`}>
         <AnimatePresence mode="wait">
           {!isLeftCollapsed ? (
             <motion.div key="full-logo" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.15 }}>
@@ -548,35 +589,35 @@ const Sidebar = ({ theme, onToggleTheme }: { theme: string; onToggleTheme: () =>
             </motion.div>
           ) : (
             <motion.div key="mark-logo" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.15 }} className="mx-auto">
-              <BrandLogo variant="mark" />
+              <BrandLogo variant="mark" compact />
             </motion.div>
           )}
         </AnimatePresence>
-      </div>
+      </NavLink>
 
       <SidebarNav collapsed={isLeftCollapsed} />
 
-      <div className="flex flex-col gap-0.5 p-3 pb-5">
-        <button onClick={() => window.dispatchEvent(new CustomEvent('betdoc:palette'))} className="flex items-center gap-3 rounded-2xl px-3 py-2.5 text-sm text-stone-500 transition-colors duration-300 hover:bg-stone-900/[0.03] hover:text-stone-800 dark:text-stone-400 dark:hover:bg-white/[0.04] dark:hover:text-stone-200" title="Command palette (Ctrl/⌘ K)">
+      <div className={`flex flex-col gap-0.5 pb-5 ${isLeftCollapsed ? 'px-2 pt-2' : 'px-3 pt-3'}`}>
+        <button onClick={() => window.dispatchEvent(new CustomEvent('betdoc:palette'))} className={`flex items-center ${railRow(isLeftCollapsed)} rounded-2xl py-2.5 text-sm text-stone-500 transition-colors duration-300 hover:bg-stone-900/[0.03] hover:text-stone-800 dark:text-stone-400 dark:hover:bg-white/[0.04] dark:hover:text-stone-200`} title="Command palette (Ctrl/⌘ K)">
           <span className="material-symbols-outlined shrink-0 text-xl">keyboard_command_key</span>
-          <motion.span className="flex flex-1 items-center justify-between whitespace-nowrap overflow-hidden" animate={{ opacity: isLeftCollapsed ? 0 : 1, width: isLeftCollapsed ? 0 : 'auto' }} transition={SPRING}>
+          <motion.span className={`flex items-center justify-between whitespace-nowrap overflow-hidden ${isLeftCollapsed ? 'flex-none' : 'flex-1'}`} animate={{ opacity: isLeftCollapsed ? 0 : 1, width: isLeftCollapsed ? 0 : 'auto' }} transition={SPRING}>
             Commands
             <kbd className="rounded-lg bg-stone-900/[0.04] px-1.5 py-0.5 font-mono text-[10px] text-stone-400 dark:bg-white/[0.06] dark:text-stone-500">Ctrl K</kbd>
           </motion.span>
         </button>
-        <button onClick={onToggleTheme} className="flex items-center gap-3 rounded-2xl px-3 py-2.5 text-sm text-stone-500 transition-colors duration-300 hover:bg-stone-900/[0.03] hover:text-stone-800 dark:text-stone-400 dark:hover:bg-white/[0.04] dark:hover:text-stone-200" title="Toggle theme">
+        <button onClick={onToggleTheme} className={`flex items-center ${railRow(isLeftCollapsed)} rounded-2xl py-2.5 text-sm text-stone-500 transition-colors duration-300 hover:bg-stone-900/[0.03] hover:text-stone-800 dark:text-stone-400 dark:hover:bg-white/[0.04] dark:hover:text-stone-200`} title="Toggle theme">
           <span className="material-symbols-outlined shrink-0 text-xl">{theme === 'dark' ? 'light_mode' : 'dark_mode'}</span>
           <motion.span className="whitespace-nowrap overflow-hidden" animate={{ opacity: isLeftCollapsed ? 0 : 1, width: isLeftCollapsed ? 0 : 'auto' }} transition={SPRING}>
             {theme === 'dark' ? 'Light mode' : 'Dark mode'}
           </motion.span>
         </button>
-        <button onClick={toggleLeft} className="flex items-center gap-3 rounded-2xl px-3 py-2.5 text-sm text-stone-400 transition-colors duration-300 hover:bg-stone-900/[0.03] hover:text-stone-700 dark:hover:bg-white/[0.04] dark:hover:text-stone-200" title={isLeftCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}>
+        <button onClick={toggleLeft} className={`flex items-center ${railRow(isLeftCollapsed)} rounded-2xl py-2.5 text-sm text-stone-400 transition-colors duration-300 hover:bg-stone-900/[0.03] hover:text-stone-700 dark:hover:bg-white/[0.04] dark:hover:text-stone-200`} title={isLeftCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}>
           <motion.span className="material-symbols-outlined shrink-0 text-xl" animate={{ rotate: isLeftCollapsed ? 180 : 0 }} transition={SPRING}>chevron_left</motion.span>
           <motion.span className="whitespace-nowrap overflow-hidden" animate={{ opacity: isLeftCollapsed ? 0 : 1, width: isLeftCollapsed ? 0 : 'auto' }} transition={SPRING}>
             Collapse
           </motion.span>
         </button>
-        <button onClick={logout} className="flex items-center gap-3 rounded-2xl px-3 py-2.5 text-sm text-stone-500 transition-colors duration-300 hover:bg-rose-50 hover:text-rose-600 dark:text-stone-400 dark:hover:bg-rose-400/10 dark:hover:text-rose-300" title="Sign out">
+        <button onClick={logout} className={`flex items-center ${railRow(isLeftCollapsed)} rounded-2xl py-2.5 text-sm text-stone-500 transition-colors duration-300 hover:bg-rose-50 hover:text-rose-600 dark:text-stone-400 dark:hover:bg-rose-400/10 dark:hover:text-rose-300`} title="Sign out">
           <span className="material-symbols-outlined shrink-0 text-xl">logout</span>
           <motion.span className="min-w-0 whitespace-nowrap overflow-hidden text-left" animate={{ opacity: isLeftCollapsed ? 0 : 1, width: isLeftCollapsed ? 0 : 'auto' }} transition={SPRING}>
             Sign out{user ? <span className="text-stone-400 dark:text-stone-500"> · {user.username}</span> : null}

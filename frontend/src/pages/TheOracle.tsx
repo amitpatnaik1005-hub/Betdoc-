@@ -5,8 +5,6 @@ import { type MatchOdds, type Side, bestPrices, matchOddsMarket, outcomeSide, us
 import { downloadCsv, formatDateTime, formatINR, formatOdds, formatPct, formatRatioPct } from '../lib/format';
 import { runMutation, useResource } from '../lib/resource';
 import { useExecutionStore } from '../store/useExecutionStore';
-import { CommanderHero } from '../ui/hero';
-import { MOTIFS } from '../ui/motifs';
 import { CashoutPanel, MyBets, ScorecardStrip, TrendingFeed, TwinPanel, VettedSlips } from '../components/oracle/AshokaDesk';
 import { TwinFortressPanel } from '../components/oracle/DigitalTwinCard';
 import { SettlementFeedbackPanel } from '../components/oracle/SettlementFeedbackPanel';
@@ -14,6 +12,9 @@ import { ModelRecalibrationPanel } from '../components/oracle/ModelRecalibration
 import { NeverForgetLearningJournal } from '../components/oracle/NeverForgetLearningJournal';
 import { BetBuilder } from '../components/builder/BetBuilder';
 import { MatchBoard } from '../components/oracle/board/MatchBoard';
+import { ChefTopPlate } from '../components/oracle/board/ChefTopPlate';
+import { ScorePredictionPanel } from '../components/prediction/ScorePredictionPanel';
+import { useMatchBoard } from '../lib/match_board';
 import { SportsEngineDesk } from '../components/oracle/SportsEngineDesk';
 import { InfinityFlexiViewToggle } from '../components/smallcase/InfinityFlexiViewToggle';
 import { LiveSmallcaseTickerBar } from '../components/smallcase/LiveSmallcaseTickerBar';
@@ -300,26 +301,29 @@ const GoldenAlpha = ({ bets }: { bets: ValueBetFlag[] }) => {
 // ---------------------------------------------------------------------------
 // NAMED EXPORT: THE ORACLE
 // ---------------------------------------------------------------------------
-type OracleTab = 'board' | 'builder' | 'desk' | 'engine';
+type OracleTab = 'board' | 'builder' | 'score' | 'desk';
 const ORACLE_TABS: { value: OracleTab; label: string; icon: string }[] = [
   { value: 'board', label: 'Match board', icon: 'stadium' },
   { value: 'builder', label: 'Bet builder', icon: 'construction' },
-  { value: 'desk', label: 'Vetted slips & desk', icon: 'verified' },
-  { value: 'engine', label: 'Sports engine', icon: 'sports' },
+  { value: 'score', label: 'Score engine', icon: 'scoreboard' },
+  { value: 'desk', label: 'Quant desk', icon: 'query_stats' },
 ];
-const isOracleTab = (v: string | null): v is OracleTab => v === 'board' || v === 'builder' || v === 'desk' || v === 'engine';
+// Group 111: the Sports engine joined Score Prediction on the Score engine tab; ?tab=engine (Group 103 links) still lands there
+const tabOf = (v: string | null): OracleTab => (v === 'engine' ? 'score' : v === 'builder' || v === 'score' || v === 'desk' ? v : 'board');
 
 export const TheOracle = () => {
   // Group 103: the Sports Engine joined The Oracle; /sports redirects here with ?tab=engine
   const [params, setParams] = useSearchParams();
   const tabParam = params.get('tab');
-  const tab: OracleTab = isOracleTab(tabParam) ? tabParam : 'board';
+  const tab: OracleTab = tabOf(tabParam);
   const setTab = (next: OracleTab) => setParams((prev) => { const p = new URLSearchParams(prev); p.set('tab', next); return p; }, { replace: true });
   const recordInWorkbench = () => {
     setParams((prev) => { const p = new URLSearchParams(prev); p.set('tab', 'builder'); p.set('mode', 'manual'); return p; }, { replace: true });
     window.setTimeout(() => document.getElementById('parlay-workbench')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 120);
   };
   const odds = useLiveOdds();
+  const board = useMatchBoard(null, 'all');  // the match board's own default view: one request serves both
+  const pricedSports = (board.data?.sports ?? []).filter((s) => s.count > 0).length;
   const controls = useControls();
   const setDraft = useExecutionStore((s) => s.setDraft);
   const kellyFraction = controls.data?.default_kelly_fraction || 0.25;
@@ -335,39 +339,46 @@ export const TheOracle = () => {
     : `ASHOKA ACTIVE. ${rows.length} fixtures priced; no side beats the consensus right now.`;
 
   return (
-    <Page>
-      <CommanderHero
-        commander="ASHOKA"
-        headline={slips.data ? ashokaHeadline(slips.data) : legacy}
-        motif={MOTIFS.constellation}
-        detail="Every slip runs 10,000 Monte Carlo paths through Poisson, Dixon-Coles and the de-vigged market, then the anti-correlation gate and the 1000% filter (joint EV ≥ +7.5% and at least 55% likely). Parimatch and 1xBet side by side; odds only from authorised feeds or what you type in."
-        actions={
-          <>
-            <Button variant="primary" icon="refresh" busy={(odds.loading && odds.data !== undefined) || (slips.loading && slips.data !== undefined)} onClick={() => { void odds.refresh(); void slips.refresh(); }}>Recompute</Button>
-            <Button
-              icon="download"
-              disabled={bets.length === 0}
-              onClick={() =>
-                downloadCsv(`betdoc-value-bets-${new Date().toISOString().slice(0, 10)}.csv`, bets.map((b) => ({
-                  fixture: b.label, match_id: b.match_id, selection: b.selection, bookmaker: b.bookmaker, odds: b.bookmaker_odds,
-                  fair_probability: b.true_prob.toFixed(4), expected_value: b.expected_value.toFixed(4), kelly_fraction: b.kelly_stake_fraction.toFixed(4),
-                })))
-              }
-            >
-              Export value bets
-            </Button>
-            <InfinityFlexiViewToggle />
-          </>
-        }
-      />
+    <Page dense>
+      {/* Group 111: one strip for who and where (ASHOKA's desk, what the feeds price, the view), so the first screen is the work */}
+      <header className="flex min-w-0 flex-wrap items-center justify-between gap-x-4 gap-y-2 lg:col-span-12">
+        <div className="flex min-w-0 flex-1 basis-72 items-center gap-3">
+          <span className="grid size-9 shrink-0 place-items-center rounded-2xl bg-[var(--accent)]/15 text-[var(--accent-text)]" aria-hidden="true">
+            <span className="material-symbols-outlined text-[20px]">travel_explore</span>
+          </span>
+          <div className="min-w-0">
+            <h1 className="font-display text-lg font-bold leading-tight tracking-tight text-stone-900 dark:text-stone-100">ASHOKA · The Oracle</h1>
+            <p className="truncate text-[11px] text-stone-500 dark:text-stone-400" title={slips.data ? ashokaHeadline(slips.data) : legacy}>
+              {pricedSports > 0 ? `${pricedSports} sport${pricedSports === 1 ? '' : 's'} priced · ${board.data?.total ?? 0} fixtures · ` : ''}
+              {slips.data ? ashokaHeadline(slips.data) : legacy}
+            </p>
+          </div>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <Segmented label="Oracle view" size="sm" value={tab} onChange={setTab} options={ORACLE_TABS} />
+          <Button size="sm" icon="refresh" busy={(odds.loading && odds.data !== undefined) || (slips.loading && slips.data !== undefined)}
+                  onClick={() => { void odds.refresh(); void slips.refresh(); void board.refresh(); }}>Recompute</Button>
+          <Button
+            size="sm"
+            icon="download"
+            disabled={bets.length === 0}
+            onClick={() =>
+              downloadCsv(`betdoc-value-bets-${new Date().toISOString().slice(0, 10)}.csv`, bets.map((b) => ({
+                fixture: b.label, match_id: b.match_id, selection: b.selection, bookmaker: b.bookmaker, odds: b.bookmaker_odds,
+                fair_probability: b.true_prob.toFixed(4), expected_value: b.expected_value.toFixed(4), kelly_fraction: b.kelly_stake_fraction.toFixed(4),
+              })))
+            }
+          >
+            Export
+          </Button>
+          <InfinityFlexiViewToggle />
+        </div>
+      </header>
 
-      {/* Group 107: the live smallcases, on every tab (a loaded basket lands on the slip the board and the builder share) */}
+      {/* Group 107: the live smallcases, on every tab (a loaded basket lands on the slip the board and the builder share);
+          one row of chips since Group 111, so the board's first fixtures stay on the first screen */}
       <div className="min-w-0 lg:col-span-12">
-        <LiveSmallcaseTickerBar />
-      </div>
-
-      <div className="lg:col-span-12">
-        <Segmented label="Oracle view" value={tab} onChange={setTab} options={ORACLE_TABS} />
+        <LiveSmallcaseTickerBar compact />
       </div>
 
       {tab === 'board' && (
@@ -383,6 +394,10 @@ export const TheOracle = () => {
             ]}
             kpiCodes={["EV", "OVERROUND", "SLIP_SCORE"]}
           />
+          {/* Group 111: the parlay of the day on the first screen, above the first match cards */}
+          <div className="min-w-0 lg:col-span-12">
+            <ChefTopPlate />
+          </div>
           <MatchBoard slips={slips.data?.slips ?? []} onRecord={recordInWorkbench} />
         </>
       )}
@@ -404,19 +419,20 @@ export const TheOracle = () => {
         </>
       )}
 
-      {tab === 'engine' && (
+      {tab === 'score' && (
         <>
           <ComponentGuideBanner
             className="lg:col-span-12"
-            moduleName="The Oracle · Sports engine"
-            purpose="The nine sport adapters behind every price: price a match from its sub-model consensus, read its line markets, and run the Twin's pipeline on a selection."
+            moduleName="The Oracle · Score engine"
+            purpose="BetDoc Score Prediction (football scorelines from the market or xG, cricket innings and the chase, tennis sets, MMA rounds) and the nine sport adapters behind every price."
             steps={[
-              "Choose a sport in the fleet and enter both sides' inputs (league averages are pre-filled)",
-              "Price the match: the consensus, its line markets and each sub-model's view",
-              "Evaluate a selection against the venues' prices for the confidence index and the Kelly stake",
+              "Pick a sport and a fixture, or enter the teams' figures: the scorelines and markets follow",
+              "Read the heatmap, the innings or the sets, and every market priced from them",
+              "Price a match in the Sports engine below and evaluate a selection for its Kelly stake",
             ]}
             kpiCodes={["EV", "KELLY_STAKE"]}
           />
+          <ScorePredictionPanel />
           <SportsEngineDesk />
         </>
       )}

@@ -76,4 +76,5 @@ def test_core_pages_open_with_a_guide(page: str, kpis: tuple[str, ...]) -> None:
         assert len(re.findall(r'^\s+"(?:[^"\\]|\\.)*",?$', steps, re.M)) == 3  # exactly three steps (escaped quotes allowed)
     for kpi in kpis:
         assert any(f'"{kpi}"' in block for block in blocks), kpi
-    assert content.index("<CommanderHero") < content.index("<ComponentGuideBanner")  # right under the hero
+    if "<CommanderHero" in content:  # The Oracle opens with its one-line desk strip since Group 111
+        assert content.index("<CommanderHero") < content.index("<ComponentGuideBanner")  # right under the hero
