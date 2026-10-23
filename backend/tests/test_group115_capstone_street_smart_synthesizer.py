@@ -319,7 +319,7 @@ async def test_market_health_measures_the_board_the_registry_and_the_wire(sessio
         assert snapshot.anchors_count >= 1 and snapshot.top_anchors[0]["fixture_id"] == "fx-9"
         assert call.tier == snapshot.advisory_tier and snapshot.advisory_message == call.message
         # re-evaluated the same day: the one row is updated
-        again, _ = await health.evaluate(db, None, settings, NOW + timedelta(minutes=5))
+        again, _ = await health.evaluate(db, None, settings, NOW + timedelta(minutes=1))
         await db.commit()
         assert again.id == snapshot.id and await db.scalar(select(func.count()).select_from(DailyMarketHealthSnapshot)) == 1
         view = health.view(again, await health.delivered(db, again.alert_id))
