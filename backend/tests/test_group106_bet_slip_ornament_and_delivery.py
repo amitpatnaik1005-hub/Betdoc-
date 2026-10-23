@@ -411,7 +411,9 @@ def test_the_bet_slip_page_is_wired_and_reads_the_signed_ticket() -> None:
     config = (FRONTEND / "config" / "commanders.config.ts").read_text(encoding="utf-8")
     assert re.search(r'routePrefixes: \["/consultant", "/bet-slip"\]', config)
     page = (FRONTEND / "pages" / "TheBetSlip.tsx").read_text(encoding="utf-8")
-    assert "/slip-ornament/" in (FRONTEND / "lib" / "slip_ornament.ts").read_text(encoding="utf-8") and page.index("<CommanderHero") < page.index("<ComponentGuideBanner")
+    assert "/slip-ornament/" in (FRONTEND / "lib" / "slip_ornament.ts").read_text(encoding="utf-8")
+    if "<CommanderHero" in page:  # the page opens with its own one-line header since Group 111
+        assert page.index("<CommanderHero") < page.index("<ComponentGuideBanner")
     sources = [page, (FRONTEND / "lib" / "slip_ornament.ts").read_text(encoding="utf-8"),
                *(p.read_text(encoding="utf-8") for p in (FRONTEND / "components" / "slip_ornament").glob("*.tsx"))]
     for source in sources:

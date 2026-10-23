@@ -100,6 +100,11 @@ def test_the_ticket_is_white_paper_with_the_official_layout() -> None:
                  "Official Quantitative Slip · Developed for {ticket.architect || \"Amit Ashok Kumar Patnaik\"}"):
         assert part in card, part
     assert "dark:bg-[#0c0a09]" in card  # the notches are the page behind the ticket, in either theme
+    assert "<BetdocLogo" in card and "PARIMATCH" in card and "1xBET" in card  # BetDoc's logo beside the book's own badge
+    page = read("pages/TheBetSlip.tsx")
+    assert "<CommanderHero" not in page and "Official Bet-Slip" in page and "re-check prices" in page
+    app = read("App.tsx")
+    assert "{pathname === '/wire' && <NeuralPipelineBar />}" in app  # the pipeline bar rides on The Wire only
     poster = read("lib/slip_ornament.ts")
     assert 'paper: "#FFFFFF"' in poster and "ivory" not in poster and "barcodeSvg(t.ticket_no" in poster
     assert "BETDOC OFFICIAL BET-SLIP" in poster and "NET AFTER ${t.tds_rate_pct ?? 30}% TDS" in poster and "GROSS RETURN" in poster

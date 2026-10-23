@@ -756,9 +756,10 @@ const AppShell = () => {
         transition={SPRING}
         className="relative flex min-w-0 flex-1 flex-col overflow-y-auto overflow-x-hidden"
       >
-        {/* Group 108: the neural event bus's pipeline bar rides above the header, both pinned as one block */}
+        {/* Group 108: the neural event bus's pipeline bar rides above the header, both pinned as one block; since Group 111
+            only on The Wire (the bus socket opens with the bar) */}
         <div className="sticky top-0 z-30">
-          <NeuralPipelineBar />
+          {pathname === '/wire' && <NeuralPipelineBar />}
           <StageHeader />
         </div>
         <HaltBanner />

@@ -10,6 +10,7 @@
 import { useState } from "react";
 import { TIER_STYLE } from "../../lib/backtest_and_parlay";
 import { code39 } from "../../lib/barcode";
+import { BetdocLogo } from "../../ui/brand";
 import { inr, type Ticket } from "../../lib/slip_ornament";
 
 const pct = (p: number | null | undefined, digits = 1) => (p === null || p === undefined ? "—" : `${(p * 100).toFixed(digits)}%`);
@@ -63,25 +64,36 @@ export const LuxuryBetCardOrnament = ({ ticket, onSaveBooking, saving }: { ticke
         <span className="tracking-[0.12em]">{ticket.kind.replace(/_/g, " ")} · {ticket.legs.length} leg{ticket.legs.length === 1 ? "" : "s"}</span>
       </div>
 
-      {/* BetDoc's seal and the book's badge */}
+      {/* BetDoc's official logo and the book's badge (Parimatch and 1xBet in their own colours, any other book in the
+          badge colours the ticket carries) */}
       <header className="flex flex-wrap items-center justify-between gap-4 border-b border-dashed border-stone-300 px-5 py-5 sm:px-6">
         <div className="flex min-w-0 items-center gap-3.5">
-          <div className="grid size-12 shrink-0 place-items-center rounded-2xl bg-stone-950 text-[#C89B3C] shadow-md ring-2 ring-[#C89B3C]/40">
-            <span className="material-symbols-outlined text-[26px]" aria-hidden="true">workspace_premium</span>
-          </div>
+          <BetdocLogo variant="mark" className="ring-2 ring-[#C89B3C]/40" />
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-2">
               <span className="font-display text-sm font-black tracking-tight text-stone-950 sm:text-base">BETDOC QUANTITATIVE DESK</span>
-              <span className="rounded-full bg-[#C89B3C]/15 px-2 py-0.5 font-mono text-[9px] font-black uppercase tracking-wider text-[#8A6A1F]">Quantitative seal</span>
+              <span className="rounded-full bg-[#C89B3C]/15 px-2 py-0.5 font-mono text-[9px] font-black uppercase tracking-wider text-[#8A6A1F]">Official seal</span>
             </div>
             <p className="mt-0.5 truncate text-sm font-bold text-emerald-700">{ticket.verdict.title}</p>
             <p className="truncate font-mono text-[11px] text-stone-500">Signed {ticket.signed_at_local}</p>
           </div>
         </div>
-        <span className="flex items-center gap-1.5 rounded-xl px-4 py-2 font-mono text-xs font-black uppercase tracking-widest shadow-sm"
-              style={{ color: ticket.badge.foreground, background: ticket.badge.background, border: `2px solid ${ticket.badge.foreground}` }}>
-          <span className="material-symbols-outlined text-[17px]" aria-hidden="true">storefront</span>{ticket.book_label}
-        </span>
+        {ticket.book_label.toLowerCase().includes("parimatch") ? (
+          <span className="flex items-center gap-2 rounded-xl border border-[#F8FF13]/40 bg-[#111111] px-4 py-2 text-[#F8FF13] shadow-sm">
+            <span className="material-symbols-outlined text-[18px]" aria-hidden="true">bolt</span>
+            <span className="text-xs font-black italic tracking-wider">PARIMATCH</span>
+          </span>
+        ) : ticket.book_label.toLowerCase().includes("1xbet") ? (
+          <span className="flex items-center gap-2 rounded-xl border border-white/30 bg-[#007ACC] px-4 py-2 text-white shadow-sm">
+            <span className="material-symbols-outlined text-[18px]" aria-hidden="true">sports_soccer</span>
+            <span className="text-xs font-black tracking-wider">1xBET</span>
+          </span>
+        ) : (
+          <span className="flex items-center gap-1.5 rounded-xl px-4 py-2 font-mono text-xs font-black uppercase tracking-widest shadow-sm"
+                style={{ color: ticket.badge.foreground, background: ticket.badge.background, border: `2px solid ${ticket.badge.foreground}` }}>
+            <span className="material-symbols-outlined text-[17px]" aria-hidden="true">storefront</span>{ticket.book_label}
+          </span>
+        )}
       </header>
 
       {/* Slip Score, freshness, total odds */}
