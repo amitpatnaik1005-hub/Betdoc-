@@ -45,6 +45,13 @@ function handleBusEvent(data: unknown): void {
     invalidate("commanders");
     return;
   }
+  if (event.type === "settlement") {
+    // Group 113: a sweep settled bets from final scores: every bankroll, open position and P&L view refetches
+    invalidate(...MONEY_SECTIONS, "real_money", "oracle", "bet-slip", "commanders");
+    const settled = Number((event as BusEvent & { settled?: number }).settled ?? 0);
+    if (settled > 0) toast.info(`${settled} bet${settled === 1 ? "" : "s"} settled from final scores`, "Bankroll, open positions and P&L are updated.");
+    return;
+  }
   if (event.type === "fleet") {
     // A worker finished a run, a source changed state, or a quorum sweep settled
     invalidate("fleet");

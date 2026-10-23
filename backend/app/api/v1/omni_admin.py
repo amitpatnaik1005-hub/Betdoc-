@@ -22,6 +22,8 @@ from app.core.encryption import mask_api_key
 from app.core.omni_keys import OmniRedisKeys
 from app.core.security_vault import VaultCrypto
 from app.models.omni_vault import WS_STRATEGIES, OmniAuthStrategy, OmniHealth, OmniProviderConfig, OmniProviderEndpoint
+from app.models.user_bets_ledger import ScoreStatus
+from app.services import live_result_settlement_service as settlement
 from app.services import live_sports_ingestion_service as live_ingest
 
 logger = logging.getLogger(__name__)
@@ -376,3 +378,50 @@ async def live_ingest_status(request: Request, probe: bool = False) -> dict[str,
     """The Odds API source, its keys (``probe``: each checked with the free ``GET /sports``), the sports in season, the
     store, the cadence's daily spend and the context feeds. Never returns a key."""
     return await live_ingest.status(request.app.state.fleet_deps, probe=probe)
+
+
+# ---------------------------------------------------------------- Group 113: automated result settlement
+class ManualResult(BaseModel):
+    """An explicit administrative result for one fixture id (as the ledger names it)."""
+
+    model_config = ConfigDict(extra="forbid")
+    match_id: str = Field(min_length=1, max_length=128)
+    status: ScoreStatus = ScoreStatus.FINAL
+    home_score: int | None = Field(default=None, ge=0, le=2000)
+    away_score: int | None = Field(default=None, ge=0, le=2000)
+    home: str | None = Field(default=None, min_length=1, max_length=128)
+    away: str | None = Field(default=None, min_length=1, max_length=128)
+    sport_key: str | None = Field(default=None, max_length=64)
+
+    @model_validator(mode="after")
+    def _final_needs_goals(self) -> Self:
+        if self.status is ScoreStatus.FINAL and (self.home_score is None or self.away_score is None):
+            raise ValueError("a FINAL result needs home_score and away_score")
+        return self
+
+
+class SettleResultsRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    result: ManualResult | None = None
+    dry_run: bool = False
+    fetch: bool = True
+
+
+@router.post("/settle-results")
+async def settle_results(request: Request, body: SettleResultsRequest | None = None) -> dict[str, Any]:
+    """Record an admin result (optional), then sweep: the feeds' results for the fixtures bets wait on, and every ledger
+    settled from fixture_scores (``dry_run``: computed, nothing written). Developed for Amit Ashok Kumar Patnaik."""
+    body = body or SettleResultsRequest()
+    deps = request.app.state.fleet_deps
+    manual = None
+    if body.result is not None:
+        if body.dry_run:
+            raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "an admin result is written: preview the feeds with dry_run and no result")
+        r = body.result
+        try:
+            manual = await settlement.record_admin_result(deps.session_factory, r.match_id, status=r.status, home_goals=r.home_score, away_goals=r.away_score,
+                                                          home=r.home, away=r.away, sport_key=r.sport_key)
+        except settlement.SettlementError as exc:
+            raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, str(exc)) from exc
+    report = await settlement.sweep(deps.session_factory, deps.http, deps.redis, deps.settings, fetch=body.fetch, dry_run=body.dry_run)
+    return {"manual": manual, **report}

@@ -24,30 +24,22 @@ keeps the real cash vault (the Paper Trading Sandbox it once stood beside was re
 from __future__ import annotations
 
 import logging
-import math
 import re
 import uuid
-from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, time, timedelta
-from decimal import ROUND_CEILING, ROUND_DOWN, ROUND_HALF_UP, Decimal
+from decimal import ROUND_CEILING, ROUND_HALF_UP, Decimal
 from typing import Any
-from urllib.parse import urlencode
 from zoneinfo import ZoneInfo
 
 from redis.asyncio import Redis
-from sqlalchemy import func, select
-from sqlalchemy.dialects import postgresql, sqlite
-from sqlalchemy.exc import IntegrityError
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import Settings
-from app.domain.wagering.legs import LegTranslationError, translate
+from app.domain.wagering.legs import translate
 from app.domain.wagering.tax import financial_year, section_115bbj
-from app.domain.sports.base_sport_adapter import BaseSportAdapter
-from app.domain.sports.errors import SportNotFoundError
 from app.domain.sports.registry import SportAdapterRegistry
-from app.domain.sports.settlement import SettlementInputError
 from app.domain.sports.twin_bridge import sport_kelly_multiplier
 from app.models.tax_and_fx import TaxLedgerEntry
 from app.models.real_money import (
@@ -59,8 +51,6 @@ from app.models.real_money import (
     RealTicketStatus,
     RealTransactionType,
 )
-from app.models.user_bets_ledger import FixtureScore, ScoreStatus
-from app.schemas.bet_types import LegStatus
 from app.services import ashvatthama
 from app.services.twin.vetting import kill_switch_state
 
@@ -686,19 +676,20 @@ async def settle_ticket(
                 created_at=now,
             ))
 
-    # 2. Half Won Scenario
+    # 2. Half Won Scenario: half the stake wins at the odds, the other half comes back. Group 113: the winning half is a
+    # winning bet like any other, so its TDS is withheld, debited and ledgered exactly as a full win's.
     elif final_outcome == RealTicketStatus.HALF_WON.value:
         half_stake = _round_paisa(stake / TWO)
-        gross_return = _round_paisa(half_stake * odds) + (stake - half_stake)
-        net_win = _round_paisa(half_stake * (odds - ONE))
-        tds_calc = section_115bbj(net_win + half_stake, half_stake)
+        winning_half = _round_paisa(half_stake * odds)
+        gross_return = winning_half + (stake - half_stake)
+        tds_calc = section_115bbj(winning_half, half_stake)
         tds = tds_calc.tds
         payout = gross_return - tds
         net_profit = payout - stake
 
         bankroll.locked_exposure -= stake
         bankroll.cash_balance += payout
-        bankroll.gross_winnings += net_win
+        bankroll.gross_winnings += tds_calc.net_winnings
         bankroll.total_tds_deducted += tds
         bankroll.realized_pnl += net_profit
         bankroll.consecutive_losses = 0
@@ -707,14 +698,43 @@ async def settle_ticket(
             user_id=user_id,
             ticket_id=ticket.id,
             transaction_type=RealTransactionType.BET_PAYOUT_CREDIT.value,
-            amount=payout,
+            amount=gross_return,
             currency="INR",
             balance_before=before,
-            balance_after=bankroll.cash_balance,
+            balance_after=before + gross_return,
             reference_id=ticket_ref,
-            description=f"Half-won Asian handicap payout on {ticket_ref} (post-TDS)",
+            description=f"Half-won payout on {ticket_ref}: the winning half at odds {odds} and the other half returned",
             created_at=now,
         ))
+        if tds > ZERO:
+            db.add(RealCashTransaction(
+                user_id=user_id,
+                ticket_id=ticket.id,
+                transaction_type=RealTransactionType.TDS_WITHHOLDING_DEBIT.value,
+                amount=tds,
+                currency="INR",
+                balance_before=before + gross_return,
+                balance_after=bankroll.cash_balance,
+                reference_id=ticket_ref,
+                description=f"Section 115BBJ 30% TDS withheld on the winning half of {ticket_ref}",
+                created_at=now,
+            ))
+            db.add(TaxLedgerEntry(
+                user_id=user_id,
+                paper_bet_id=None,
+                mode="LIVE",
+                gross_payout=winning_half,
+                stake=half_stake,
+                net_winnings=tds_calc.net_winnings,
+                tds_rate=float(tds_calc.tds_rate),
+                tds_amount=tds,
+                net_post_tax_payout=tds_calc.net_post_tax_payout,
+                currency="INR",
+                jurisdiction="IN",
+                section="115BBJ",
+                financial_year=financial_year(now),
+                created_at=now,
+            ))
 
     # 3. Loss Scenario
     elif final_outcome == RealTicketStatus.LOST.value:
@@ -822,15 +842,16 @@ async def settle_ticket(
 
 
 def _resolve_scorecard_outcome(ticket: RealBetTicket, scorecard: dict[str, Any]) -> str:
-    """Uses sport adapters to resolve match final score to outcome."""
+    """Uses sport adapters to resolve match final score to outcome. Group 113: a scorecard the adapter cannot grade is
+    refused, never settled VOID (a refund nobody decided is a fake settlement)."""
     try:
         adapter = SportAdapterRegistry.get_adapter(ticket.sport)
         translated = translate(ticket.sport, ticket.market_type, ticket.selection)
         res = adapter.settle_market(translated.market_type, scorecard, translated.selection, translated.line)
         return res.value.upper()
     except Exception as exc:
-        logger.warning(f"Could not auto-settle ticket {ticket.ticket_reference} from scorecard: {exc}")
-        return RealTicketStatus.VOID.value
+        logger.warning(f"Could not grade ticket {ticket.ticket_reference} from its scorecard: {exc}")
+        raise RealMoneyError("UNGRADEABLE", f"The scorecard cannot grade {ticket.market_type} / {ticket.selection}: give the outcome instead", 422) from exc
 
 
 # ================================================================ QUERIES & VIEWS

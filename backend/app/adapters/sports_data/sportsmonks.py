@@ -77,6 +77,8 @@ def parse_fixtures(payload: Any, leagues: Mapping[int, str]) -> list[ProviderFix
             kickoff=kickoff, home=(str(sides["home"]["name"]),), away=(str(sides["away"]["name"]),), status=status,
             home_score=goals.get("home") if started and len(goals) == 2 else None, away_score=goals.get("away") if started and len(goals) == 2 else None,
             home_position=position("home"), away_position=position("away"),
+            # FT is a match decided in 90 minutes: its current score is the regular-time score (AET / FT_PEN are not)
+            regulation=(goals["home"], goals["away"]) if state == "FT" and len(goals) == 2 else None,
         ))
     return out
 

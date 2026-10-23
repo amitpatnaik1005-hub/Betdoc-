@@ -41,6 +41,9 @@ class ProviderFixture:
     home_position: int | None = None  # league position, where the feed gives it with the fixture
     away_position: int | None = None
     updated_at: datetime | None = None
+    # Group 113: the score after 90 minutes plus stoppage time, what bets settle on; None when the feed does not give it
+    # (a match decided in extra time or on penalties whose regular-time score is missing)
+    regulation: tuple[int, int] | None = None
 
 
 @dataclass(frozen=True, slots=True)

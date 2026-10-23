@@ -757,6 +757,18 @@ class Settings(BaseSettings):
     LIVE_CONTEXT_TTL_SECONDS: int = Field(default=2 * 86400, ge=3600)
     LIVE_CONTEXT_REDIS_PREFIX: str = "betdoc:live_context"
     LIVE_CONTEXT_HTTP_TIMEOUT_SECONDS: float = Field(default=15.0, gt=0, le=120)
+    # ---- Automated result settlement (Group 113, points b.6 / b.12, FA-6) ----
+    # Finished matches from Football-Data.org and Sportmonks (free) become fixture_scores rows for the fixtures bets wait
+    # on, paired strictly (both sides' names, the kickoff within SETTLEMENT_PAIR_WINDOW_HOURS, the only candidate); then
+    # the Oracle's placed bets, the real-money desk's tickets and the exchange orders settle from them. A manual result
+    # is an admin command (settlement_runner / POST /admin/omni/settle-results). Nothing settles from a guess.
+    SETTLEMENT_SWEEP_ENABLED: bool = True
+    SETTLEMENT_SWEEP_SECONDS: float = Field(default=600.0, ge=60.0)  # the beat task; providers are called only for due fixtures
+    SETTLEMENT_LOOKBACK_DAYS: int = Field(default=30, ge=1, le=120)  # older waiting fixtures are left to an admin result
+    SETTLEMENT_PAIR_WINDOW_HOURS: float = Field(default=6.0, gt=0, le=72)  # a result pairs a waiting fixture this close in kickoff
+    SETTLEMENT_TICKET_WINDOW_DAYS: float = Field(default=4.0, gt=0, le=14)  # a ticket without a kickoff: matches this soon after placing
+    SETTLEMENT_NAME_CUTOFF: float = Field(default=0.85, gt=0.5, le=1.0)  # both sides' names (the Wire's similarity)
+
     # The match board lists stored Odds API fixtures the live market is not pricing right now, with their stored prices,
     # how old those are and no EV (a stale price is never vetted, staked or added to the slip from the board)
     MATCH_BOARD_STORED_PRICES: bool = True

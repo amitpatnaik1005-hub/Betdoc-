@@ -3,64 +3,39 @@ Celery tasks for Real-Money Desk automated settlement (Group 95).
 Developed for Amit Ashok Kumar Patnaik | BetDoc Quantitative Sports Trading Fleet.
 
 * ``real_money.settle_pending_real_tickets`` (every ``REAL_SETTLE_INTERVAL_SECONDS``, 60 s):
-  Every placed real-money ticket whose matches have a recorded final score settles through its sport adapter.
+  Every placed real-money ticket whose match has a recorded score settles (Group 113: graded by the shared grader that
+  every ledger uses, the score read from ``fixture_scores``, which the settlement sweep fills from the results feeds).
   A win credits the liquid bankroll post-30% TDS, a loss forfeits the stake, and push/void refunds in full.
 """
 
 from __future__ import annotations
 
 import asyncio
-import logging
 from datetime import UTC, datetime
 from typing import Any
 
-from sqlalchemy import select
-
 from app.core.celery_app import celery_app
-from app.models.real_money import RealBetTicket, RealTicketStatus
-from app.models.user_bets_ledger import FixtureScore, ScoreStatus
-from app.services import real_money_service as rms
+from app.core.events import publish_event
 from app.workers.oracle_tasks import _resources
-
-logger = logging.getLogger("betdoc.real_money_tasks")
 
 
 async def _auto_settle_real_tickets() -> dict[str, Any]:
+    """Group 113: every placed ticket a recorded score decides, graded by the shared grader (the score is looked up by
+    ``fixture_scores.fixture_id``; a market the grader cannot read stays placed, never voided)."""
+    from app.services.live_result_settlement_service import settle_real_tickets  # noqa: PLC0415 - pulls in the feeds
+
     async with _resources() as (redis, sessions, settings):
         lock = "real_money:lock:settle"
         if not await redis.set(lock, "1", nx=True, ex=int(settings.REAL_SETTLE_INTERVAL_SECONDS) * 4):
             return {"skipped": "another settlement run holds the lock"}
         try:
-            settled = 0
             async with sessions() as session:
-                stmt = select(RealBetTicket).where(RealBetTicket.status == RealTicketStatus.PLACED.value)
-                res = await session.execute(stmt)
-                tickets = list(res.scalars().all())
-
-                for ticket in tickets:
-                    # Look up fixture score
-                    score_stmt = select(FixtureScore).where(
-                        FixtureScore.match_id == ticket.match_id,
-                        FixtureScore.status.in_([ScoreStatus.FINAL.value, ScoreStatus.ABANDONED.value, "FINAL", "ABANDONED"]),
-                    )
-                    score_res = await session.execute(score_stmt)
-                    fixture_score = score_res.scalar_one_or_none()
-                    if fixture_score and fixture_score.score_data:
-                        try:
-                            await rms.settle_ticket(
-                                db=session,
-                                settings=settings,
-                                user_id=ticket.user_id,
-                                ticket_ref=ticket.ticket_reference,
-                                scorecard=fixture_score.score_data,
-                                notes="Auto-settled from official final score",
-                            )
-                            settled += 1
-                        except Exception as exc:
-                            logger.error(f"Error auto-settling real ticket {ticket.ticket_reference}: {exc}")
-                if settled > 0:
-                    await session.commit()
-            return {"settled_tickets": settled}
+                report = await settle_real_tickets(session, settings, datetime.now(UTC))
+                await session.commit()
+            if report.settled:
+                await publish_event(redis, {"type": "settlement", "section": "settlement", "settled": report.settled, "tickets": report.settled,
+                                            "tds_withheld": str(report.tds_withheld)})
+            return {"settled": report.settled, "left_pending": report.pending_ungradeable}
         finally:
             await redis.delete(lock)
 

@@ -56,14 +56,19 @@ def parse_matches(payload: Any, competitions: Mapping[str, str]) -> list[Provide
         home, away = _names(raw.get("homeTeam")), _names(raw.get("awayTeam"))
         if sport_key is None or kickoff is None or not home or not away or raw.get("id") is None:
             continue
-        full = ((raw.get("score") or {}).get("fullTime") or {}) if isinstance(raw.get("score"), Mapping) else {}
+        score = raw.get("score") if isinstance(raw.get("score"), Mapping) else {}
+        full = score.get("fullTime") or {}
         status = _STATUS.get(str(raw.get("status") or ""), "UNKNOWN")
+        # fullTime includes extra time; a match that went past 90 minutes gives its regular-time score separately
+        regular = full if score.get("duration") in (None, "REGULAR") else score.get("regularTime") or {}
+        regulation = (_goals(regular.get("home")), _goals(regular.get("away"))) if status == "FINISHED" and isinstance(regular, Mapping) else (None, None)
         out.append(ProviderFixture(
             provider=PROVIDER, provider_id=str(raw["id"]), sport_key=sport_key, competition=str((raw.get("competition") or {}).get("name") or code),
             kickoff=kickoff, home=home, away=away, status=status,
             home_score=_goals(full.get("home")) if status in ("IN_PLAY", "PAUSED", "FINISHED") else None,
             away_score=_goals(full.get("away")) if status in ("IN_PLAY", "PAUSED", "FINISHED") else None,
             updated_at=_time(raw.get("lastUpdated")),
+            regulation=None if None in regulation else (regulation[0], regulation[1]),  # type: ignore[arg-type]
         ))
     return out
 
