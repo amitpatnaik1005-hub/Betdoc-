@@ -62,6 +62,7 @@ export interface Synthesis {
 export interface SplitLeg {
   leg_id: string;
   fixture: string;
+  market: string;
   label: string;
   code: string;
   odds: string;
@@ -136,7 +137,17 @@ export interface MarketHealth {
   developer_name: string;
 }
 
-export type SystemTicket = RealBetTicket & { legs: SplitLeg[]; placement: TicketPlacement };
+/** Group 116: the ticket if every leg wins, after the 30% TDS on the net winnings (the server's figures, for the share card) */
+export interface TicketProjection {
+  stake_inr: string;
+  odds: string;
+  gross_payout_inr: string;
+  net_winnings_inr: string;
+  tds_inr: string;
+  take_home_inr: string;
+}
+
+export type SystemTicket = RealBetTicket & { legs: SplitLeg[]; placement: TicketPlacement; projection: TicketProjection };
 
 export interface SynthesizeInput {
   target_stake_inr: number;

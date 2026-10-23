@@ -1,13 +1,14 @@
-"""Closing Line Value (CLV) Beat-the-Market Tracker (Group 116).
-Engineered for Amit Ashok Kumar Patnaik | BetDoc Quantitative Sports Trading Fleet.
-
-Measures whether a bet placed on Parimatch or 1xBet secured superior odds compared to
-the sharp closing market (Pinnacle or Betfair Exchange) recorded at kickoff time:
+"""Closing Line Value (CLV): did the price you took beat where the market closed? (Group 116)
+Developed for Amit Ashok Kumar Patnaik.
 
     CLV Edge = (Placed Odds / Closing Odds) - 1.0
 
-A positive CLV Edge (> 0%) mathematically proves long-term positive expectancy and
-market-beating edge regardless of individual event variance.
+The closing line is the one BetDoc already records for every Oracle bet (``user_placed_bets.closing_odds``): the sharp
+books' last complete price before kickoff, from Nalanda's ticks (Group 73). A real-money ticket placed from the Bet-Slip
+or the system splitter is tracked by such a bet, so its CLV shows on its placement (``ticket_clv``).
+
+Held over many bets, a positive CLV is the best-known sign of positive expectancy; a single bet's CLV says little on
+its own, and nothing here promises a result.
 """
 
 from __future__ import annotations
@@ -65,3 +66,10 @@ def calculate_clv_edge(
         "rationale": rationale,
         "architect": DEVELOPER_CREDIT,
     }
+
+
+def ticket_clv(placed_odds: Decimal | float | None, closing_odds: Decimal | float | None) -> dict[str, Any] | None:
+    """A placed bet's CLV once its closing line is recorded (None before kickoff, or when no sharp close was seen)."""
+    if placed_odds is None or closing_odds is None or Decimal(str(placed_odds)) <= 1 or Decimal(str(closing_odds)) <= 1:
+        return None
+    return calculate_clv_edge(placed_odds, closing_odds)

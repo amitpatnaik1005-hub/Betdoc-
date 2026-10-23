@@ -1,182 +1,122 @@
-import React from 'react';
+/**
+ * The shareable bet card (Group 116): a recorded ticket as a white, high-contrast card to copy as text or print / save as
+ * PDF. Every figure is the server's (the gross payout if every leg wins, Section 115BBJ's 30% TDS on the net winnings,
+ * the take-home); nothing is computed here. Opened from a system ticket. Developed for Amit Ashok Kumar Patnaik.
+ */
+import { useEffect, useId, useRef } from "react";
+import { inr } from "../../lib/slip_ornament";
+import { toast } from "../../store/useToastStore";
+import { BetdocLogo } from "../../ui/brand";
 
-export interface BetLeg {
+export interface ShareLeg {
   sport: string;
-  eventName: string;
+  event: string;
   market: string;
   selection: string;
-  odds: number;
-  bookmaker?: string;
+  odds: string;
+  code?: string;
 }
 
 export interface ShareableBetSlipCardProps {
-  ticketReference: string;
-  legs: BetLeg[];
-  totalOdds: number;
-  stakeInr: number;
-  potentialPayoutInr: number;
-  netPayoutInr?: number;
-  tdsInr?: number;
-  dateStr?: string;
-  onClose?: () => void;
+  reference: string;
+  book: string;
+  status: string;
+  legs: ShareLeg[];
+  totalOdds: string;
+  stakeInr: string;
+  grossPayoutInr: string;
+  netWinningsInr: string;
+  tdsInr: string;
+  takeHomeInr: string;
+  onClose: () => void;
 }
 
-export const ShareableBetSlipCard: React.FC<ShareableBetSlipCardProps> = ({
-  ticketReference,
-  legs,
-  totalOdds,
-  stakeInr,
-  potentialPayoutInr,
-  netPayoutInr,
-  tdsInr,
-  dateStr = new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }),
-  onClose,
-}) => {
-  const calculatedTds = tdsInr ?? Math.max(0, (potentialPayoutInr - stakeInr) * 0.30);
-  const calculatedNet = netPayoutInr ?? (potentialPayoutInr - calculatedTds);
+export const ShareableBetSlipCard = ({ reference, book, status, legs, totalOdds, stakeInr, grossPayoutInr, netWinningsInr, tdsInr, takeHomeInr, onClose }:
+                                       ShareableBetSlipCardProps) => {
+  const titleId = useId();
+  const box = useRef<HTMLDivElement>(null);
+  const placed = status !== "PENDING_PLACEMENT";
+  useEffect(() => {
+    box.current?.querySelector<HTMLButtonElement>("button")?.focus();
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
 
-  const handleCopyText = () => {
-    const textLines = [
-      `🏛️ BETDOC QUANTITATIVE SLIP · ${ticketReference}`,
-      `Authority: Amit Ashok Kumar Patnaik`,
-      `Date: ${dateStr}`,
-      `Total Odds: ${totalOdds.toFixed(2)}x | Stake: ₹${stakeInr.toLocaleString('en-IN')}`,
-      `----------------------------------------`,
-      ...legs.map((leg, idx) => `${idx + 1}. [${leg.sport.toUpperCase()}] ${leg.eventName}\n   👉 ${leg.selection} @ ${leg.odds.toFixed(2)} (${leg.market})`),
-      `----------------------------------------`,
-      `Gross Payout: ₹${Math.round(potentialPayoutInr).toLocaleString('en-IN')}`,
-      `Est. 30% TDS: ₹${Math.round(calculatedTds).toLocaleString('en-IN')}`,
-      `Net Take-Home: ₹${Math.round(calculatedNet).toLocaleString('en-IN')}`,
-      `Verified by BetDoc Krishna-Arjuna Engine`,
-    ];
-    navigator.clipboard.writeText(textLines.join('\n'));
-    alert('Bet slip summary copied to clipboard!');
-  };
-
-  const handlePrint = () => {
-    window.print();
+  const copy = async () => {
+    const text = [
+      `BETDOC SLIP · ${reference} · ${book}`,
+      `${legs.length}-leg accumulator @ ${Number(totalOdds).toFixed(2)} · ${placed ? "stake" : "planned stake"} ${inr(stakeInr)}`,
+      ...legs.map((leg, i) => `${i + 1}. [${leg.sport}] ${leg.event}: ${leg.selection}${leg.code ? ` [${leg.code}]` : ""} @ ${leg.odds}`),
+      `If every leg wins: ${inr(grossPayoutInr)} gross · TDS 30% of ${inr(netWinningsInr)} = ${inr(tdsInr)} · take-home ${inr(takeHomeInr)}`,
+      "Placed by hand at the book. Developed for Amit Ashok Kumar Patnaik",
+    ].join("\n");
+    try {
+      await navigator.clipboard.writeText(text);
+      toast.success("Slip copied", `${reference} · ${legs.length} legs`);
+    } catch {
+      toast.error("Not copied", "The browser refused the clipboard: select the card's text instead.");
+    }
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 overflow-y-auto">
-      <div className="relative w-full max-w-lg bg-white rounded-xl shadow-2xl border-2 border-[#C89B3C] overflow-hidden my-8 font-sans text-stone-900">
-        {/* Top Header Bar */}
-        <div className="bg-[#1C1917] text-white p-5 flex items-center justify-between border-b-2 border-[#C89B3C]">
-          <div className="flex items-center gap-3">
-            <svg width="32" height="32" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-              <path
-                d="M 2 14 H 5.5 L 6.5 17 L 9 6 L 10.5 18 L 12 14 H 14 V 11.5 H 16 V 9 H 18 V 6.5 H 20.5"
-                stroke="#C89B3C"
-                strokeWidth="2.5"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              />
-              <circle cx="20.5" cy="6.5" r="1.5" fill="#C89B3C" />
-            </svg>
-            <div>
-              <div className="text-base font-bold tracking-wider uppercase text-white flex items-center gap-2">
-                BetDoc Official Slip
-                <span className="text-[10px] px-1.5 py-0.5 rounded bg-[#C89B3C] text-black font-extrabold uppercase">
-                  Verified
-                </span>
-              </div>
-              <div className="text-[11px] text-stone-400 font-mono">
-                Ref: {ticketReference} · {dateStr}
-              </div>
+    <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-stone-950/60 p-4 backdrop-blur-sm print:bg-white print:p-0" role="presentation"
+         onClick={(e) => e.target === e.currentTarget && onClose()}>
+      <div ref={box} role="dialog" aria-modal="true" aria-labelledby={titleId} data-print-root=""
+           className="relative my-8 w-full max-w-lg overflow-hidden rounded-xl border-2 border-[#C89B3C] bg-white font-sans text-stone-900 shadow-2xl print:my-0 print:shadow-none">
+        <header className="flex items-center justify-between gap-3 border-b-2 border-[#C89B3C] bg-[#1C1917] p-5 text-white">
+          <div className="flex min-w-0 items-center gap-3">
+            <BetdocLogo variant="mark" />
+            <div className="min-w-0">
+              <h2 id={titleId} className="flex items-center gap-2 text-base font-bold uppercase tracking-wider">
+                BetDoc slip
+                <span className="rounded bg-[#C89B3C] px-1.5 py-0.5 text-[10px] font-extrabold text-black">{placed ? status.replace(/_/g, " ") : "TO PLACE"}</span>
+              </h2>
+              <p className="truncate font-mono text-[11px] text-stone-400">{reference} · {book}</p>
             </div>
           </div>
-          {onClose && (
-            <button
-              onClick={onClose}
-              className="text-stone-400 hover:text-white p-1 rounded transition cursor-pointer"
-            >
-              ✕
-            </button>
-          )}
-        </div>
+          <button type="button" onClick={onClose} aria-label="Close" className="rounded p-1 text-stone-400 transition hover:text-white print:hidden">
+            <span className="material-symbols-outlined text-[20px]" aria-hidden="true">close</span>
+          </button>
+        </header>
 
-        {/* Legs List */}
-        <div className="p-5 max-h-80 overflow-y-auto space-y-2.5 bg-stone-50 border-b border-stone-200">
-          <div className="text-[11px] font-bold text-stone-500 uppercase tracking-widest mb-1">
-            Selected Legs ({legs.length})
-          </div>
-          {legs.map((leg, index) => (
-            <div
-              key={index}
-              className="flex items-center justify-between p-2.5 bg-white rounded border border-stone-200 shadow-sm"
-            >
-              <div className="space-y-0.5">
-                <div className="flex items-center gap-2">
-                  <span className="text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded bg-stone-100 text-stone-700">
-                    {leg.sport}
-                  </span>
-                  <span className="text-xs font-semibold text-stone-900">{leg.eventName}</span>
-                </div>
-                <div className="text-[11px] text-stone-600">
-                  <strong className="text-stone-800">{leg.selection}</strong> · {leg.market}
-                </div>
+        <ol className="max-h-80 space-y-2 overflow-y-auto border-b border-stone-200 bg-stone-50 p-5 print:max-h-none" aria-label="Legs">
+          {legs.map((leg, i) => (
+            <li key={`${leg.event}-${i}`} className="flex items-center justify-between gap-3 rounded border border-stone-200 bg-white p-2.5">
+              <div className="min-w-0">
+                <p className="flex items-center gap-2 text-xs">
+                  <span className="rounded bg-stone-100 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-stone-700">{leg.sport}</span>
+                  <span className="truncate font-semibold">{leg.event}</span>
+                </p>
+                <p className="truncate text-[11px] text-stone-600"><strong className="text-stone-800">{leg.selection}</strong>{leg.code ? ` [${leg.code}]` : ""} · {leg.market}</p>
               </div>
-              <div className="text-right">
-                <div className="text-xs font-bold text-[#C89B3C] font-mono">{leg.odds.toFixed(2)}x</div>
-                {leg.bookmaker && <div className="text-[9px] text-stone-400 capitalize">{leg.bookmaker}</div>}
-              </div>
-            </div>
+              <span className="shrink-0 font-mono text-xs font-bold text-[#8A6A1F]">{leg.odds}</span>
+            </li>
           ))}
-        </div>
+        </ol>
 
-        {/* Summary Numbers */}
-        <div className="p-5 bg-white space-y-3">
+        <div className="space-y-3 p-5">
           <div className="grid grid-cols-2 gap-3 text-xs">
-            <div className="p-2.5 bg-stone-100 rounded border border-stone-200">
-              <span className="text-stone-500 block text-[10px] uppercase font-bold">Total Combined Odds</span>
-              <span className="text-base font-bold text-stone-900 font-mono">{totalOdds.toFixed(2)}x</span>
-            </div>
-            <div className="p-2.5 bg-stone-100 rounded border border-stone-200">
-              <span className="text-stone-500 block text-[10px] uppercase font-bold">Recommended Stake</span>
-              <span className="text-base font-bold text-stone-900 font-mono">₹{stakeInr.toLocaleString('en-IN')}</span>
-            </div>
+            <div className="rounded border border-stone-200 bg-stone-100 p-2.5"><span className="block text-[10px] font-bold uppercase text-stone-500">Total odds</span>
+              <span className="font-mono text-base font-bold">{Number(totalOdds).toFixed(2)}x</span></div>
+            <div className="rounded border border-stone-200 bg-stone-100 p-2.5"><span className="block text-[10px] font-bold uppercase text-stone-500">{placed ? "Stake placed" : "Planned stake"}</span>
+              <span className="font-mono text-base font-bold">{inr(stakeInr)}</span></div>
           </div>
-
-          <div className="p-3 bg-emerald-50 border border-emerald-200 rounded text-xs space-y-1">
-            <div className="flex justify-between items-center text-stone-700">
-              <span>Gross Potential Payout:</span>
-              <strong className="font-mono text-stone-900">₹{Math.round(potentialPayoutInr).toLocaleString('en-IN')}</strong>
-            </div>
-            <div className="flex justify-between items-center text-stone-500 text-[11px]">
-              <span>Section 194BA 30% TDS:</span>
-              <span className="font-mono text-stone-600">-₹{Math.round(calculatedTds).toLocaleString('en-IN')}</span>
-            </div>
-            <div className="border-t border-emerald-200 pt-1 flex justify-between items-center font-bold text-emerald-900 text-sm">
-              <span>Estimated Net Take-Home:</span>
-              <span className="font-mono">₹{Math.round(calculatedNet).toLocaleString('en-IN')}</span>
-            </div>
+          <div className="space-y-1 rounded border border-emerald-200 bg-emerald-50 p-3 text-xs">
+            <p className="flex justify-between"><span>Gross payout if every leg wins</span><strong className="font-mono">{inr(grossPayoutInr)}</strong></p>
+            <p className="flex justify-between text-[11px] text-stone-600"><span>30% TDS on {inr(netWinningsInr)} net winnings</span><span className="font-mono">−{inr(tdsInr)}</span></p>
+            <p className="flex justify-between border-t border-emerald-200 pt-1 text-sm font-bold text-emerald-900"><span>Take-home</span><span className="font-mono">{inr(takeHomeInr)}</span></p>
           </div>
-
-          {/* Footer Authority */}
-          <div className="pt-2 text-center text-[10px] text-stone-400 border-t border-stone-100 space-y-0.5">
-            <div className="font-semibold text-stone-600">Developed for Amit Ashok Kumar Patnaik</div>
-            <div>Sovereign Non-Custodial Engine · Real-Money Krishna-Arjuna Advisor</div>
-          </div>
+          <p className="border-t border-stone-100 pt-2 text-center text-[10px] text-stone-500">
+            Placed by hand at the book; no result is promised.<br /><strong className="text-stone-700">Developed for Amit Ashok Kumar Patnaik</strong>
+          </p>
         </div>
 
-        {/* Action Buttons */}
-        <div className="bg-stone-100 p-4 border-t border-stone-200 flex items-center justify-between gap-3">
-          <button
-            onClick={handleCopyText}
-            className="flex-1 py-2 px-3 bg-stone-800 hover:bg-stone-900 text-white text-xs font-semibold rounded shadow transition cursor-pointer"
-          >
-            📋 Copy Slip Text
-          </button>
-          <button
-            onClick={handlePrint}
-            className="flex-1 py-2 px-3 bg-[#C89B3C] hover:bg-[#b08732] text-white text-xs font-semibold rounded shadow transition cursor-pointer"
-          >
-            🖨️ Print / Save Card
-          </button>
-        </div>
+        <footer className="flex gap-3 border-t border-stone-200 bg-stone-100 p-4 print:hidden">
+          <button type="button" onClick={() => void copy()} className="flex-1 rounded bg-stone-800 px-3 py-2 text-xs font-semibold text-white transition hover:bg-stone-900">Copy slip text</button>
+          <button type="button" onClick={() => window.print()} className="flex-1 rounded bg-[#A47C26] px-3 py-2 text-xs font-semibold text-white transition hover:bg-[#8A6A1F]">Print / save PDF</button>
+        </footer>
       </div>
     </div>
   );
 };
-
-export default ShareableBetSlipCard;

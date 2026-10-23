@@ -241,6 +241,11 @@ export const InPlayDesk = ({ placement, bookLabel }: { placement: TicketPlacemen
         <Fig label="Stop-loss floor" value={inr(placement.stop_loss_floor_inr)} tone="text-rose-700" />
         <Fig label="In-play watch" value={placement.monitor_active ? `win ${placement.current_win_prob === null ? "—" : `${(placement.current_win_prob * 100).toFixed(1)}%`}` : "not watching"} />
       </div>
+      {placement.clv && (
+        <p className={`text-[11px] font-semibold ${placement.clv.beat_the_market ? "text-emerald-700" : "text-stone-600"}`}>
+          Closing line value {placement.clv.clv_edge_pct >= 0 ? "+" : ""}{placement.clv.clv_edge_pct.toFixed(2)}%: {placement.clv.rationale}
+        </p>
+      )}
       <p className="text-[11px] text-stone-500">
         Stop-Loss Floor: {inr(placement.stop_loss_floor_inr)} ({Math.round(placement.stop_loss_pct * 100)}% threshold). Read the cashout offer {bookLabel} shows you now:
       </p>

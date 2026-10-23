@@ -841,6 +841,8 @@ class Settings(BaseSettings):
     MARKET_HEALTH_TOP_TIER: int = Field(default=1, ge=1, le=5)  # a "Tier-1" fixture: its league's registry tier at most this
     MARKET_HEALTH_ABSENCES_PER_SIDE: int = Field(default=3, ge=1)  # this many active OUT/SUSPENDED players: a depleted squad
     MARKET_HEALTH_WIRE_LOOKBACK_HOURS: float = Field(default=48.0, gt=0)  # rotation news this recent counts
+    # Group 116: the stress test measures win rate and average odds from the desk's own WON/LOST tickets only from this many
+    STRESS_TEST_MIN_SETTLED: int = Field(default=30, ge=1)
 
     @property
     def odds_sport_keys(self) -> List[str]:

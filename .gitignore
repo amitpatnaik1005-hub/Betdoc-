@@ -61,3 +61,6 @@ data/archive/
 # Group 87: encrypted database snapshots (never committed)
 data/backups/
 backend/data/backups/
+
+# Claude Code local tooling: launch configs, local settings, session worktrees (never committed)
+.claude/

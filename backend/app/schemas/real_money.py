@@ -195,6 +195,26 @@ class ConfirmTicketPlacementRequest(_In):
     override_odds_decay: bool = False
 
 
+class StressTestRequest(_In):
+    """Group 116: the Monte Carlo stress test. Win probability and average odds together, as stated assumptions; both
+    omitted, they are measured from the desk's own WON and LOST tickets."""
+
+    win_probability: float | None = Field(default=None, gt=0, lt=1)
+    average_odds: float | None = Field(default=None, gt=1.0, le=1000.0)
+    starting_bankroll: float | None = Field(default=None, gt=0, le=1e9, description="Omitted: the vault's liquid cash plus locked exposure")
+    kelly_fraction: float = Field(default=0.25, gt=0, le=1)
+    iterations: int = Field(default=10_000, ge=100, le=20_000)
+    bets: int = Field(default=100, ge=1, le=1_000)
+    bets_per_day: int = Field(default=5, ge=1, le=100)
+    seed: int | None = Field(default=42)
+
+    @model_validator(mode="after")
+    def _both_or_neither(self) -> StressTestRequest:
+        if (self.win_probability is None) != (self.average_odds is None):
+            raise ValueError("give the win probability and the average odds together, or neither (to measure them)")
+        return self
+
+
 class HandcraftedPlacementResponse(BaseModel):
     ticket: RealBetTicketResponse
     booking_code: str | None = None

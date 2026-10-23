@@ -37,6 +37,7 @@ import {
 import { useParlaySlipStore } from "../../store/useParlaySlipStore";
 import { toast } from "../../store/useToastStore";
 import { Async } from "../../ui/kit";
+import { ShareableBetSlipCard } from "../betslip/ShareableBetSlipCard";
 import { InPlayDesk } from "../slip_ornament/HandcraftedPlacementDesk";
 
 const pct = (p: number | null | undefined, digits = 1) => (p === null || p === undefined ? "—" : `${(p * 100).toFixed(digits)}%`);
@@ -241,12 +242,27 @@ const ConfirmForm = ({ ticket }: { ticket: SystemTicket }) => {
 
 const TicketItem = ({ ticket }: { ticket: SystemTicket }) => {
   const label = ticket.bookmaker === "onexbet" ? "1xBet" : "Parimatch";
+  const [sharing, setSharing] = useState(false);
+  const p = ticket.projection;
   return (
     <li className="flex flex-col gap-2 rounded-2xl p-3" style={{ background: "var(--wb-card)" }}>
       <div className="flex flex-wrap items-baseline justify-between gap-2 text-xs">
         <span className="font-mono font-black">{ticket.ticket_reference}</span>
-        <span style={{ color: "var(--wb-muted)" }}>{ticket.legs.length} legs @ {Number(ticket.target_odds).toFixed(2)}x · {inr(ticket.recommended_stake)} · {ticket.status.replace(/_/g, " ").toLowerCase()}</span>
+        <span className="flex items-center gap-2" style={{ color: "var(--wb-muted)" }}>
+          {ticket.legs.length} legs @ {Number(ticket.target_odds).toFixed(2)}x · {inr(ticket.recommended_stake)} · {ticket.status.replace(/_/g, " ").toLowerCase()}
+          {ticket.status !== "CANCELLED" && (
+            <button type="button" onClick={() => setSharing(true)} className="rounded-md border px-2 py-0.5 text-[10px] font-bold" style={{ borderColor: "var(--wb-primary)", color: "var(--wb-primary)" }}>
+              Share card
+            </button>
+          )}
+        </span>
       </div>
+      {sharing && (
+        <ShareableBetSlipCard reference={ticket.ticket_reference} book={label} status={ticket.status} totalOdds={p.odds} stakeInr={p.stake_inr}
+                              grossPayoutInr={p.gross_payout_inr} netWinningsInr={p.net_winnings_inr} tdsInr={p.tds_inr} takeHomeInr={p.take_home_inr}
+                              legs={ticket.legs.map((leg) => ({ sport: leg.sport, event: leg.fixture, market: leg.market, selection: leg.label, odds: leg.odds, code: leg.code }))}
+                              onClose={() => setSharing(false)} />
+      )}
       {ticket.status === "PENDING_PLACEMENT" ? (
         <ConfirmForm ticket={ticket} />
       ) : ticket.status === "CANCELLED" ? (

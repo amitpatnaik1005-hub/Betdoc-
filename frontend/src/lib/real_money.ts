@@ -237,6 +237,50 @@ export async function executeCashout(ticketReference: string, cashoutAmountInr: 
   return result;
 }
 
+// ========================================================================= GROUP 116: THE STRESS TEST
+
+export interface StressTestInput {
+  win_probability?: number;
+  average_odds?: number;
+  starting_bankroll?: number;
+  kelly_fraction?: number;
+  iterations?: number;
+  bets?: number;
+  bets_per_day?: number;
+}
+
+export interface StressTestResult {
+  starting_bankroll: number;
+  iterations: number;
+  bets_per_trajectory: number;
+  bets_per_day: number;
+  win_probability: number;
+  average_odds: number;
+  edge_per_unit: number;
+  full_kelly: number;
+  stake_fraction: number;
+  ruin_probability: number;
+  ruin_shield_passed: boolean;
+  median_final_bankroll: number;
+  p5_final_bankroll: number;
+  p95_final_bankroll: number;
+  mean_final_bankroll: number;
+  probability_of_profit: number;
+  p95_max_drawdown_pct: number;
+  median_max_drawdown_pct: number;
+  stop_loss_activations: number;
+  cooldowns: number;
+  bets_placed: number;
+  note: string | null;
+  /** MEASURED: the desk's own won and lost tickets; ASSUMED: the figures typed in */
+  inputs_source: "MEASURED" | "ASSUMED";
+  measured: { settled: number; won: number; win_probability: number | null; average_odds: number | null };
+  developer_name: string;
+}
+
+/** Monte Carlo paths staked and guarded as the desk is (Kelly fraction, 5% ceiling, the 15% daily latch, the cool-down). */
+export const runStressTest = (input: StressTestInput) => apiClient.post<StressTestResult>("/real-money/stress-test", input);
+
 export async function reconcileRealVault(): Promise<ReconciliationReport> {
   const result = await apiClient.post<ReconciliationReport>("/real-money/reconcile");
   invalidate("real_money");

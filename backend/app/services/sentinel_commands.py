@@ -163,7 +163,7 @@ class CommandCenter:
         elif command == "/resume":
             reply = await self.resume(update, args[0] if args else None)
         elif command == "/status":
-            reply = await self.status()
+            reply = await self.status(update, config)
         elif command == "/start" and args:  # the bot's t.me deep link carries a link code
             reply = await self.link(update, args[0])
         elif command in ("/help", "/start"):
@@ -344,7 +344,7 @@ class CommandCenter:
         return CommandReply(f"▶️ <b>Trading resumed.</b> Daily exposure {_inr(row.max_daily_exposure)}, bots {'enabled' if row.bots_enabled else 'disabled'}.", "RESUMED", True, {"by": by})
 
     # -------------------------------------------------------------- /status
-    async def status(self) -> CommandReply:
+    async def status(self, update: TelegramUpdate | None = None, config: Mapping[str, Any] | None = None) -> CommandReply:
         now = self.clock()
         async with self.session_factory() as db:
             pnl = Decimal(str(await db.scalar(select(func.coalesce(func.sum(AuditLog.pnl_inr), 0)).where(AuditLog.event == AuditEvent.SETTLED, AuditLog.created_at >= now - timedelta(hours=24))) or 0))
@@ -361,8 +361,25 @@ class CommandCenter:
             "Bots: " + (", ".join(f"{n} {str(s).lower()}" for s, n in sorted(bots.items(), key=lambda kv: str(kv[0]))) or "none"),
             f"Kill switch: {'🛑 ENGAGED' if switch or halted else '✅ off'}" + (f" (stop since {_aware(controls.last_emergency_stop_at):%d %b %H:%M} UTC)" if halted and controls and controls.last_emergency_stop_at else ""),
         ]
+        lines.append(await self._real_vault_line(update, config, now))
         lines += await self._live_lines()
         return CommandReply("\n".join(lines), "STATUS", True, {"pnl_24h": str(pnl), "open_bets": open_bets})
+
+    async def _real_vault_line(self, update: TelegramUpdate | None, config: Mapping[str, Any] | None, now: datetime) -> str:
+        """Group 116: the linked account's real-money vault (TODAR MAL): liquid cash, locked exposure, SHIVAJI's state."""
+        from app.services import pocket_twin as twin  # noqa: PLC0415
+        from app.services import real_money_service as rms  # noqa: PLC0415
+
+        user_id = None if update is None or config is None else twin.linked_user_id(config, update.chat_id)
+        if user_id is None:
+            return "Real vault: link this chat (/link CODE) to see your Parimatch/1xBet vault"
+        async with self.session_factory() as db:
+            bankroll = await rms.get_or_create_bankroll(db, user_id, now)
+            await db.commit()
+        cooldown = _aware(bankroll.cooldown_until) if bankroll.cooldown_until else None
+        guard = ("🛑 15% daily stop-loss latched" if bankroll.stop_loss_triggered else
+                 f"⏳ cool-down until {cooldown:%H:%M} UTC" if cooldown and cooldown > now else "✅ clear")
+        return f"Real vault: {_inr(bankroll.cash_balance)} liquid · {_inr(bankroll.locked_exposure)} locked · SHIVAJI {guard}"
 
     async def _live_lines(self) -> list[str]:
         if self.redis is None:

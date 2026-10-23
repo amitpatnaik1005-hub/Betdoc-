@@ -5,6 +5,7 @@ import { downloadCsv, formatDate, formatDateTime, formatINR, formatINRCompact, f
 import { runMutation, useResource } from '../lib/resource';
 import { BankrollGrowthOptimizer } from '../components/cfo/BankrollGrowthOptimizer';
 import { RealBankrollCard } from '../components/real_money/RealBankrollCard';
+import { BankrollStressTestPanel } from '../components/real_money/BankrollStressTestPanel';
 import { RealHistoryTable } from '../components/real_money/RealHistoryTable';
 import { LiveSmallcaseTickerBar } from '../components/smallcase/LiveSmallcaseTickerBar';
 import { SmallcaseComponentsPanel } from '../components/smallcase/SmallcaseComponentsPanel';
@@ -334,6 +335,8 @@ export const TheVault = () => {
         {/* Group 107: the live smallcases as KUMBHA sizes them against this bankroll; loading one opens the workbench */}
         <LiveSmallcaseTickerBar toWorkbenchOnLoad />
         <RealHistoryTable />
+        {/* Group 116: the Monte Carlo stress test under SHIVAJI's rules, at the desk's record or stated assumptions */}
+        <BankrollStressTestPanel />
       </section>
       <SmallcaseComponentsPanel />
       <TaxCertificateModal />

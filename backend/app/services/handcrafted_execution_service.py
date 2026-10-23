@@ -46,6 +46,7 @@ from app.models.user_bets_ledger import PlacedBookmaker, PlacedStructure, UserPl
 from app.schemas.ashoka import SYSTEM_STRUCTURES, PlaceBetRequest
 from app.services import ashvatthama, slip_ornament, user_pnl_tracker
 from app.services import real_money_service as rms
+from app.services.clv_tracker import ticket_clv
 from app.services.twin import inplay
 
 logger = logging.getLogger("betdoc.handcrafted_execution")
@@ -296,8 +297,10 @@ async def placement_view(session: AsyncSession, settings: Settings, verdict_id: 
 
 
 async def ticket_placement(session: AsyncSession, settings: Settings, ticket: RealBetTicket) -> dict[str, Any]:
-    """A real ticket as the placement desks show it (the Bet-Slip, the system tickets): status, stake, the stop-loss floor, the watch."""
+    """A real ticket as the placement desks show it (the Bet-Slip, the system tickets): status, stake, the stop-loss floor, the
+    watch, and (Group 116) its closing line value once the Oracle bet that tracks it has a recorded close."""
     monitor = None if ticket.user_placed_bet_id is None else await _monitor(session, ticket.user_placed_bet_id)
+    bet = None if ticket.user_placed_bet_id is None else await session.get(UserPlacedBet, ticket.user_placed_bet_id)
     stop = slm.StopLossPolicy.from_settings(settings).clamp(None if monitor is None else monitor.stop_loss_pct)
     return {
         "ticket_reference": ticket.ticket_reference, "status": ticket.status, "bookmaker": ticket.bookmaker, "booking_code": ticket.bookmaker_slip_id,
@@ -308,6 +311,7 @@ async def ticket_placement(session: AsyncSession, settings: Settings, ticket: Re
         "fair_value_inr": None if monitor is None or monitor.fair_value_inr is None else str(monitor.fair_value_inr),
         "gross_return": str(ticket.gross_return), "settlement_payout": str(ticket.settlement_payout), "net_profit": str(ticket.net_profit),
         "tds_deducted": str(ticket.tds_deducted), "settled_at": None if ticket.settled_at is None else ticket.settled_at.isoformat(),
+        "clv": None if bet is None else ticket_clv(bet.placed_odds, bet.closing_odds),
     }
 
 

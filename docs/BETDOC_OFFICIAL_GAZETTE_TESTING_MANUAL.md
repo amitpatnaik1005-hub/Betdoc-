@@ -1,157 +1,179 @@
-<div style="background-color: #FFFFFF; color: #1C1917; font-family: 'Times New Roman', Times, serif; padding: 40px; border: 3px double #C89B3C; max-width: 900px; margin: 0 auto; box-shadow: 0 10px 30px rgba(0,0,0,0.15);">
+<div align="center" style="border-bottom: 2px solid #C89B3C; padding-bottom: 16px; margin-bottom: 20px;">
 
-<!-- OFFICIAL EMBLEM & HEADER -->
-<div style="text-align: center; border-bottom: 2px solid #C89B3C; padding-bottom: 20px; margin-bottom: 25px;">
-  <!-- BetDoc Heartbeat Staircase Logo SVG -->
-  <svg width="64" height="64" viewBox="0 0 24 24" fill="none" style="margin: 0 auto; display: block;" xmlns="http://www.w3.org/2000/svg">
-    <path d="M 2 14 H 5.5 L 6.5 17 L 9 6 L 10.5 18 L 12 14 H 14 V 11.5 H 16 V 9 H 18 V 6.5 H 20.5" stroke="#C89B3C" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-    <circle cx="20.5" cy="6.5" r="1.5" fill="#C89B3C"/>
-  </svg>
-  
-  <div style="font-size: 26px; font-weight: bold; letter-spacing: 2px; color: #1C1917; margin-top: 10px; text-transform: uppercase;">
-    The Gazette of BetDoc Quantitative Systems
-  </div>
-  <div style="font-size: 13px; font-weight: 600; letter-spacing: 3px; color: #C89B3C; text-transform: uppercase; margin-top: 4px;">
-    Extraordinary · Published by Authority
-  </div>
-  <div style="font-size: 12px; color: #78716C; margin-top: 6px;">
-    Ref No. <strong>BD/GAZ/2026/G116-SOP</strong> &nbsp;|&nbsp; Promulgation Date: <strong>23rd October 2026</strong>
-  </div>
+# THE GAZETTE OF BETDOC QUANTITATIVE SYSTEMS
+
+**EXTRAORDINARY · PUBLISHED BY AUTHORITY OF THE ARCHITECT**
+
+Ref. No. **BD/GAZ/2026/G116-SOP** · Issued **23 October 2026**
+
 </div>
 
-<!-- STATUTORY NOTIFICATION BOX -->
-<div style="background-color: #FFFDF9; border: 1px solid #E7E5E4; border-left: 5px solid #C89B3C; padding: 15px; margin-bottom: 25px; font-size: 14px; line-height: 1.6;">
-  <strong>PUBLIC NOTIFICATION:</strong> This document serves as the <em>Official Standard Operating Procedure and Testing Manual</em> for <strong>BetDoc</strong>. It is issued for the guidance of authorized operators, analytical partners, and testing users under the direct authority of <strong>Amit Ashok Kumar Patnaik</strong>, Chief Architect & Quantitative Sovereign.
-</div>
+> **PUBLIC NOTICE.** This is BetDoc's own *standard operating procedure and testing manual*, issued for the guidance of
+> authorised operators and testers under the authority of **Amit Ashok Kumar Patnaik**, chief architect. It is a product
+> manual, not a government publication, and nothing in it is a promise of profit. The same text is served by the
+> application at **`/manual`** (`frontend/src/pages/TestingManual.tsx`), where the checklist can be ticked and printed.
 
 ---
 
-## PART I — THE SOVEREIGN CHARTER (THE KRISHNA-ARJUNA LAW)
+## PART I — THE CHARTER (THE KRISHNA-ARJUNA LAW)
 
-### Article 1: Nature of the BetDoc System
-1. **BetDoc is an Analytical Advisor, NOT a Gambling House**:
-   - BetDoc does **not** accept cash deposits from your bank account.
-   - BetDoc does **not** hold physical money on your behalf.
-   - BetDoc does **not** automatically place wagers or pull money from any external site.
-2. **The Sovereign Roles**:
-   - **BetDoc is Lord Krishna**: It acts as your guide, master strategist, mathematician, and honest accountant (**Todar Mal**). It studies thousands of matches, warns you when the market is dangerous, designs winning combinations, and tells you when to pull out profits.
-   - **You are Arjuna the Warrior**: You keep your own money in your personal bookmaker account (such as **Parimatch** or **1xBet**). You receive the advice on your clean, pure-white **Bet-Slip**, decide whether to proceed, place the wager with your own hands on the bookmaker app, and withdraw your real cash profits directly into your pocket.
+**1. What BetDoc is.** An analytical advisor and an honest ledger. BetDoc does **not** hold your money, does **not** take
+bank deposits, does **not** place bets or take cashouts at any bookmaker, and does not read your bookmaker account. The
+rupees in its vault are your own record of what you did.
+
+- **BetDoc is Krishna, the strategist and accountant.** ASHOKA prices the live board, ASHVATTHAMA (the Consultant) seals
+  each verdict, KUMBHA sizes the stake, SHIVAJI guards the losses, VIDUR reads the news, and TODAR MAL keeps every rupee
+  and the 30% TDS to the paisa.
+- **You are Arjuna, the warrior and the owner of the money.** Your capital stays in your own Parimatch or 1xBet account.
+  You read the advice, place each ticket with your own hands, copy the booking code back to BetDoc, and take any cashout
+  at the book yourself.
 
 ---
 
-## PART II — THE 6 DAILY STEPS TO VICTORY (OPERATOR MANUAL)
-
-Follow these six simple steps every day to use BetDoc safely and make profitable decisions:
+## PART II — THE SIX STEPS OF A BETTING DAY
 
 ```
-[ STEP 1 ] Check Today's Market Health (Phone SMS / Telegram at 07:55 AM)
-     │
-     ▼
-[ STEP 2 ] Browse Heavyweight Anchors on The Oracle (Real Madrid, Bumrah, Alcaraz)
-     │
-     ▼
-[ STEP 3 ] Run the 15-to-3 System Splitter (Fortress · Growth · Moonshot)
-     │
-     ▼
-[ STEP 4 ] Place the Tickets on Parimatch / 1xBet & Enter Booking Code
-     │
-     ▼
-[ STEP 5 ] Watch the In-Play Cashout Advisor & 5-Layer Stop-Loss Shield
-     │
-     ▼
-[ STEP 6 ] Review Section 194BA 30% TDS Net Profit Ledger in Todar Mal's Vault
+[ 1 ] Read the morning signal (Telegram / SMS, 07:55 IST)
+  │
+[ 2 ] Build the street-smart slip  (The Oracle → Bet builder → 5(d) Street-smart & splitter)
+  │
+[ 3 ] Split it into three tickets  (Fortress · Growth · Moonshot)
+  │
+[ 4 ] Place each ticket by hand at Parimatch / 1xBet, then enter its booking code
+  │
+[ 5 ] Follow the in-play cashout advisor and the stop-loss floor
+  │
+[ 6 ] Review the rupee ledger and the 30% TDS in The Vault
 ```
 
+### Step 1 — Read the morning signal (07:55 IST)
+
+At 07:55 IST TODAR MAL scores the day out of 100 from what it can measure: Parimatch and 1xBet's margins on today's match
+odds, how many top-tier fixtures are priced, rotation news and depleted squads from the Wire, and how many legs are priced
+at or above fair. What it cannot measure is named, never guessed.
+
+| Score | Tier | What happens | Your action |
+| :--- | :--- | :--- | :--- |
+| below 60 | **REST DAY** | a warning with the measured reasons goes to Telegram and SMS | do not bet today |
+| 60 – 79 | **SELECTIVE** | nothing is sent | light stakes, anchors only |
+| 80 and above | **PRIME HARVEST** | the best anchors go to your phone | open BetDoc |
+
+When the signal goes out, that morning's 08:00 hype stays silent. Send `/today` to the bot at any time for the current
+score.
+
+### Step 2 — Build the street-smart slip on The Oracle
+
+The Oracle → Bet builder → **5(d) Street-smart & splitter**. Give a stake and a target return and choose Parimatch or
+1xBet. BetDoc takes the safest legs on the live board that the book prices at or above fair, one per match, spread across
+Football, Cricket, Tennis and Basketball as the board allows, until the target is reached. Each leg shows its price, its
+fair probability and its EV. If the target is out of reach, it says so. Player markets (wickets, goalscorers) are not on
+the board and are never used.
+
+### Step 3 — Split it into three tickets
+
+| Ticket | Legs | Stake | Purpose |
+| :--- | :--- | :--- | :--- |
+| **Slip A · Fortress** | the fewest anchors (3 to 5) whose odds return the whole session stake | 40% | the capital shield: on only when its payout covers the session stake |
+| **Slip B · Growth** | about two thirds of the legs, up to 9 | 40% | compounding across sports |
+| **Slip C · Moonshot** | every leg | 20% | the full upside |
+
+**Read the shield honestly.** Slip A's anchors are on all three tickets. If a leg only B or C carries loses, Slip A can
+still return the session; if one of Slip A's anchors loses, all three tickets lose. The page shows the four outcomes
+with their chances and how often the session gets its stake back.
+
+*Worked example (the splitter's own test):* fifteen legs at 1.25 each, ₹250 session. Slip A takes 5 legs (1.25⁴ = 2.44
+would not cover; 1.25⁵ = 3.05 does): ₹100 returns ₹305.18. Slip B: 9 legs, ₹100 returns ₹745.06. Slip C: 15 legs, ₹50
+returns ₹1,421.09. Slip A pays whenever its five anchors all win, which at 85% each is 44.4% of the time.
+
+### Step 4 — Place each ticket by hand and enter its booking code
+
+1. Press **Record the 3 tickets**: they are saved as ready to place; no money is locked.
+2. Open the book from the ticket's link and place it there, at the stake and odds shown or at what the book gives.
+3. Copy the booking code the book issues (for example `5X7A9B`).
+4. Under **Your system tickets**, enter the code and press **Lock stake & confirm**. A Bet-Slip ticket from the Consultant
+   is confirmed the same way on `/bet-slip`.
+
+TODAR MAL then moves the stake from liquid cash to locked exposure, the ticket's legs are tracked for settlement, and the
+in-play watch starts. SHIVAJI refuses the lock when cash is short, the 15% daily stop-loss is latched, a cool-down runs, or
+the kill switch is on.
+
+### Step 5 — Follow the in-play cashout advisor
+
+BetDoc never sees the book's cashout offer: you read it in the app and type it on the placed ticket. The advice compares
+it with the ticket's fair value (its live win probability when the board prices every open leg) and its stop-loss floor:
+
+- **STOP-LOSS BREACH**: the offer is at or under the floor shown on the ticket (15% to 40% under the stake): cash out to
+  keep the rest.
+- **CASHOUT ADVISED**: the offer is at least 85% of fair value, or its profit reaches the target.
+- **HOLD**: fair value is worth more than the offer.
+
+The in-play watch re-prices placed slips every few seconds when the live board covers them and pages your phone on a
+stop-loss, a collapse in the win probability or a profit target. Record the cashout you take with **Record cashout taken**.
+
+### Step 6 — Review the rupee ledger and the 30% TDS
+
+On a win or a cashout above the stake, 30% TDS is withheld on the net winnings (Section 115BBJ's rate, deducted by the
+bookmaker under Section 194BA), computed to the paisa:
+
+```
+Net winnings = max(0, payout − stake)
+TDS          = 30% × net winnings
+Credited     = payout − TDS
+```
+
+| Ticket | Stake | Payout | Net winnings | TDS | Credited |
+| :--- | ---: | ---: | ---: | ---: | ---: |
+| Win at 3.00 | ₹1,000 | ₹3,000 | ₹2,000 | ₹600.00 | ₹2,400.00 |
+| Loss | ₹1,000 | ₹0 | ₹0 | ₹0.00 | ₹0.00 |
+| Cashout at the stake | ₹1,000 | ₹1,000 | ₹0 | ₹0.00 | ₹1,000.00 |
+| Cashout above it | ₹1,000 | ₹2,200 | ₹1,200 | ₹360.00 | ₹1,840.00 |
+
+The Vault's TDS certificate is BetDoc's own summary of the year; the official certificate (Form 16A) comes from the
+bookmaker, and the 4% cess is settled when the return is filed.
+
 ---
 
-### Step 1: Read the Morning Market Signal (07:55 AM IST)
-Every morning at 07:55 AM, BetDoc sends a clear message to your **Telegram** and **SMS**:
-- 🔴 **If the score is below 60 (REST DAY / NO BETTING)**:
-  - *What it means*: The matches today are low quality, teams are resting their main players, or bookmakers are taking high commission.
-  - *Your action*: **DO NOT BET TODAY.** True wisdom is keeping your money safe. Wait for tomorrow.
-- 🟢 **If the score is 80 or above (PRIME HARVEST DAY)**:
-  - *What it means*: The slate has clean, high-probability matches across multiple sports with great value.
-  - *Your action*: Open BetDoc and proceed to Step 2.
+## PART III — OPERATOR VERIFICATION PROTOCOL
+
+Tick each item only after verifying it on the running application (the `/manual` page keeps the ticks in your browser
+and runs the first check live).
+
+- [ ] **1. System liveness.** `http://localhost:8000/api/v1/health/` answers `postgres: ok` and `redis: ok`; the web app
+  opens at `http://localhost:5173`.
+- [ ] **2. Morning signal and `/today`.** Send `/today` to the BetDoc Telegram bot (its chat must be configured in Control
+  Panel → Sentinel): it answers with today's score, the tier and the measured reasons.
+- [ ] **3. Street-smart slip.** Synthesize toward a target: every leg shows its price, fair probability and EV; a target the
+  board cannot reach is reported, not padded.
+- [ ] **4. Three-ticket split.** Slip A shows "Capital shield on" only when its payout covers the whole session stake; the
+  four outcomes add up to 100%.
+- [ ] **5. Booking code locks the stake.** Record the tickets, place one at the book, enter its booking code: the Vault's
+  liquid cash falls and locked exposure rises by the stake.
+- [ ] **6. Cashout advice.** Type the book's offer on a placed ticket: HOLD, CASHOUT ADVISED or STOP-LOSS BREACH, with the
+  fair value and the source of its probability.
+- [ ] **7. 30% TDS on net winnings.** Record a cashout above the stake: TDS is 30% of (cashout − stake); at or below the
+  stake it is ₹0.00. The Vault's ledger shows both rows.
+- [ ] **8. `/status` on Telegram.** From a linked chat it lists the real vault (liquid, locked, SHIVAJI's state) beside the
+  feeds and the kill switch.
 
 ---
 
-### Step 2: Pick Heavyweight Anchors on "The Oracle"
-Open **The Oracle** page (`http://localhost:5173/oracle`):
-- BetDoc automatically scans hundreds of live games across **Football**, **Cricket**, **Tennis**, and **Basketball**.
-- It highlights **Heavyweight Anchors** — events that have an overwhelming chance of winning (for example: Real Madrid to score over 1.5 goals, Jasprit Bumrah to take 1+ wickets, or Carlos Alcaraz to win).
-- Because these selections come from different sports, bad weather in cricket will not ruin your football match!
+## PART IV — WHAT BETDOC DOES NOT PROMISE
+
+- No ticket, split or signal guarantees a win or the return of a stake; probabilities are the market consensus's, and
+  legs of different matches are treated as independent.
+- Every price comes from the live odds feed. When the feed is off, the board is empty and BetDoc builds nothing rather
+  than inventing a slate.
+- The morning signal, `/today` and the cashout pages reach your phone only through the Telegram and SMS channels
+  configured in the Sentinel.
+- BetDoc never logs in to, scrapes or acts on a bookmaker site; the booking code and the cashout amount are the ones you
+  type.
 
 ---
 
-### Step 3: Run the "15-to-3" System Splitter
-Never put all your money into a single 15-leg ticket where one lucky goal by an underdog can ruin everything. BetDoc automatically divides your 15 picks into **three smart tickets**:
+<div style="border-top: 2px solid #C89B3C; padding-top: 12px;">
 
-| Ticket Name | Purpose | What it Contains | How Much to Bet | What You Get |
-| :--- | :--- | :--- | :--- | :--- |
-| **Slip A: Fortress** | **Capital Protection Shield** | The 4 to 5 safest anchors | **40%** (e.g. ₹100 of ₹250) | Payout is ~₹305. **Covers your whole session stake!** |
-| **Slip B: Growth** | **Bankroll Multiplier** | 8 to 9 balanced multi-sport picks | **40%** (e.g. ₹100 of ₹250) | Payout is ~₹1,000. Solid net profit. |
-| **Slip C: Moonshot** | **Jackpot Strike** | All 15 selections | **20%** (e.g. ₹50 of ₹250) | Payout is ~₹1,250 to ₹2,500+. Massive win! |
+**Issued by authority of:** **Amit Ashok Kumar Patnaik**, Chief Quantitative Architect · BetDoc
 
-> **The Capital Shield Guarantee**: If only your 5 safest picks win (Slip A), its payout of **₹305** completely pays back your entire ₹250 stake. You lose **nothing**, even if Slips B and C fail!
-
----
-
-### Step 4: Place the Bets & Enter the Booking Code
-1. Click **"Record All 3 Tickets to Bet-Slip"**.
-2. Click the direct bookmaker link (**Parimatch** or **1xBet**) right on the ticket.
-3. Place the bet on your bookmaker app.
-4. Copy the **Booking Code** (for example: `5X7A9B`) given by the bookmaker.
-5. Paste it into the BetDoc **Bet-Slip** and click **"Confirm Handcrafted Placement"**.
-6. Todar Mal locks your stake in your ledger and turns on your live tracking shield.
-
----
-
-### Step 5: Follow the Live In-Play Cashout Advisor
-While your matches are being played, BetDoc watches the game every second:
-- 🟢 **CASHOUT ADVISED**: If 12 of your 15 bets have won and the bookmaker offers a great payout, BetDoc alerts you: *"Take ₹3,800 cashout now on Parimatch and lock your profit!"* Open Parimatch, tap Cash Out, and pocket your money before any late equalizer happens.
-- 🔴 **STOP LOSS BREACH**: If an unexpected red card happens and your bet is in danger, BetDoc tells you to cash out early to save 65% of your money rather than losing it all.
-
----
-
-### Step 6: Review Your Real Rupee Ledger & 30% TDS
-Whenever a bet wins or you cash out:
-- Indian Income Tax (**Section 194BA**) requires a **30% TDS** deduction on net winnings.
-- BetDoc calculates this with exact paisa accuracy:
-  $$\text{Net Profit} = \text{Payout} - \text{Stake}$$
-  $$\text{Tax (30\%)} = \text{Net Profit} \times 0.30$$
-  $$\text{Your Take-Home Profit} = \text{Payout} - \text{Tax}$$
-- If you made a loss or cased out early at breakeven, **tax is strictly ₹0.00**.
-- You can download your official tax and profit certificates anytime from **The Vault** (`/vault`).
-
----
-
-## PART III — OPERATOR VERIFICATION PROTOCOL (TESTING CHECKLIST)
-
-Before sharing this system with other authorized operators, verify each item on this checklist:
-
-- [ ] **Checklist Item 1: System Running**: Ensure both backend (`http://localhost:8000`) and frontend (`http://localhost:5173`) load in under 2 seconds.
-- [ ] **Checklist Item 2: Telegram Intimation**: Send `/today` to the BetDoc Telegram Bot. Verify it replies with the Market Health Score (0-100) and whether to bet.
-- [ ] **Checklist Item 3: System Splitter**: Generate a 15-leg parlay on `/oracle` under *5(d) Street-Smart & System Splitter*. Verify Slip A payout is greater than the total session stake.
-- [ ] **Checklist Item 4: Booking Code Confirmation**: Enter a test booking code into `/bet-slip` and verify the stake is locked in Todar Mal's Real Bankroll.
-- [ ] **Checklist Item 5: Stop-Loss Shield**: Verify that `/tickets/{id}/cashout-evaluation` displays `HOLD`, `CASHOUT_ADVISED`, or `STOP_LOSS_BREACH` according to the bookmaker offer.
-
----
-
-## PART IV — LEGAL ATTESTATION & CIRCULATION
-
-<div style="margin-top: 30px; border-top: 2px solid #C89B3C; padding-top: 20px; display: flex; justify-content: space-between; align-items: flex-end;">
-  <div>
-    <div style="font-size: 13px; font-weight: bold; text-transform: uppercase; color: #1C1917;">Promulgated By:</div>
-    <div style="font-size: 16px; font-weight: bold; color: #C89B3C; margin-top: 4px;">Amit Ashok Kumar Patnaik</div>
-    <div style="font-size: 12px; color: #78716C;">Chief Quantitative Architect & Founder · BetDoc Systems</div>
-    <div style="font-size: 11px; color: #A8A29E; margin-top: 4px;">Seal of Sovereign Non-Custodial Integrity · Section 194BA Compliant</div>
-  </div>
-  
-  <div style="text-align: right; border: 2px solid #C89B3C; padding: 10px 18px; border-radius: 6px; background-color: #FFFDF9;">
-    <div style="font-size: 11px; font-weight: bold; color: #C89B3C; letter-spacing: 1px; text-transform: uppercase;">Official Gazette Seal</div>
-    <div style="font-size: 14px; font-weight: bold; color: #1C1917; margin-top: 2px;">CERTIFIED OPERATIONAL</div>
-    <div style="font-size: 10px; color: #78716C;">Group 116 Capstone · 23-Oct-2026</div>
-  </div>
-</div>
+*Developed for Amit Ashok Kumar Patnaik* · Gazette seal: **STANDARD OPERATING PROCEDURE** · Group 116 · 23 October 2026
 
 </div>

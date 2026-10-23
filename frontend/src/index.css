@@ -90,11 +90,15 @@
   body * {
     visibility: hidden !important;
   }
+  /* the Bet-Slip ticket, and (Group 116) any printable root: the Gazette manual, the shareable card */
   #betdoc-ticket,
-  #betdoc-ticket * {
+  #betdoc-ticket *,
+  [data-print-root],
+  [data-print-root] * {
     visibility: visible !important;
   }
-  #betdoc-ticket {
+  #betdoc-ticket,
+  [data-print-root] {
     position: absolute;
     top: 0;
     left: 0;

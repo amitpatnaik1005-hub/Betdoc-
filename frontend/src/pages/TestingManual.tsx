@@ -1,273 +1,255 @@
-import React from 'react';
+/**
+ * The BetDoc Gazette (Group 116): the official operating procedure and testing manual, printed like a gazette notice on
+ * white paper with a double gold rule. Every statement describes what the product does today: where each step lives,
+ * which thresholds apply, and what BetDoc does not promise. The operator checklist is ticked by the operator (kept in
+ * this browser), and two checks run live against the API. Its source text is docs/BETDOC_OFFICIAL_GAZETTE_TESTING_MANUAL.md.
+ * Developed for Amit Ashok Kumar Patnaik.
+ */
+import { type ReactNode, useState } from "react";
+import { apiClient, ApiError } from "../api/client";
+import { BetdocLogo } from "../ui/brand";
+import { ComponentGuideBanner } from "../ui/kit";
 
-export const TestingManual: React.FC = () => {
-  const handlePrint = () => {
-    window.print();
+const CHECKS_KEY = "betdoc:manual:checks";
+const CHECKLIST: { id: string; title: string; how: string }[] = [
+  { id: "liveness", title: "System liveness", how: "The API answers http://localhost:8000/api/v1/health/ with postgres ok and redis ok, and the web app opens at http://localhost:5173. Use “Run live checks” below." },
+  { id: "today", title: "Morning signal and /today", how: "Send /today to the BetDoc Telegram bot (its chat must be configured in Control Panel → Sentinel). It answers with today's score out of 100, the tier and the measured reasons." },
+  { id: "synthesize", title: "Street-smart slip", how: "The Oracle → Bet builder → 5(d) Street-smart & splitter: synthesize toward a target. Every leg shows its price, fair probability and EV; a target the board cannot reach is reported, not padded." },
+  { id: "split", title: "Three-ticket split", how: "Split the slip. Slip A shows “Capital shield on” only when its payout covers the whole session stake; otherwise it says the shield is off. The four outcomes add up to 100%." },
+  { id: "placement", title: "Booking code locks the stake", how: "Record the three tickets (nothing is locked), place one at the book, then enter its booking code under “Your system tickets” (or under a Bet-Slip ticket on /bet-slip). The Vault's liquid cash falls and locked exposure rises by the stake." },
+  { id: "cashout", title: "Cashout advice", how: "On a placed ticket, type the offer the book shows. The advice reads HOLD, CASHOUT ADVISED or STOP-LOSS BREACH, with the fair value and the source of its probability." },
+  { id: "tds", title: "30% TDS on net winnings", how: "Record a cashout above the stake: TDS is 30% of (cashout − stake), the rest is credited. At or below the stake, TDS is ₹0.00. The Vault's ledger shows both rows." },
+  { id: "status", title: "/status on Telegram", how: "Send /status from a linked chat: it lists the real vault (liquid, locked, SHIVAJI's state) beside the feeds and the kill switch." },
+];
+
+const readChecks = (): Record<string, boolean> => {
+  try {
+    return JSON.parse(window.localStorage.getItem(CHECKS_KEY) ?? "{}") as Record<string, boolean>;
+  } catch {
+    return {};
+  }
+};
+
+interface LiveResult { label: string; ok: boolean; detail: string }
+
+const Part = ({ n, title, children }: { n: string; title: string; children: ReactNode }) => (
+  <section className="mb-10 break-inside-avoid-page">
+    <h2 className="mb-4 flex items-baseline gap-2 border-b border-stone-200 pb-1 text-lg font-bold uppercase tracking-wider text-stone-900">
+      <span className="text-[#A47C26]">Part {n}</span> — {title}
+    </h2>
+    <div className="space-y-4 text-sm leading-relaxed text-stone-700">{children}</div>
+  </section>
+);
+
+const Step = ({ n, title, children }: { n: number; title: string; children: ReactNode }) => (
+  <div className="rounded border border-stone-200 bg-stone-50 p-4">
+    <h3 className="mb-1 font-bold text-stone-900">Step {n}: {title}</h3>
+    <div className="space-y-2 leading-relaxed">{children}</div>
+  </div>
+);
+
+export const TestingManual = () => {
+  const [checks, setChecks] = useState<Record<string, boolean>>(readChecks);
+  const [live, setLive] = useState<LiveResult[] | null>(null);
+  const [running, setRunning] = useState(false);
+  const toggle = (id: string) =>
+    setChecks((prev) => {
+      const next = { ...prev, [id]: !prev[id] };
+      try {
+        window.localStorage.setItem(CHECKS_KEY, JSON.stringify(next));
+      } catch {
+        /* a private window: the ticks last for this visit only */
+      }
+      return next;
+    });
+  const runLive = async () => {
+    setRunning(true);
+    const out: LiveResult[] = [];
+    try {
+      const h = await apiClient.get<{ status: string; dependencies: Record<string, string> }>("/health/");
+      out.push({ label: "API health", ok: h.status === "ok", detail: `status ${h.status} · postgres ${h.dependencies.postgres} · redis ${h.dependencies.redis}` });
+    } catch (err) {
+      out.push({ label: "API health", ok: false, detail: err instanceof ApiError ? err.message : "no answer" });
+    }
+    try {
+      const m = await apiClient.get<{ health_score: number; advisory_tier: string; active_fixtures_count: number }>("/synthesizer/market-health");
+      out.push({ label: "Market health", ok: true, detail: `${m.health_score}/100 · ${m.advisory_tier.replace("_", " ")} · ${m.active_fixtures_count} fixtures priced today` });
+    } catch (err) {
+      out.push({ label: "Market health", ok: false, detail: err instanceof ApiError ? err.message : "no answer" });
+    }
+    setLive(out);
+    setRunning(false);
   };
+  const done = CHECKLIST.filter((c) => checks[c.id]).length;
 
   return (
-    <div className="min-h-screen bg-stone-100 py-10 px-4 sm:px-6 lg:px-8 text-stone-900">
-      {/* Control bar */}
-      <div className="max-w-4xl mx-auto mb-6 flex items-center justify-between no-print">
-        <div className="flex items-center gap-2">
-          <span className="inline-block w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse"></span>
-          <span className="text-xs uppercase tracking-widest font-semibold text-stone-600">
-            Official System Publication · Certified SOP
-          </span>
+    <div className="min-h-screen bg-stone-100 px-4 py-8 text-stone-900 sm:px-6 lg:px-8">
+      <div className="mx-auto mb-6 flex max-w-4xl flex-col gap-4 print:hidden">
+        <ComponentGuideBanner
+          className="lg:col-span-12"
+          moduleName="The BetDoc Gazette"
+          purpose="The official operating procedure and testing manual: the daily routine from the morning signal to the TDS ledger, and the checklist an operator ticks before trusting the desk."
+          steps={[
+            "Read Parts I and II once: what BetDoc does, and the six steps of a betting day",
+            "Run the live checks, then tick each Part III item as you verify it on the real app",
+            "Print or save the notice as PDF to circulate it to authorised operators",
+          ]}
+          kpiCodes={["SLIP_SCORE", "EV", "KELLY_STAKE"]}
+        />
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <span className="text-xs font-semibold uppercase tracking-widest text-stone-600">Operating procedure · {done} of {CHECKLIST.length} checks ticked in this browser</span>
+          <button type="button" onClick={() => window.print()}
+                  className="inline-flex items-center gap-2 rounded bg-[#A47C26] px-4 py-2 text-xs font-semibold uppercase tracking-wider text-white shadow transition hover:bg-[#8A6A1F]">
+            <span className="material-symbols-outlined text-[18px]" aria-hidden="true">print</span>Print notice / save PDF
+          </button>
         </div>
-        <button
-          onClick={handlePrint}
-          className="inline-flex items-center gap-2 px-4 py-2 bg-[#C89B3C] hover:bg-[#b08732] text-white text-xs font-semibold uppercase tracking-wider rounded shadow transition cursor-pointer"
-        >
-          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" />
-          </svg>
-          Print Notice / Save PDF
-        </button>
       </div>
 
-      {/* Main Gazette Notice Paper */}
-      <div className="max-w-4xl mx-auto bg-white border-4 border-double border-[#C89B3C] p-8 sm:p-12 shadow-2xl font-serif">
-        {/* Emblem & Official Header */}
-        <div className="text-center border-b-2 border-[#C89B3C] pb-6 mb-8">
-          <svg
-            width="68"
-            height="68"
-            viewBox="0 0 24 24"
-            fill="none"
-            className="mx-auto mb-3"
-            xmlns="http://www.w3.org/2000/svg"
-          >
-            <path
-              d="M 2 14 H 5.5 L 6.5 17 L 9 6 L 10.5 18 L 12 14 H 14 V 11.5 H 16 V 9 H 18 V 6.5 H 20.5"
-              stroke="#C89B3C"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            />
-            <circle cx="20.5" cy="6.5" r="1.5" fill="#C89B3C" />
-          </svg>
+      <article id="betdoc-manual" data-print-root="" aria-label="The BetDoc Gazette: operating procedure and testing manual"
+               className="mx-auto max-w-4xl border-4 border-double border-[#C89B3C] bg-white p-8 font-serif shadow-2xl sm:p-12 print:max-w-none print:shadow-none">
+        <header className="mb-8 border-b-2 border-[#C89B3C] pb-6 text-center">
+          <div className="mb-3 flex justify-center"><BetdocLogo variant="mark" /></div>
+          <h1 className="text-2xl font-bold uppercase tracking-wider text-stone-900 sm:text-3xl">The Gazette of BetDoc Quantitative Systems</h1>
+          <p className="mt-1 text-xs font-semibold uppercase tracking-widest text-[#A47C26] sm:text-sm">Extraordinary · Published by authority of the architect</p>
+          <p className="mt-2 font-mono text-xs text-stone-500">
+            Ref. No. <strong className="text-stone-800">BD/GAZ/2026/G116-SOP</strong> · Issued <strong className="text-stone-800">23 October 2026</strong>
+          </p>
+        </header>
 
-          <h1 className="text-2xl sm:text-3xl font-bold tracking-wider text-stone-900 uppercase">
-            The Gazette of BetDoc Quantitative Systems
-          </h1>
-          <p className="text-xs sm:text-sm font-semibold tracking-widest text-[#C89B3C] uppercase mt-1">
-            Extraordinary · Published by Authority
-          </p>
-          <p className="text-xs text-stone-500 mt-2 font-mono">
-            Ref No. <strong className="text-stone-800">BD/GAZ/2026/G116-SOP</strong> &nbsp;|&nbsp; Promulgation Date:{' '}
-            <strong className="text-stone-800">23rd October 2026</strong>
-          </p>
+        <div className="mb-8 border border-l-4 border-stone-200 border-l-[#C89B3C] bg-[#FFFDF9] p-4 text-sm leading-relaxed text-stone-800">
+          <strong>PUBLIC NOTICE.</strong> This is BetDoc's own <em>standard operating procedure and testing manual</em>, issued for the guidance of authorised
+          operators and testers under the authority of <strong>Amit Ashok Kumar Patnaik</strong>, chief architect. It is a product manual, not a government
+          publication, and nothing in it is a promise of profit.
         </div>
 
-        {/* Public Notification Alert Box */}
-        <div className="bg-[#FFFDF9] border border-stone-200 border-l-4 border-l-[#C89B3C] p-4 mb-8 text-sm leading-relaxed text-stone-800">
-          <strong>STATUTORY NOTIFICATION:</strong> This document serves as the{' '}
-          <em>Official Standard Operating Procedure and Testing Manual</em> for <strong>BetDoc</strong>. It is issued
-          for the guidance of authorized operators, analytical partners, and testing users under the direct authority
-          of <strong>Amit Ashok Kumar Patnaik</strong>, Chief Architect & Quantitative Sovereign.
-        </div>
+        <Part n="I" title="The charter (the Krishna-Arjuna law)">
+          <p><strong className="text-stone-900">1. What BetDoc is.</strong> An analytical advisor and an honest ledger. BetDoc does <strong>not</strong> hold your money,
+            does <strong>not</strong> take bank deposits, does <strong>not</strong> place bets or take cashouts at any bookmaker, and does not read your
+            bookmaker account. The rupees in its vault are your own record of what you did.</p>
+          <ul className="list-disc space-y-2 pl-6">
+            <li><strong>BetDoc is Krishna, the strategist and accountant.</strong> ASHOKA prices the live board, ASHVATTHAMA (the Consultant) seals each verdict,
+              KUMBHA sizes the stake, SHIVAJI guards the losses, VIDUR reads the news, and TODAR MAL keeps every rupee and the 30% TDS to the paisa.</li>
+            <li><strong>You are Arjuna, the warrior and the owner of the money.</strong> Your capital stays in your own Parimatch or 1xBet account. You read
+              the advice, place each ticket with your own hands, copy the booking code back to BetDoc, and take any cashout at the book yourself.</li>
+          </ul>
+        </Part>
 
-        {/* PART I */}
-        <section className="mb-10">
-          <h2 className="text-lg font-bold uppercase tracking-wider text-stone-900 border-b border-stone-200 pb-1 mb-4 flex items-center gap-2">
-            <span className="text-[#C89B3C]">Part I</span> — The Sovereign Charter (The Krishna-Arjuna Law)
-          </h2>
-          <div className="space-y-4 text-sm leading-relaxed text-stone-700">
-            <p>
-              <strong className="text-stone-900">1. Nature of the System:</strong> BetDoc is an analytical advisor and quantitative calculation engine. BetDoc does <strong>not</strong> hold your money, does <strong>not</strong> accept bank deposits, and does <strong>not</strong> automatically place bets on bookmaker sites.
-            </p>
-            <p>
-              <strong className="text-stone-900">2. The Krishna-Arjuna Law:</strong>
-            </p>
-            <ul className="list-disc pl-6 space-y-2">
-              <li>
-                <strong>BetDoc is Lord Krishna (The Strategist & Accountant):</strong> It monitors thousands of matches, computes real probabilities, detects true bookmaker bias, prepares optimal ticket combinations, alerts you to in-play cashouts, and logs every rupee with exact 30% TDS tax math under Commander <strong>Todar Mal</strong>.
-              </li>
-              <li>
-                <strong>You are Arjuna (The Warrior & Money Owner):</strong> You hold your own money safely in your personal bookmaker account (such as <strong>Parimatch</strong> or <strong>1xBet</strong>). You read the advice, place the tickets with your own hands, enter the booking code into your Bet-Slip, and collect your real cash winnings directly.
-              </li>
+        <Part n="II" title="The six steps of a betting day">
+          <Step n={1} title="Read the morning signal (07:55 IST)">
+            <p>At 07:55 IST TODAR MAL scores the day out of 100 from what it can measure: Parimatch and 1xBet's margins on today's match odds, how many
+              top-tier fixtures are priced, rotation news and depleted squads from the Wire, and how many legs are priced at or above fair. What it cannot
+              measure is named, never guessed.</p>
+            <div className="space-y-1 border-l-2 border-stone-300 pl-4">
+              <p><strong className="text-red-700">Below 60, REST DAY:</strong> a warning goes to your Telegram and SMS with the reasons. Do not bet today.</p>
+              <p><strong className="text-amber-700">60 to 79, SELECTIVE:</strong> nothing is sent. Light stakes, anchors only.</p>
+              <p><strong className="text-emerald-700">80 and above, PRIME HARVEST:</strong> the best anchors go to your phone. Open BetDoc.</p>
+            </div>
+            <p>When the signal goes out, that morning's 08:00 hype stays silent. Send <code>/today</code> to the bot at any time for the current score.</p>
+          </Step>
+          <Step n={2} title="Build the street-smart slip on The Oracle">
+            <p>The Oracle → Bet builder → <strong>5(d) Street-smart &amp; splitter</strong>. Give a stake and a target return and choose Parimatch or 1xBet.
+              BetDoc takes the safest legs on the live board that the book prices at or above fair, one per match, spread across Football, Cricket,
+              Tennis and Basketball as the board allows, until the target is reached. Each leg shows its price, its fair probability and its EV.
+              If the target is out of reach, it says so. Player markets (wickets, goalscorers) are not on the board and are never used.</p>
+          </Step>
+          <Step n={3} title="Split it into three tickets">
+            <p>The splitter turns the slip into three nested tickets, safest legs first:</p>
+            <div className="overflow-x-auto font-sans text-xs">
+              <table className="w-full border-collapse border border-stone-300 bg-white text-left">
+                <thead><tr className="bg-stone-100 text-stone-900">
+                  <th className="border border-stone-300 p-2">Ticket</th><th className="border border-stone-300 p-2">Legs</th>
+                  <th className="border border-stone-300 p-2">Stake</th><th className="border border-stone-300 p-2">Purpose</th>
+                </tr></thead>
+                <tbody>
+                  <tr><td className="border border-stone-300 p-2 font-bold text-emerald-800">Slip A · Fortress</td><td className="border border-stone-300 p-2">the fewest anchors (3 to 5) whose odds return the whole session stake</td>
+                    <td className="border border-stone-300 p-2">40%</td><td className="border border-stone-300 p-2">the capital shield: on only when its payout covers the session stake</td></tr>
+                  <tr><td className="border border-stone-300 p-2 font-bold text-sky-800">Slip B · Growth</td><td className="border border-stone-300 p-2">about two thirds of the legs, up to 9</td>
+                    <td className="border border-stone-300 p-2">40%</td><td className="border border-stone-300 p-2">compounding across sports</td></tr>
+                  <tr><td className="border border-stone-300 p-2 font-bold text-purple-800">Slip C · Moonshot</td><td className="border border-stone-300 p-2">every leg</td>
+                    <td className="border border-stone-300 p-2">20%</td><td className="border border-stone-300 p-2">the full upside</td></tr>
+                </tbody>
+              </table>
+            </div>
+            <p><strong className="text-stone-900">Read the shield honestly.</strong> Slip A's anchors are on all three tickets. If a leg only B or C carries
+              loses, Slip A can still return the session; if one of Slip A's anchors loses, all three tickets lose. The page shows the four outcomes with
+              their chances and how often the session gets its stake back.</p>
+          </Step>
+          <Step n={4} title="Place each ticket by hand and enter its booking code">
+            <ol className="list-decimal space-y-1 pl-5">
+              <li>Press <strong>Record the 3 tickets</strong>: they are saved as ready to place; no money is locked.</li>
+              <li>Open the book from the ticket's link and place it there, at the stake and odds shown or at what the book gives.</li>
+              <li>Copy the booking code the book issues (for example <code>5X7A9B</code>).</li>
+              <li>Under <strong>Your system tickets</strong>, enter the code and press <strong>Lock stake &amp; confirm</strong>. A Bet-Slip ticket from the
+                Consultant is confirmed the same way on <code>/bet-slip</code>.</li>
+            </ol>
+            <p>TODAR MAL then moves the stake from liquid cash to locked exposure, the ticket's legs are tracked for settlement, and the in-play watch
+              starts. SHIVAJI refuses the lock when cash is short, the 15% daily stop-loss is latched, a cool-down runs, or the kill switch is on.</p>
+          </Step>
+          <Step n={5} title="Follow the in-play cashout advisor">
+            <p>BetDoc never sees the book's cashout offer: you read it in the app and type it on the placed ticket. The advice compares it with the
+              ticket's fair value (its live win probability when the board prices every open leg) and its stop-loss floor:</p>
+            <ul className="list-disc space-y-1 pl-5">
+              <li><strong className="text-red-700">STOP-LOSS BREACH:</strong> the offer is at or under the floor shown on the ticket (15% to 40% under the stake): cash out to keep the rest.</li>
+              <li><strong className="text-emerald-700">CASHOUT ADVISED:</strong> the offer is at least 85% of fair value, or its profit reaches the target.</li>
+              <li><strong>HOLD:</strong> fair value is worth more than the offer.</li>
             </ul>
+            <p>The in-play watch re-prices placed slips every few seconds when the live board covers them and pages your phone on a stop-loss, a
+              collapse in the win probability or a profit target. Record the cashout you take with <strong>Record cashout taken</strong>.</p>
+          </Step>
+          <Step n={6} title="Review the rupee ledger and the 30% TDS">
+            <p>On a win or a cashout above the stake, 30% TDS is withheld on the net winnings (Section 115BBJ's rate, deducted by the bookmaker under
+              Section 194BA), computed to the paisa:</p>
+            <p className="rounded bg-stone-100 p-2 font-mono text-xs">Net winnings = max(0, payout − stake) · TDS = 30% × net winnings · Credited = payout − TDS</p>
+            <p>A loss, or a cashout at or under the stake, carries ₹0.00 TDS. Example: ₹1,000 at 3.00 pays ₹3,000; net winnings ₹2,000; TDS ₹600; ₹2,400
+              credited. The Vault's TDS certificate is BetDoc's own summary of the year; the official certificate (Form 16A) comes from the bookmaker,
+              and the 4% cess is settled when the return is filed.</p>
+          </Step>
+        </Part>
+
+        <Part n="III" title="Operator verification protocol">
+          <p>Tick each item only after verifying it on the running application. The ticks stay in this browser.</p>
+          <div className="space-y-3">
+            {CHECKLIST.map((c, i) => (
+              <label key={c.id} className="flex cursor-pointer items-start gap-3">
+                <input type="checkbox" checked={!!checks[c.id]} onChange={() => toggle(c.id)} className="mt-1 size-4 accent-[#A47C26]" />
+                <span><strong className="text-stone-900">Item {i + 1}: {c.title}.</strong> {c.how}</span>
+              </label>
+            ))}
           </div>
-        </section>
-
-        {/* PART II */}
-        <section className="mb-10">
-          <h2 className="text-lg font-bold uppercase tracking-wider text-stone-900 border-b border-stone-200 pb-1 mb-4 flex items-center gap-2">
-            <span className="text-[#C89B3C]">Part II</span> — The 6 Daily Steps to Victory (Operator Guide)
-          </h2>
-
-          <div className="space-y-6 text-sm text-stone-700">
-            <div className="p-4 bg-stone-50 rounded border border-stone-200">
-              <h3 className="font-bold text-stone-900 mb-1">
-                Step 1: Check the Morning Market Signal (07:55 AM IST)
-              </h3>
-              <p className="leading-relaxed">
-                Every morning at 07:55 AM, BetDoc evaluates the entire day's match slate and sends a message to your Telegram and SMS:
-              </p>
-              <div className="mt-2 space-y-1 pl-4 border-l-2 border-stone-300">
-                <p>
-                  🔴 <strong className="text-red-700">Score &lt; 60 (REST DAY):</strong> Sit out! Matches have high margins or squad rotations. Do not bet today.
-                </p>
-                <p>
-                  🟢 <strong className="text-emerald-700">Score &ge; 80 (PRIME DAY):</strong> Exceptional slate with clear value. Proceed to Step 2.
-                </p>
-              </div>
-            </div>
-
-            <div className="p-4 bg-stone-50 rounded border border-stone-200">
-              <h3 className="font-bold text-stone-900 mb-1">
-                Step 2: Pick Heavyweight Anchors on "The Oracle"
-              </h3>
-              <p className="leading-relaxed">
-                Open <strong>The Oracle</strong>. BetDoc automatically scans live games across Football, Cricket, Tennis, and Basketball. It highlights <strong>Heavyweight Anchors</strong> (such as Real Madrid to score over 1.5, Jasprit Bumrah to take 1+ wickets, or Carlos Alcaraz to win). Cross-sport diversification protects you from single-sport shocks.
-              </p>
-            </div>
-
-            <div className="p-4 bg-stone-50 rounded border border-stone-200">
-              <h3 className="font-bold text-stone-900 mb-1">
-                Step 3: Run the "15-to-3" System Splitter
-              </h3>
-              <p className="leading-relaxed mb-3">
-                Never risk your capital on a single 15-leg ticket. BetDoc automatically splits your 15 picks into three smart tickets:
-              </p>
-              <div className="overflow-x-auto font-sans text-xs">
-                <table className="w-full text-left border-collapse border border-stone-300 bg-white">
-                  <thead>
-                    <tr className="bg-stone-100 text-stone-900">
-                      <th className="p-2 border border-stone-300">Ticket</th>
-                      <th className="p-2 border border-stone-300">Picks</th>
-                      <th className="p-2 border border-stone-300">Stake %</th>
-                      <th className="p-2 border border-stone-300">Example Stake</th>
-                      <th className="p-2 border border-stone-300">Payout Expectancy</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    <tr>
-                      <td className="p-2 border border-stone-300 font-bold text-emerald-800">Slip A: Fortress</td>
-                      <td className="p-2 border border-stone-300">4-5 Safest Anchors</td>
-                      <td className="p-2 border border-stone-300">40%</td>
-                      <td className="p-2 border border-stone-300">₹100</td>
-                      <td className="p-2 border border-stone-300 font-bold">~₹305 (Covers full ₹250 session stake!)</td>
-                    </tr>
-                    <tr>
-                      <td className="p-2 border border-stone-300 font-bold text-blue-800">Slip B: Growth</td>
-                      <td className="p-2 border border-stone-300">8-9 Balanced Picks</td>
-                      <td className="p-2 border border-stone-300">40%</td>
-                      <td className="p-2 border border-stone-300">₹100</td>
-                      <td className="p-2 border border-stone-300">~₹1,000 (Substantial profit)</td>
-                    </tr>
-                    <tr>
-                      <td className="p-2 border border-stone-300 font-bold text-purple-800">Slip C: Moonshot</td>
-                      <td className="p-2 border border-stone-300">All 15 Picks</td>
-                      <td className="p-2 border border-stone-300">20%</td>
-                      <td className="p-2 border border-stone-300">₹50</td>
-                      <td className="p-2 border border-stone-300">~₹2,500+ (Jackpot return)</td>
-                    </tr>
-                  </tbody>
-                </table>
-              </div>
-            </div>
-
-            <div className="p-4 bg-stone-50 rounded border border-stone-200">
-              <h3 className="font-bold text-stone-900 mb-1">
-                Step 4: Place Bets on Parimatch / 1xBet & Enter Booking Code
-              </h3>
-              <p className="leading-relaxed">
-                Click <strong>"Record All 3 Tickets to Bet-Slip"</strong>, tap the direct Parimatch or 1xBet link, place the bet in your bookmaker app, and paste the resulting <strong>Booking Code</strong> (e.g. <code>5X7A9B</code>) into BetDoc. Todar Mal locks the stake in your ledger and activates your live tracking shield.
-              </p>
-            </div>
-
-            <div className="p-4 bg-stone-50 rounded border border-stone-200">
-              <h3 className="font-bold text-stone-900 mb-1">
-                Step 5: Watch the In-Play Cashout Advisor & 5-Layer Stop-Loss
-              </h3>
-              <p className="leading-relaxed">
-                While matches are live, BetDoc evaluates in-play probability second by second:
-              </p>
-              <ul className="list-disc pl-5 mt-2 space-y-1">
-                <li>
-                  <strong className="text-emerald-700">CASHOUT ADVISED:</strong> When 12 of 15 legs have won and odds are in your favor, BetDoc advises you to cash out immediately on Parimatch to guarantee profit before late drama.
-                </li>
-                <li>
-                  <strong className="text-red-700">STOP LOSS BREACH:</strong> If an unforeseen injury or red card occurs, BetDoc triggers an early cashout signal to salvage capital.
-                </li>
+          <div className="rounded border border-stone-200 p-3 print:hidden">
+            <button type="button" onClick={() => void runLive()} disabled={running}
+                    className="rounded bg-stone-900 px-3 py-1.5 font-sans text-xs font-semibold text-white disabled:opacity-50">{running ? "Checking…" : "Run live checks"}</button>
+            {live && (
+              <ul className="mt-2 space-y-1 font-mono text-xs">
+                {live.map((r) => <li key={r.label} className={r.ok ? "text-emerald-700" : "text-red-700"}>{r.ok ? "✓" : "✗"} {r.label}: {r.detail}</li>)}
               </ul>
-            </div>
-
-            <div className="p-4 bg-stone-50 rounded border border-stone-200">
-              <h3 className="font-bold text-stone-900 mb-1">
-                Step 6: Review Real Rupee Ledger & Section 194BA 30% TDS
-              </h3>
-              <p className="leading-relaxed">
-                Indian tax law mandates <strong>30% TDS</strong> on net gambling winnings:
-                <br />
-                <span className="font-mono text-xs block mt-1 bg-stone-100 p-2 rounded">
-                  Net Profit = Gross Payout - Stake &nbsp;|&nbsp; 30% Tax = Net Profit × 0.30 &nbsp;|&nbsp; Take-Home = Payout - Tax
-                </span>
-                On losing or breakeven bets, tax is strictly <strong>₹0.00</strong>. Todar Mal maintains the permanent tax audit ledger in <strong>The Vault</strong>.
-              </p>
-            </div>
+            )}
           </div>
-        </section>
+        </Part>
 
-        {/* PART III */}
-        <section className="mb-10">
-          <h2 className="text-lg font-bold uppercase tracking-wider text-stone-900 border-b border-stone-200 pb-1 mb-4 flex items-center gap-2">
-            <span className="text-[#C89B3C]">Part III</span> — Operator Verification Protocol
-          </h2>
-          <div className="space-y-3 text-sm text-stone-700">
-            <div className="flex items-start gap-3">
-              <input type="checkbox" defaultChecked readOnly className="mt-1 accent-[#C89B3C]" />
-              <div>
-                <strong>Item 1: System Liveness:</strong> Backend responds at <code>http://localhost:8000/api/v1/health</code> and frontend renders at <code>http://localhost:5173</code> in under 2 seconds.
-              </div>
-            </div>
-            <div className="flex items-start gap-3">
-              <input type="checkbox" defaultChecked readOnly className="mt-1 accent-[#C89B3C]" />
-              <div>
-                <strong>Item 2: Telegram Intimation:</strong> Send <code>/today</code> to the Telegram bot; it returns today's health score (0-100) and betting advice.
-              </div>
-            </div>
-            <div className="flex items-start gap-3">
-              <input type="checkbox" defaultChecked readOnly className="mt-1 accent-[#C89B3C]" />
-              <div>
-                <strong>Item 3: System Splitter:</strong> Generate 15 legs on <code>/oracle</code>; verify Slip A payout strictly exceeds the session stake.
-              </div>
-            </div>
-            <div className="flex items-start gap-3">
-              <input type="checkbox" defaultChecked readOnly className="mt-1 accent-[#C89B3C]" />
-              <div>
-                <strong>Item 4: Handcrafted Placement:</strong> Confirm a booking code in <code>/bet-slip</code>; verify stake is debited and locked in Todar Mal's vault.
-              </div>
-            </div>
-            <div className="flex items-start gap-3">
-              <input type="checkbox" defaultChecked readOnly className="mt-1 accent-[#C89B3C]" />
-              <div>
-                <strong>Item 5: In-Play Evaluation:</strong> Verify cashout advice displays <code>HOLD</code>, <code>CASHOUT_ADVISED</code>, or <code>STOP_LOSS_BREACH</code>.
-              </div>
-            </div>
-          </div>
-        </section>
+        <Part n="IV" title="What BetDoc does not promise">
+          <ul className="list-disc space-y-1 pl-5">
+            <li>No ticket, split or signal guarantees a win or the return of a stake; probabilities are the market consensus's, and legs of different matches are treated as independent.</li>
+            <li>Every price comes from the live odds feed. When the feed is off, the board is empty and BetDoc builds nothing rather than inventing a slate.</li>
+            <li>The morning signal, /today and the cashout pages reach your phone only through the Telegram and SMS channels configured in the Sentinel.</li>
+            <li>BetDoc never logs in to, scrapes or acts on a bookmaker site; the booking code and the cashout amount are the ones you type.</li>
+          </ul>
+        </Part>
 
-        {/* PART IV */}
-        <footer className="pt-6 border-t-2 border-[#C89B3C] flex flex-col sm:flex-row justify-between items-start sm:items-end gap-6 text-xs text-stone-600">
+        <footer className="flex flex-col items-start justify-between gap-6 border-t-2 border-[#C89B3C] pt-6 text-xs text-stone-600 sm:flex-row sm:items-end">
           <div>
-            <div className="font-bold text-stone-900 uppercase">Promulgated By Authority Of:</div>
-            <div className="text-base font-bold text-[#C89B3C] mt-0.5">Amit Ashok Kumar Patnaik</div>
-            <div>Chief Quantitative Architect & Founder · BetDoc Systems</div>
-            <div className="text-stone-400 mt-1">Non-Custodial Quantitative Sovereign · Section 194BA Compliant</div>
+            <div className="font-bold uppercase text-stone-900">Issued by authority of</div>
+            <div className="mt-0.5 text-base font-bold text-[#A47C26]">Amit Ashok Kumar Patnaik</div>
+            <div>Chief Quantitative Architect · BetDoc</div>
+            <div className="mt-1 text-stone-500">Developed for Amit Ashok Kumar Patnaik</div>
           </div>
-
-          <div className="sm:text-right border-2 border-[#C89B3C] bg-[#FFFDF9] p-3 rounded">
-            <div className="font-bold text-[#C89B3C] uppercase tracking-wider text-[10px]">Official Gazette Seal</div>
-            <div className="font-bold text-stone-900 text-sm mt-0.5">CERTIFIED OPERATIONAL</div>
-            <div className="text-stone-400 text-[10px]">Group 116 Capstone · 23-Oct-2026</div>
+          <div className="rounded border-2 border-[#C89B3C] bg-[#FFFDF9] p-3 sm:text-right">
+            <div className="text-[10px] font-bold uppercase tracking-wider text-[#A47C26]">Gazette seal</div>
+            <div className="mt-0.5 text-sm font-bold text-stone-900">STANDARD OPERATING PROCEDURE</div>
+            <div className="text-[10px] text-stone-500">Group 116 · 23 October 2026</div>
           </div>
         </footer>
-      </div>
+      </article>
     </div>
   );
 };
-
-export default TestingManual;

@@ -38,6 +38,7 @@ from app.domain import street_smart as ss
 from app.domain.bookmakers.adapters import ASHOKA_BOOKMAKERS, market_selection_label, search_code
 from app.domain.oracle.parlay_engine import LegCandidate
 from app.domain.slip_ornament.ticket import sport_label
+from app.domain.wagering.tax import section_115bbj
 from app.models.real_money import RealBetTicket, RealBookmaker, RealTicketStatus
 from app.services import ashoka_market, ashvatthama
 from app.services import handcrafted_execution_service as hes
@@ -258,7 +259,17 @@ async def system_tickets(db: AsyncSession, settings: Settings, user_id: uuid.UUI
     """The user's split tickets, newest first, each with its placement (stake locked, stop-loss floor, in-play watch)."""
     rows = (await db.execute(select(RealBetTicket).where(RealBetTicket.user_id == user_id, RealBetTicket.legs.is_not(None))
                              .order_by(RealBetTicket.created_at.desc(), RealBetTicket.ticket_reference).limit(limit))).scalars().all()
-    return [{**rms.ticket_view(t), "legs": t.legs, "placement": await hes.ticket_placement(db, settings, t)} for t in rows]
+    return [{**rms.ticket_view(t), "legs": t.legs, "placement": await hes.ticket_placement(db, settings, t), "projection": projection(t)} for t in rows]
+
+
+def projection(ticket: RealBetTicket) -> dict[str, str]:
+    """Group 116: what the ticket returns if every leg wins, after Section 115BBJ's 30% TDS on the net winnings (at the
+    placed stake and odds once placed, else the recorded ones): the figures the shareable card prints."""
+    stake = ticket.placed_stake if ticket.placed_stake > 0 else ticket.recommended_stake
+    odds = ticket.placed_odds or ticket.target_odds
+    tax = section_115bbj(ss.paisa(stake * odds), stake)
+    return {"stake_inr": str(stake), "odds": str(odds), "gross_payout_inr": str(tax.gross_payout), "net_winnings_inr": str(tax.net_winnings),
+            "tds_inr": str(tax.tds), "take_home_inr": str(tax.net_post_tax_payout)}
 
 
 async def cancel_ticket(db: AsyncSession, user_id: uuid.UUID, reference: str, now: datetime) -> RealBetTicket:

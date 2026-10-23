@@ -95,6 +95,8 @@ export interface TicketPlacement {
   net_profit: string;
   tds_deducted: string;
   settled_at: string | null;
+  /** Group 116: closing line value, once the bet that tracks the ticket has a recorded sharp close */
+  clv: { placed_odds: number; closing_odds: number; clv_edge_pct: number; beat_the_market: boolean; rationale: string } | null;
 }
 
 export interface TicketRow {

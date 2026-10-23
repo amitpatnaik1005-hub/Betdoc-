@@ -21,6 +21,8 @@ trader places ASHVATTHAMA's ticket on Parimatch (or 1xBet) by hand and confirms 
 * ``POST /reconcile``: locked exposure brought to the open tickets; liquid cash checked against its ledger
 * ``POST /tickets/{reference}/confirm-handcrafted``: a recorded system ticket (Group 115's splitter) placed by hand: the
   gate, the stake locked, its legs as the Oracle bet that settles it, the in-play watch
+* ``POST /stress-test``: the Monte Carlo stress test under SHIVAJI's rules, at the desk's measured record or at stated
+  assumptions (Group 116)
 
 Refusals answer ``{"detail": {"code", "message", ...}}``: 400 (insufficient funds, odds decayed), 404, 409 (state),
 422 (validation, no edge, stake over the 5% ceiling), 423 (SHIVAJI's stop-loss or cool-down, the kill switch).
@@ -28,6 +30,7 @@ Refusals answer ``{"detail": {"code", "message", ...}}``: 400 (insufficient fund
 
 from __future__ import annotations
 
+import asyncio
 from datetime import UTC, datetime
 from decimal import Decimal
 from typing import Annotated, Any
@@ -47,6 +50,7 @@ from app.schemas.real_money import (
     ConfirmHandcraftedPlacementRequest,
     ConfirmPlacementRequest,
     ConfirmTicketPlacementRequest,
+    StressTestRequest,
     CreateRealTicketRequest,
     DepositRequest,
     ExecuteCashoutRequest,
@@ -63,6 +67,7 @@ from app.schemas.real_money import (
 )
 from app.services import handcrafted_execution_service as hes
 from app.services import live_cashout_service as lcs
+from app.services import bankroll_stress_test as stress
 from app.services import real_money_service as rms
 from app.services import vault_reconciliation_service as vrs
 
@@ -327,6 +332,38 @@ async def confirm_system_ticket(
         await rms.announce(redis, "placement", current_user.id, ticket_reference=ticket.ticket_reference, stake=str(ticket.placed_stake),
                            odds=str(ticket.placed_odds), bookmaker=ticket.bookmaker, booking_code=ticket.bookmaker_slip_id)
     return hes.placement_dict(placement)
+
+
+@router.post("/stress-test", summary="Monte Carlo Bankroll Stress Test")
+async def stress_test(payload: StressTestRequest, db: Db, settings: AppSettings, current_user: CurrentUser) -> dict[str, Any]:
+    """Ruin, drawdown and the spread of outcomes over many paths, staked and guarded as the desk is. Measured inputs need
+    STRESS_TEST_MIN_SETTLED decided tickets; with fewer, state the assumptions."""
+    measured = await stress.measured_inputs(db, current_user.id)
+    if payload.win_probability is None:
+        if measured["settled"] < settings.STRESS_TEST_MIN_SETTLED:
+            raise HTTPException(422, {"code": "INSUFFICIENT_HISTORY", "message": f"Only {measured['settled']} won or lost ticket(s) are on the desk; "
+                                      f"{settings.STRESS_TEST_MIN_SETTLED} are needed to measure. State a win probability and average odds as assumptions.",
+                                      **measured}, headers={"X-Engineered-For": DEVELOPER_CREDIT})
+        p, odds, source = measured["win_probability"], measured["average_odds"], "MEASURED"
+    else:
+        p, odds, source = payload.win_probability, payload.average_odds, "ASSUMED"
+    start = payload.starting_bankroll
+    if start is None:
+        bankroll = await rms.get_or_create_bankroll(db, current_user.id, datetime.now(UTC))
+        start = float(bankroll.cash_balance + bankroll.locked_exposure)
+        if start <= 0:
+            raise HTTPException(422, {"code": "EMPTY_VAULT", "message": "The vault holds nothing: record a deposit, or give a starting bankroll."},
+                                headers={"X-Engineered-For": DEVELOPER_CREDIT})
+    try:
+        result = await asyncio.to_thread(
+            stress.simulate_bankroll_stress_test, starting_bankroll=start, win_probability=p, average_odds=odds, kelly_fraction=payload.kelly_fraction,
+            num_iterations=payload.iterations, bets_per_iteration=payload.bets, bets_per_day=payload.bets_per_day,
+            daily_stop_loss_pct=settings.REAL_DAILY_DRAWDOWN_PCT, max_stake_pct=settings.REAL_MAX_STAKE_PCT, loss_streak_limit=settings.REAL_LOSS_STREAK_LIMIT,
+            seed=payload.seed,
+        )
+    except ValueError as exc:
+        raise HTTPException(422, {"code": "INVALID_INPUTS", "message": str(exc)}, headers={"X-Engineered-For": DEVELOPER_CREDIT}) from exc
+    return {**result, "inputs_source": source, "measured": measured, "developer_name": DEVELOPER_CREDIT}
 
 
 @router.get("/tickets/{ticket}/cashout-evaluation", response_model=CashoutEvaluationResponse, summary="Evaluate the Book's Cashout Offer")
