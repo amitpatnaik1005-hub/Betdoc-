@@ -59,7 +59,8 @@ async def test_overview_lists_every_source_with_its_health(make_client) -> None:
     client, _ = await make_client(ODDS_API_KEY=None)
     body = (await client.get("/api/v1/omni/fleet")).json()
     sources = {s["source_id"]: s for s in body["sources"]}
-    assert set(sources) == {"polymarket", "odds_api"}
+    assert set(sources) == {"polymarket", "odds_api", "oddspapi"}  # Group 128: OddsPapi, The Odds API's failover
+    assert sources["oddspapi"]["status"] == "NEEDS_KEY" and sources["oddspapi"]["requires_api_key"] is True
     assert sources["polymarket"]["status"] == "IDLE" and sources["polymarket"]["requires_api_key"] is False
     assert sources["odds_api"]["status"] == "NEEDS_KEY" and sources["odds_api"]["has_api_key"] is False
     assert body["mode"] == "inprocess" and body["redis_available"] is True and body["vault_configured"] is True

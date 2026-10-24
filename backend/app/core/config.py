@@ -805,10 +805,20 @@ class Settings(BaseSettings):
     ONE_XBET_TARGET_URL: str = "https://indian.1xbet.com/en"
     STAKE_TARGET_URL: str = "https://stake.com/sports/home"
     RAPIDAPI_KEY: SecretStr | None = None
-    ODDSPAPI_API_KEY: SecretStr | None = None
+    ODDSPAPI_API_KEY: SecretStr | None = Field(default=None, validation_alias=AliasChoices("ODDSPAPI_API_KEY", "ODDSPAPI_IO_API_KEY"))  # oddspapi.io
     SHARPAPI_API_KEY: SecretStr | None = None
     SPORTSDATA_IO_KEY: SecretStr | None = None
-    THE_RUNDOWN_API_KEY: SecretStr | None = None
+    THE_RUNDOWN_API_KEY: SecretStr | None = Field(default=None, validation_alias=AliasChoices("THE_RUNDOWN_API_KEY", "THE_RUNDOWN_IO_API_KEY"))
+    # Group 128: OddsPapi, The Odds API's failover (1xBet and Pinnacle; free plan 250 requests a month, one per bookmaker per
+    # five tournaments per run): it runs only while the router hands it a group, at most every ODDSPAPI_INTERVAL_SECONDS
+    ODDSPAPI_BASE_URL: str = "https://api.oddspapi.io/v4"
+    ODDSPAPI_BOOKMAKERS: str = "1xbet,pinnacle"  # the account book and the sharp reference the consensus needs
+    ODDSPAPI_TOURNAMENTS: dict[str, int] = Field(default_factory=lambda: {  # canonical sport key -> OddsPapi tournament id
+        "soccer_epl": 17, "soccer_spain_la_liga": 8, "soccer_italy_serie_a": 23, "soccer_germany_bundesliga": 35,
+        "soccer_uefa_champs_league": 7, "soccer_france_ligue_one": 34, "soccer_uefa_europa_league": 679,
+    })
+    ODDSPAPI_INTERVAL_SECONDS: float = Field(default=6 * 3600.0, ge=300)  # 2 books x 4 runs a day: ~240 requests a month
+    ODDSPAPI_CATALOG_TTL_SECONDS: float = Field(default=7 * 86400.0, ge=3600)  # team names and market ids, per process
     KALSHI_BASE_URL: str = "https://api.elections.kalshi.com/trade-api/v2"
     MANIFOLD_BASE_URL: str = "https://api.manifold.markets/v0"
 

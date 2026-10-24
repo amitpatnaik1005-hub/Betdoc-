@@ -24,7 +24,7 @@ from pydantic import ValidationError
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.adapters.ingestion import INGESTORS, OddsApiIngestor
+from app.adapters.ingestion import INGESTORS
 from app.adapters.ingestion.factory import ProviderSpec
 from app.core.config import Settings
 from app.models.omni_vault import OmniFleetSource
@@ -37,8 +37,8 @@ Cost = Literal["free", "metered"]
 Availability = Literal["available", "disabled", "paused", "needs_key", "circuit_open", "quota_reserve"]
 Role = Literal["always_on", "primary", "failover", "standby", "unavailable"]
 
-BUILTIN_PRIORITY = {"odds_api": 10, "polymarket": 50}
-BUILTIN_COST: dict[str, Cost] = {"odds_api": "metered", "polymarket": "free"}
+BUILTIN_PRIORITY = {"odds_api": 10, "oddspapi": 20, "polymarket": 50}  # lower wins a group; the next in line takes it over
+BUILTIN_COST: dict[str, Cost] = {"odds_api": "metered", "oddspapi": "metered", "polymarket": "free"}
 
 
 @dataclass(frozen=True, slots=True)
@@ -87,13 +87,15 @@ class GroupStatus:
 
 # ---------------------------------------------------------------- registry
 def builtin_descriptors(settings: Settings, aliases: AliasDictionary, rows: Mapping[str, OmniFleetSource]) -> dict[str, SourceDescriptor]:
-    coverage: dict[str, dict[str, str]] = {
-        "odds_api": OddsApiIngestor.coverage(settings),
+    coverage: dict[str, dict[str, str]] = {  # every built-in's own coverage (Group 128: no source left at none)
+        source_id: ingestor.coverage(settings) for source_id, ingestor in INGESTORS.items() if hasattr(ingestor, "coverage") and source_id != "polymarket"
+    }
+    coverage.update({
         "polymarket": {
             (spec.key if (spec := aliases.sport_for_polymarket(league)) else f"polymarket_{league}"): league
             for league in settings.polymarket_leagues
         },
-    }
+    })
     descriptors: dict[str, SourceDescriptor] = {}
     for source_id, ingestor in INGESTORS.items():
         default = ingestor.interval_seconds(settings)

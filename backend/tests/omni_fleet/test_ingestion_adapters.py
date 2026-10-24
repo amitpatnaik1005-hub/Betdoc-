@@ -35,8 +35,8 @@ def _fresh_class_caches() -> None:
     OddsApiIngestor._last_quota = None
 
 
-def test_registry_lists_both_sanctioned_sources() -> None:
-    assert set(INGESTORS) == {"polymarket", "odds_api"}
+def test_registry_lists_the_sanctioned_sources() -> None:
+    assert set(INGESTORS) == {"polymarket", "odds_api", "oddspapi"}  # Group 128: OddsPapi, The Odds API's failover
     assert INGESTORS["odds_api"].requires_api_key and not INGESTORS["polymarket"].requires_api_key
 
 

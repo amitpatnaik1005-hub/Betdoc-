@@ -93,7 +93,7 @@ Action = Literal["ingest", "probe"]
 # Built-in sources whose key may also come from a named Settings field (the pre-fleet configuration)
 # The Settings fields a source's key is read from when Fleet Command holds none, first set wins (Group 112: the Odds
 # API dashboard's own name first)
-ENV_KEY_FALLBACK: dict[str, tuple[str, ...]] = {"odds_api": ("THE_ODDS_API_KEY", "ODDS_API_KEY")}
+ENV_KEY_FALLBACK: dict[str, tuple[str, ...]] = {"odds_api": ("THE_ODDS_API_KEY", "ODDS_API_KEY"), "oddspapi": ("ODDSPAPI_API_KEY",)}
 _UNMAPPED_SHOWN = 25
 _background: set[asyncio.Task[Any]] = set()
 _entities_synced = False

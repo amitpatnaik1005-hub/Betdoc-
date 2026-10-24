@@ -301,7 +301,7 @@ async def test_create_list_and_delete_a_config_provider(client) -> None:
 
     overview = (await client.get("/api/v1/omni/fleet")).json()
     ids = [s["source_id"] for s in overview["sources"]]
-    assert ids[:2] == ["odds_api", "polymarket"] and "flat_feed" in ids
+    assert ids[:3] == ["odds_api", "oddspapi", "polymarket"] and "flat_feed" in ids  # built-ins by priority, then config providers
     assert {"group": "soccer_epl"}.items() <= next(g for g in overview["groups"] if g["group"] == "soccer_epl").items()
 
     assert (await client.post("/api/v1/omni/fleet/providers", json={"source_id": "flat_feed", "spec": FLAT_1X2})).status_code == 409

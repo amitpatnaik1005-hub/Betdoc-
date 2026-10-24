@@ -587,6 +587,7 @@ class OmniNormalizer:
 
         handlers: dict[str, Callable[[SourcePayload, IngestionBatch, NormalizationReport, DevigMethod], None]] = {
             "odds_api": self._odds_api,
+            "oddspapi": self._odds_api,  # Group 128: the adapter translates OddsPapi into The Odds API's event shape
             "polymarket": self._polymarket,
         }
         handler = handlers.get(batch.source_id)
