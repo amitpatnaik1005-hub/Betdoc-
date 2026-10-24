@@ -844,6 +844,17 @@ class Settings(BaseSettings):
     # Group 116: the stress test measures win rate and average odds from the desk's own WON/LOST tickets only from this many
     STRESS_TEST_MIN_SETTLED: int = Field(default=30, ge=1)
 
+    # ---- The slip scanner (Group 126): a bookmaker's slip, screenshot or text, read and vetted ----
+    SCANNER_MAX_IMAGE_BYTES: int = Field(default=10_000_000, ge=100_000)  # an upload larger than this is refused (413)
+    SCANNER_MAX_PIXELS: int = Field(default=40_000_000, ge=1_000_000)  # a decompression bomb guard
+    SCANNER_MAX_TEXT_CHARS: int = Field(default=8_000, ge=200)
+    SCANNER_OCR_MAX_SIDE: int = Field(default=2_048, ge=800, le=4_096)  # a wider photo is scaled down; a taller one is read in bands this high
+    SCANNER_OCR_MIN_WIDTH: int = Field(default=900, ge=300)  # a narrow screenshot is scaled up (at most 2x) for small print
+    SCANNER_OCR_MIN_CONFIDENCE: float = Field(default=0.5, ge=0, le=1)  # an OCR word read with less is shown, not parsed
+    SCANNER_OCR_CONCURRENCY: int = Field(default=2, ge=1, le=8)  # OCR passes at once (CPU bound)
+    SCANNER_NAME_CUTOFF: float = Field(default=0.85, gt=0, le=1)  # both team names must match the board fixture this well
+    SCANNER_CURE_ROUNDS: int = Field(default=2, ge=0, le=5)  # re-calibration: the Consultant's cure, applied this many times at most
+
     @property
     def odds_sport_keys(self) -> List[str]:
         """ODDS_SPORT_KEYS, then the sports the Vault activated (``app.core.fleet_overlay``)."""

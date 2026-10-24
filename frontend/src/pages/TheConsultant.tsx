@@ -15,6 +15,7 @@ import { LawyerCard } from "../components/consultant/LawyerCard";
 import { TipMasterConsensusPanel } from "../components/consultant/TipMasterConsensusPanel";
 import { VerdictBanner } from "../components/consultant/VerdictBanner";
 import { VerdictHistory } from "../components/consultant/VerdictHistory";
+import { SlipScannerModal } from "../components/slip_scanner/SlipScannerModal";
 import { BOOKMAKER_THEMES, type Skin, STRUCTURES } from "../lib/backtest_and_parlay";
 import { applyPrescription, type ConsultantReport, consultSlip, toSlipLeg } from "../lib/consultant";
 import { invalidate } from "../lib/resource";
@@ -38,6 +39,7 @@ export const TheConsultant = () => {
   const [result, setResult] = useState<{ sig: string; report: ConsultantReport } | null>(null);
   const [failure, setFailure] = useState<{ sig: string; message: string } | null>(null);
   const [busy, setBusy] = useState<"consult" | "apply" | null>(null);
+  const [scanning, setScanning] = useState(false); // Group 126: a slip from outside BetDoc, read and vetted
   const requested = useRef<string | null>(null);
   const seq = useRef(0);
 
@@ -116,7 +118,10 @@ export const TheConsultant = () => {
         headline={headline}
         motif={MOTIFS.constellation}
         detail={report ? <>Sealed {report.seal_algorithm} · {report.doctor.pathologies.length} patholog{report.doctor.pathologies.length === 1 ? "y" : "ies"} · {report.lawyer.clauses.length} rule{report.lawyer.clauses.length === 1 ? "" : "s"} · crowd: {report.tipmaster.label.toLowerCase()}</> : undefined}
-        actions={<Button icon="stadium" onClick={() => navigate("/oracle?tab=board")}>Match board</Button>}
+        actions={<>
+          <Button variant="primary" icon="document_scanner" onClick={() => setScanning(true)}>Scan External Slip</Button>
+          <Button icon="stadium" onClick={() => navigate("/oracle?tab=board")}>Match board</Button>
+        </>}
       />
       <ComponentGuideBanner
         className="lg:col-span-12"
@@ -135,7 +140,8 @@ export const TheConsultant = () => {
           <EmptyState icon="medical_services" title="No slip to examine"
                       detail="The Consultant examines the slip you build. Pick prices on the match board, or load a slip from the bet builder."
                       action={<div className="flex gap-2"><Button variant="primary" icon="stadium" onClick={() => navigate("/oracle?tab=board")}>Match board</Button>
-                        <Button icon="construction" onClick={() => navigate("/oracle?tab=builder")}>Bet builder</Button></div>} />
+                        <Button icon="construction" onClick={() => navigate("/oracle?tab=builder")}>Bet builder</Button>
+                        <Button icon="document_scanner" onClick={() => setScanning(true)}>Scan a slip</Button></div>} />
         ) : (
           <div className="flex flex-col gap-3" style={style}>
             <div className="flex flex-wrap items-center justify-between gap-3">
@@ -192,6 +198,7 @@ export const TheConsultant = () => {
         </>
       )}
       <VerdictHistory />
+      {scanning && <SlipScannerModal onClose={() => setScanning(false)} />}
     </Page>
   );
 };

@@ -113,9 +113,10 @@ async function request<T>(
   endpoint: string,
   body?: unknown,
   isFormData: boolean = false,
+  timeoutMs: number = REQUEST_TIMEOUT_MS,
 ): Promise<T> {
   const controller = new AbortController();
-  const timeoutId: number = window.setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  const timeoutId: number = window.setTimeout(() => controller.abort(), timeoutMs);
 
   const token: string | null = readToken();
   const headers: Record<string, string> = { Accept: "application/json" };
@@ -231,12 +232,14 @@ export const apiClient = {
     return request<T>("GET", withQuery(endpoint, query));
   },
 
+  /** `timeoutMs`: for the few calls that run longer than a page's usual answer (the slip scanner's OCR and vetting). */
   async post<T = unknown>(
     endpoint: string,
     body?: unknown,
     isFormData: boolean = false,
+    timeoutMs?: number,
   ): Promise<T> {
-    return request<T>("POST", endpoint, body, isFormData);
+    return request<T>("POST", endpoint, body, isFormData, timeoutMs);
   },
 
   async put<T = unknown>(endpoint: string, body?: unknown): Promise<T> {

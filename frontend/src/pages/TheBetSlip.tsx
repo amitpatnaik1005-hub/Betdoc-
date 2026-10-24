@@ -8,6 +8,7 @@
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { useState } from "react";
 import { ApiError } from "../api/client";
+import { SlipScannerModal } from "../components/slip_scanner/SlipScannerModal";
 import { ExportChannelsToolbar } from "../components/slip_ornament/ExportChannelsToolbar";
 import { LuxuryBetCardOrnament } from "../components/slip_ornament/LuxuryBetCardOrnament";
 import { TIER_STYLE } from "../lib/backtest_and_parlay";
@@ -27,6 +28,7 @@ export const TheBetSlip = () => {
   const chosen = params.get("report") ?? issuable[0]?.report_id ?? null;
   const ticket = useTicket(chosen);
   const [saving, setSaving] = useState(false);
+  const [scanning, setScanning] = useState(false); // Group 126: a bookmaker's slip, read and vetted
   const t = ticket.data;
 
   const save = async (code: string | null) => {
@@ -62,6 +64,7 @@ export const TheBetSlip = () => {
           </div>
         </div>
         <div className="flex flex-wrap items-center gap-2">
+          <Button size="sm" icon="document_scanner" onClick={() => setScanning(true)}>Scan Bet Slip</Button>
           <Button size="sm" icon="travel_explore" onClick={() => navigate("/oracle")}>The Oracle</Button>
           <Button size="sm" variant="primary" icon="add_circle" onClick={() => navigate("/consultant")}>New parlay</Button>
         </div>
@@ -126,6 +129,7 @@ export const TheBetSlip = () => {
           )}
         </Async>
       </div>
+      {scanning && <SlipScannerModal onClose={() => setScanning(false)} />}
     </Page>
   );
 };
