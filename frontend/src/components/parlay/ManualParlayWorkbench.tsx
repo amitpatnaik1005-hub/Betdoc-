@@ -11,9 +11,10 @@
  *   hold (15% to 40% of the stake), and "Inspect parlay": the 15-pillar fortress at the skin's book, rated 0-100.
  * - Place it at the book, then record it here: Ashoka's ledger takes it, the stop-loss shield watches it live.
  */
-import { type CSSProperties, type DragEvent, useState } from "react";
+import { type CSSProperties, type DragEvent, useEffect, useState } from "react";
 import { ApiError } from "../../api/client";
-import { ParimatchFeedNote } from "./ParimatchFeedNote";
+import { UniversalSlipPanel } from "./UniversalSlipPanel";
+import { bookPrice, SOURCE_NOTE } from "../../lib/universal_slip";
 import { formatDateTime, formatINR } from "../../lib/format";
 import {
   autoFixSlip, BOOKMAKER_THEMES, emergencyCashout, inspectParlay, missingParimatch, STRUCTURES, submitParlay, TIER_STYLE, useAccounts, useBoard, useShields, useShieldStream,
@@ -29,7 +30,6 @@ import { ScoreBackedLegs } from "../prediction/ScoreBackedLegs";
 
 const refusal = (err: unknown): string => (err instanceof ApiError ? err.message : "No answer from the server");
 const pct = (v: number | null | undefined, digits = 1): string => (v === null || v === undefined ? "—" : `${(v * 100).toFixed(digits)}%`);
-const DESK_BOOKS: { book: string; label: string }[] = [{ book: "1xbet", label: "1xBet" }, { book: "parimatch", label: "Parimatch" }]; // the real-money desk's two books
 const DRAG_TYPE = "application/x-betdoc-leg";
 
 const Radar = ({ rows, color }: { rows: PillarRow[]; color: string }) => {
@@ -103,7 +103,10 @@ const MatchCard = ({ card, book, onPick, onScores }: { card: FixtureCard; book: 
             </div>
             <div className={`grid gap-1 ${m.selections.length === 2 ? "grid-cols-2" : "grid-cols-3"}`}>
               {m.selections.map((s) => {
-                const price = book ? s.prices[book] : s.best?.odds;
+                // Group 130: at a desk book, a price the feeds do not quote is the universal slip's estimate, marked as one
+                const desk = book === "1xbet" || book === "parimatch" ? bookPrice(s, book) : null;
+                const price = desk ? desk.price : book ? s.prices[book] : s.best?.odds;
+                const estimate = desk !== null && desk.source !== "quoted" ? SOURCE_NOTE[desk.source] : null;
                 const leg = toSlipLeg(card, m.market, s);
                 return (
                   <button
@@ -116,12 +119,12 @@ const MatchCard = ({ card, book, onPick, onScores }: { card: FixtureCard; book: 
                     }}
                     onClick={() => onPick(leg)}
                     disabled={price === undefined}
-                    title={`${s.label}: models ${Object.entries(s.models).map(([k, v]) => `${k} ${pct(v, 0)}`).join(", ")}`}
+                    title={`${s.label}: models ${Object.entries(s.models).map(([k, v]) => `${k} ${pct(v, 0)}`).join(", ")}${estimate ? ` · price ${estimate}` : ""}`}
                     className="flex flex-col items-center rounded-xl px-1.5 py-1 text-[11px] transition disabled:opacity-40"
                     style={{ border: "1px solid color-mix(in srgb, var(--wb-primary) 35%, transparent)" }}
                   >
                     <span className="truncate font-medium">{s.selection}</span>
-                    <span className="font-mono text-sm font-bold" style={{ color: "var(--wb-primary)" }}>{price ?? "—"}</span>
+                    <span className="font-mono text-sm font-bold" style={{ color: "var(--wb-primary)" }}>{price === undefined ? "—" : `${estimate ? "≈" : ""}${price}`}{estimate && <span className="ml-0.5 align-top text-[8px] font-bold uppercase opacity-80">est.</span>}</span>
                     <span style={{ color: "var(--wb-muted)" }}>
                       {pct(s.fair_probability, 0)}
                       {s.ev !== null && <> · <span style={{ color: s.ev >= 0 ? "#22C55E" : "#FB7185" }}>EV {s.ev >= 0 ? "+" : ""}{(s.ev * 100).toFixed(1)}%</span></>}
@@ -210,6 +213,7 @@ export const ManualParlayWorkbench = ({ embedded = false }: { embedded?: boolean
   const setSkin = useParlaySlipStore((s) => s.setSkin);
   const slip = useParlaySlipStore((s) => s.legs);
   const addLeg = useParlaySlipStore((s) => s.add);
+  const syncWithBoard = useParlaySlipStore((s) => s.syncWithBoard);
   const removeLeg = useParlaySlipStore((s) => s.remove);
   const replaceLeg = useParlaySlipStore((s) => s.replace);
   const clearSlip = useParlaySlipStore((s) => s.clear);
@@ -224,6 +228,9 @@ export const ManualParlayWorkbench = ({ embedded = false }: { embedded?: boolean
   const [scoresId, setScoresId] = useState<string | null>(null);
   const theme = BOOKMAKER_THEMES[skin];
   const board = useBoard(sport);
+  useEffect(() => {
+    if (board.data) syncWithBoard(board.data); // Group 130: the slip takes every price the board refreshes
+  }, [board.data, syncWithBoard]);
   // the live card (the board refreshes): its latest prices back the score view
   const scoresFor = board.data?.fixtures.find((f) => f.fixture_id === scoresId) ?? null;
   const accounts = useAccounts();
@@ -232,7 +239,9 @@ export const ManualParlayWorkbench = ({ embedded = false }: { embedded?: boolean
 
   const structures = STRUCTURES.filter((s) => slip.length >= s.legs[0] && slip.length <= s.legs[1]);
   const chosen = kind && structures.some((s) => s.kind === kind) ? kind : structures[0]?.kind ?? null;
-  const prices = slip.map((l) => priceAt(l, theme.book));
+  const desk = theme.book === "1xbet" || theme.book === "parimatch" ? theme.book : null;
+  const prices = slip.map((l) => (desk ? bookPrice(l, desk)?.price ?? null : priceAt(l, theme.book)));
+  const combinedEstimated = desk !== null && slip.some((l) => bookPrice(l, desk)?.source !== "quoted");
   const combined = prices.every((p) => p !== null) && slip.length ? prices.reduce<number>((a, p) => a * (p as number), 1) : null;
   const balance = theme.book ? accounts.data?.accounts?.[theme.book] : undefined;
   const signature = slipSignature(slip, skin, chosen);
@@ -341,7 +350,13 @@ export const ManualParlayWorkbench = ({ embedded = false }: { embedded?: boolean
                 <EmptyState icon="sports" title={sport ? `No ${sport} fixture priced right now` : "No fixture priced right now"} detail="Cards appear as the feeds price fixtures (pre-match, and in play for three hours after kickoff)." />
               ) : (
                 <>
-                {theme.book === "parimatch" && b.fixtures.some((f) => f.markets.some(missingParimatch)) && <ParimatchFeedNote />}
+                {theme.book === "parimatch" && b.fixtures.some((f) => f.markets.some(missingParimatch)) && (
+                  <p role="note" className="rounded-xl px-3 py-2 text-[11px] leading-relaxed" style={{ background: "color-mix(in srgb, var(--wb-primary) 10%, transparent)", color: "var(--wb-muted)" }}>
+                    <strong style={{ color: "var(--wb-primary)" }}>Universal slip.</strong> The feeds quote 1xBet, not Parimatch: prices marked <strong>≈ est.</strong> are
+                    estimates ({SOURCE_NOTE.from_1xbet}). The selections are the same at both books; check each ≈ price at Parimatch before you stake.
+                    Refreshes every 5 seconds.
+                  </p>
+                )}
                 <ul className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
                   {b.fixtures.slice(0, 30).map((card) => (
                     <MatchCard key={card.fixture_id} card={card} book={theme.book} onPick={add} onScores={boardTargets(card) ? () => setScoresId(card.fixture_id) : null} />
@@ -399,24 +414,17 @@ export const ManualParlayWorkbench = ({ embedded = false }: { embedded?: boolean
               <input type="range" min={15} max={40} step={1} value={Math.round(stopLoss * 100)} onChange={(e) => setStopLoss(Number(e.target.value) / 100)} className="w-full" style={{ accentColor: theme.primary }} aria-label="Stop-loss percent" />
             </Field>
             <div className="flex flex-col justify-end text-xs">
-              <span>Combined {theme.book ? `at ${theme.label}` : "at the best prices"}: <strong className="font-mono">{combined ? combined.toFixed(2) : "—"}</strong></span>
-              {slip.length > 0 && (
-                <span style={{ color: theme.muted }}>
-                  {DESK_BOOKS.filter((b) => b.book !== theme.book).map((b) => {
-                    const each = slip.map((l) => priceAt(l, b.book));
-                    const total = each.every((x) => x !== null) ? each.reduce<number>((a, x) => a * (x as number), 1) : null;
-                    return <span key={b.book} className="mr-2">{b.label} {total ? <strong className="font-mono">{total.toFixed(2)}</strong> : "— (a leg unpriced there)"}</span>;
-                  })}
-                </span>
-              )}
+              <span>Combined {theme.book ? `at ${theme.label}` : "at the best prices"}: <strong className="font-mono">{combined ? `${combinedEstimated ? "≈" : ""}${combined.toFixed(2)}` : "—"}</strong>{combinedEstimated && " (est.)"}</span>
               <span style={{ color: theme.muted }}>model win chance {slip.length ? pct(slip.reduce((a, l) => a * l.fair_probability, 1)) : "—"} (independent legs)</span>
             </div>
           </div>
+          <UniversalSlipPanel legs={slip} />
           <Button variant="primary" icon="psychology" busy={busy === "inspect"} disabled={!slip.length || !chosen} onClick={() => void inspect()}>Inspect parlay</Button>
         </section>
 
         {inspection && tier && (
           <section className="flex flex-col gap-3 rounded-2xl p-3" style={{ background: theme.card }} aria-label="Cognitive rating">
+            {inspection.price_note && <p role="note" className="rounded-xl p-2 text-[11px]" style={{ background: "color-mix(in srgb, #FACC15 14%, transparent)" }}>{inspection.price_note}</p>}
             <div className="flex flex-wrap items-start gap-4">
               <div className="w-full sm:w-80"><SlipScoreMeter rating={inspection.rating} onAutoFix={() => void autoFix()} fixing={busy === "fix"} /></div>
               <Radar rows={inspection.rating.breakdown} color={tier.color} />

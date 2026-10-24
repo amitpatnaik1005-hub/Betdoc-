@@ -194,7 +194,18 @@ async def inspect(sessions: async_sessionmaker[AsyncSession], redis: Redis, sett
     if skin not in SKINS:
         raise WorkbenchRefusal("UNKNOWN_SKIN", f"skin is one of {', '.join(SKINS)}", 422)
     book = SKINS[skin][0]
-    audit = await vetting.vet(sessions, redis, settings, user_id=user_id, leg_ids=leg_ids, kind=kind, bankroll=bankroll, now=now, books=(book,) if book else None)
+    price_note = None
+    try:
+        audit = await vetting.vet(sessions, redis, settings, user_id=user_id, leg_ids=leg_ids, kind=kind, bankroll=bankroll, now=now, books=(book,) if book else None)
+    except (vetting.NoRetailBook, vetting.LegsNotQuoted):
+        if book != "parimatch":
+            raise
+        # Group 130: the feeds do not carry Parimatch. The selections are the same at either book, so the slip is vetted at
+        # 1xBet's real prices and said so; no Parimatch price is invented, and the odds Parimatch gives are what gets recorded
+        book = "1xbet"
+        audit = await vetting.vet(sessions, redis, settings, user_id=user_id, leg_ids=leg_ids, kind=kind, bankroll=bankroll, now=now, books=(book,))
+        price_note = ("Parimatch is not in the connected odds feeds, so this slip is vetted at 1xBet's real prices. The selections are the same at "
+                      "Parimatch; its odds may differ a little: record the odds Parimatch gives you.")
     margins, sync = await _leg_context(redis, settings, list(audit.leg_ids), book, now)
     rating = slip_rating(audit, margins, sync, settings)
     policy = slm.StopLossPolicy.from_settings(settings)
@@ -203,7 +214,7 @@ async def inspect(sessions: async_sessionmaker[AsyncSession], redis: Redis, sett
     stop = slm.recommended_pct(audit.joint_probability or 0.0, policy)
     payload = {
         "audit": vetting.audit_view(audit, credit), "rating": rating.as_dict(), "margins": margins, "score_sync": sync,
-        "skin": skin, "book": audit.bookmaker,
+        "skin": skin, "book": audit.bookmaker, "price_note": price_note,
         "stop_loss": {"recommended_pct": stop, "min_pct": policy.min_pct, "max_pct": policy.max_pct, "floor_inr_at_twin_stake": str(slm.floor(audit.stake_inr, stop)),
                       "basis": "wider for a long shot, tighter for a near-certainty: linear in the slip's win probability"},
         "developer_credit": credit,

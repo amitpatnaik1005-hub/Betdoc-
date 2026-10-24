@@ -381,7 +381,7 @@ async def confirm(sessions: async_sessionmaker[AsyncSession], redis: Redis, sett
     async with sessions() as session:
         halted = await kill_switch_state(session, redis, settings)
     floors = fortress.drift_floors(audited, policy)
-    result = fortress.pillar_14(halted, quotes, now, policy, floors=floors)  # type: ignore[arg-type]
+    result = fortress.pillar_14(halted, quotes, now, policy, floors=floors, kickoffs=[leg.kickoff for leg in live])  # type: ignore[arg-type]
     return {
         **result.as_dict(), "bookmaker": audit.bookmaker, "checked_at": now.isoformat(),
         "legs": [{"leg_id": leg.leg_id, "audited_odds": a, "floor": round(f, 4), "current_odds": q.odds, "age_seconds": round(q.age(now), 1)}  # type: ignore[union-attr]

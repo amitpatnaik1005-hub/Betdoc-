@@ -124,6 +124,7 @@ class FortressPolicy:
     intel_max_age: Mapping[str, timedelta]
     advisory: frozenset[int] = frozenset()
     never_forget: nf.NeverForgetPolicy | None = None  # None: pillar 15 is switched off
+    max_inplay_quote_age_seconds: float | None = None  # Group 130: a started leg's limit; None: max_quote_age_seconds
 
     @classmethod
     def from_settings(cls, settings: Any) -> FortressPolicy:
@@ -142,7 +143,7 @@ class FortressPolicy:
             stake_step=Decimal(settings.TWIN_STAKE_STEP_INR), max_quote_age_seconds=settings.TWIN_MAX_QUOTE_AGE_SECONDS,
             max_odds_drift_pct=settings.TWIN_MAX_ODDS_DRIFT_PCT,
             intel_max_age={k: timedelta(minutes=float(v)) for k, v in settings.TWIN_INTEL_MAX_AGE_MINUTES.items()},
-            advisory=advisory,
+            advisory=advisory, max_inplay_quote_age_seconds=settings.TWIN_MAX_INPLAY_QUOTE_AGE_SECONDS,
             never_forget=nf.NeverForgetPolicy.from_settings(settings) if settings.NEVER_FORGET_ENABLED else None,
         )
 
@@ -553,14 +554,25 @@ def pillar_13(inputs: FortressInputs, policy: FortressPolicy) -> tuple[PillarRes
     return PillarResult(13, Status.PASS, f"₹{sizing.stake:,} = {sizing.fraction:.2%} of bankroll" + (f" ({'; '.join(notes)})" if notes else ""), metrics), sizing
 
 
-def pillar_14(kill_switch: bool | None, quotes: Sequence[Quote], now: datetime, policy: FortressPolicy, *, floors: Sequence[float] | None = None) -> PillarResult:
+def quote_age_limit(kickoff: datetime | None, now: datetime, policy: FortressPolicy) -> float:
+    """Pillar 14's limit for one leg: the in-play limit once it has kicked off (when one is set), else the pre-match one."""
+    if policy.max_inplay_quote_age_seconds is not None and kickoff is not None and kickoff <= now:
+        return policy.max_inplay_quote_age_seconds
+    return policy.max_quote_age_seconds
+
+
+def pillar_14(kill_switch: bool | None, quotes: Sequence[Quote], now: datetime, policy: FortressPolicy, *, floors: Sequence[float] | None = None,
+              kickoffs: Sequence[datetime | None] | None = None) -> PillarResult:
     if kill_switch is None:
         return PillarResult(14, Status.UNVERIFIED, "the kill switch cannot be read (Redis unavailable): nothing executes")
     if kill_switch:
         return PillarResult(14, Status.FAIL, "the kill switch is engaged: trading is halted")
-    stale = [f"{q.bookmaker} {q.age(now):.0f}s" for q in quotes if q.age(now) > policy.max_quote_age_seconds]
+    limits = [quote_age_limit(k, now, policy) for k in kickoffs] if kickoffs is not None else [policy.max_quote_age_seconds] * len(quotes)
+    one = len(set(limits)) <= 1  # one limit for every leg: said once, as it always was
+    stale = [f"{q.bookmaker} {q.age(now):.0f}s" + ("" if one else f" (limit {limit:g}s)") for q, limit in zip(quotes, limits, strict=True) if q.age(now) > limit]
     if stale:
-        return PillarResult(14, Status.FAIL, f"prices older than {policy.max_quote_age_seconds:g}s: {', '.join(stale)}", {"stale": stale})
+        head = f"prices older than {limits[0]:g}s" if one else "prices older than their limit"
+        return PillarResult(14, Status.FAIL, f"{head}: {', '.join(stale)}", {"stale": stale})
     if floors is not None:
         drifted = [f"{q.bookmaker} {q.odds:g} < {floor:g}" for q, floor in zip(quotes, floors, strict=True) if q.odds < floor - 1e-9]
         if drifted:
@@ -662,7 +674,7 @@ def run(inputs: FortressInputs, policy: FortressPolicy, sharp_books: Sequence[st
     results = [
         p1, pillar_2(inputs, policy), pillar_3(inputs, policy), pillar_4(inputs, policy), pillar_5(inputs, policy), pillar_6(inputs, policy), p7,
         pillar_8(inputs), pillar_9(inputs, policy), p10, pillar_11(inputs, policy, None if sizing is None else sizing.stake), pillar_12(inputs), p13,
-        pillar_14(inputs.kill_switch, [ev.quote for ev in inputs.legs], inputs.now, policy),
+        pillar_14(inputs.kill_switch, [ev.quote for ev in inputs.legs], inputs.now, policy, kickoffs=[ev.leg.kickoff for ev in inputs.legs]),
         pillar_15(inputs, policy, leg_consensus, leg_edges, fallback=situations),
     ]
     final: list[PillarResult] = []

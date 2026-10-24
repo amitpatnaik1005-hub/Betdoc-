@@ -192,6 +192,9 @@ async def synthesize_for(redis: Redis | None, settings: Settings, now: datetime,
                          max_legs: int | None = None, preferred_sports: Sequence[str] | None = None) -> dict[str, Any]:
     book = _book(book)
     candidates = await board(redis, settings, now)
+    if candidates and not any(book in leg.quotes for leg in candidates):  # Group 130: say why, rather than "no anchor"
+        raise SynthesisError("BOOK_NOT_QUOTED", f"{ASHOKA_BOOKMAKERS.get(book, book)} is not in the connected odds feeds, so there is no price of its to "
+                             "synthesize from. Synthesize at 1xBet: the same selections can be placed at either book, at odds that may differ a little.", 409)
     legs = anchors(candidates, book, settings, now)
     extra = relaxed_anchors(candidates, legs, book, settings, now)
     limit = min(max_legs or settings.SYNTH_MAX_LEGS, settings.SYNTH_MAX_LEGS)

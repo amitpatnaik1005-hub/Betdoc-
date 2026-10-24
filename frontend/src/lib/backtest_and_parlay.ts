@@ -163,6 +163,8 @@ export interface Inspection {
   skin: Skin;
   book: string | null;
   stop_loss: { recommended_pct: number; min_pct: number; max_pct: number; floor_inr_at_twin_stake: string; basis: string };
+  /** Group 130: set when the slip was vetted at another book's real prices (Parimatch is not in the feeds) */
+  price_note?: string | null;
   score_sync: Record<string, ScorelineLink | null>;
   developer_credit: string;
 }
@@ -220,7 +222,7 @@ export interface Accounts {
 }
 
 export const useBoard = (sport: string | null) =>
-  useResource(`parlay:board:${sport ?? "all"}`, () => apiClient.get<Board>("/manual-parlay/board", sport ? { sport } : undefined), { intervalMs: 30_000 });
+  useResource(`parlay:board:${sport ?? "all"}`, () => apiClient.get<Board>("/manual-parlay/board", sport ? { sport } : undefined), { intervalMs: 5_000 }); // Group 130: real time
 export const useAccounts = () => useResource("parlay:accounts", () => apiClient.get<Accounts>("/manual-parlay/accounts"), { intervalMs: 300_000 });
 export const useShields = () => useResource("parlay:shields", () => apiClient.get<{ shields: Shield[] }>("/manual-parlay/live-shields", { active_only: false }), { intervalMs: 15_000 });
 export const inspectParlay = (body: { leg_ids: string[]; kind: string | null; skin: Skin; bankroll_inr?: string }) => apiClient.post<Inspection>("/manual-parlay/inspect", body);

@@ -8,7 +8,7 @@
  */
 import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
-import { BOOKMAKER_THEMES, type FixtureCard, type SelectionCard, type Skin } from "../lib/backtest_and_parlay";
+import { type Board, BOOKMAKER_THEMES, type FixtureCard, type SelectionCard, type Skin } from "../lib/backtest_and_parlay";
 
 export interface SlipLeg {
   leg_id: string;
@@ -50,6 +50,8 @@ interface ParlaySlipState {
   replace: (legId: string, leg: SlipLeg) => void;
   clear: () => void;
   setSkin: (skin: Skin) => void;
+  /** Group 130: every slip leg the board prices again takes the board's latest prices (a slip never calculates on stale ones) */
+  syncWithBoard: (board: Board) => void;
 }
 
 const isSkin = (v: unknown): v is Skin => typeof v === "string" && v in BOOKMAKER_THEMES;
@@ -66,6 +68,18 @@ export const useParlaySlipStore = create<ParlaySlipState>()(
       replace: (legId, leg) => set((s) => ({ legs: s.legs.map((l) => (l.leg_id === legId ? leg : l)).filter((l, i, all) => all.findIndex((x) => x.leg_id === l.leg_id) === i) })),
       clear: () => set({ legs: [] }),
       setSkin: (skin) => set({ skin: isSkin(skin) ? skin : "betdoc" }),
+      syncWithBoard: (board) => set((s) => {
+        if (!s.legs.length || !board.fixtures.length) return s;
+        const latest = new Map(board.fixtures.flatMap((f) => f.markets.flatMap((m) => m.selections.map((sel) => [sel.leg_id, sel] as const))));
+        let changed = false;
+        const legs = s.legs.map((leg) => {
+          const sel = latest.get(leg.leg_id);
+          if (!sel || (sel.fair_probability === leg.fair_probability && JSON.stringify(sel.prices) === JSON.stringify(leg.prices))) return leg;
+          changed = true;
+          return { ...leg, prices: sel.prices, fair_probability: sel.fair_probability };
+        });
+        return changed ? { legs } : s;
+      }),
     }),
     {
       name: "betdoc:parlay-slip",

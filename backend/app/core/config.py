@@ -312,6 +312,8 @@ class Settings(BaseSettings):
     # pillar 13 sizes with the CFO's policy (CFO_* below, Group 76): one Kelly fraction, ceiling and drawdown damper
     TWIN_STAKE_STEP_INR: Decimal = Field(default=Decimal("50"), gt=0)  # stakes round down to this
     TWIN_MAX_QUOTE_AGE_SECONDS: float = Field(default=60.0, ge=1)  # pillar 14: an older retail price is not executable
+    # Group 130: a leg already in play moves faster than a pre-match line; None keeps one limit for both (the shipped rule)
+    TWIN_MAX_INPLAY_QUOTE_AGE_SECONDS: float | None = Field(default=None, ge=1)
     TWIN_MAX_ODDS_DRIFT_PCT: float = Field(default=0.01, ge=0, lt=1)  # pillar 14 re-check: the price may fall this much, no more
     # pillars 2-6, 9-11: how old each kind of evidence may be (minutes)
     TWIN_INTEL_MAX_AGE_MINUTES: dict[str, float] = Field(default_factory=lambda: {

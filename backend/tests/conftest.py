@@ -50,6 +50,8 @@ for _name in ("THE_ODDS_API_KEY", "FOOTBALL_DATA_ORG_API_KEY", "SPORTSMONKS_API_
 # Group 129: the operator's local risk policy (backend/.env) never reaches a test: the suite checks the shipped fortress, where
 # every pillar can veto; a test that needs advisory pillars sets them itself
 os.environ["TWIN_ADVISORY_PILLARS"] = ""
+os.environ["TWIN_MAX_QUOTE_AGE_SECONDS"] = "60"  # Group 130: pillar 14 as shipped, one limit for every leg
+os.environ["TWIN_MAX_INPLAY_QUOTE_AGE_SECONDS"] = "60"
 # Tests build their own engines (SQLite, or TEST_POSTGRES_URL); the app's default engine points at a database that does not
 # exist, so a test that forgets to override it fails instead of reaching the developer's database
 os.environ.setdefault("DATABASE_URL", "postgresql+asyncpg://betdoc_test@127.0.0.1:5432/betdoc_test_isolated")

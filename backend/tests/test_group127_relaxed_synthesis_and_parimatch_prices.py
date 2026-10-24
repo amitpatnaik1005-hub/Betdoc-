@@ -43,7 +43,7 @@ def _board(monkeypatch: pytest.MonkeyPatch, legs: list[ss.PricedLeg]) -> list[Si
     """Candidates whose price at the book is the given PricedLeg: the gate logic, without fitting a market."""
     table = {leg.leg_id: leg for leg in legs}
     monkeypatch.setattr(synth, "priced", lambda leg, book, settings, now: table.get(leg.leg_id))
-    return [SimpleNamespace(leg_id=leg.leg_id, fixture_id=leg.fixture_id, kickoff=leg.kickoff) for leg in legs]
+    return [SimpleNamespace(leg_id=leg.leg_id, fixture_id=leg.fixture_id, kickoff=leg.kickoff, quotes={leg.book: None}) for leg in legs]
 
 
 BOARD = [
@@ -135,9 +135,10 @@ def test_the_frontend_says_parimatch_is_not_fed_and_switches_sports() -> None:
     assert not (FRONTEND / "components" / "parlay" / "ParimatchPriceEntry.tsx").exists()
     note = (FRONTEND / "components" / "parlay" / "ParimatchFeedNote.tsx").read_text(encoding="utf-8")
     assert "not in the connected odds feeds" in note and not re.search(r"1\.055|derive_|prices\.1xbet", note)  # no other book's price stands in
-    for page in ("components/oracle/board/MatchDetail.tsx", "components/parlay/ManualParlayWorkbench.tsx"):
-        text = (FRONTEND / page).read_text(encoding="utf-8")
-        assert "<ParimatchFeedNote />" in text and "ParimatchPriceEntry" not in text
+    detail = (FRONTEND / "components" / "oracle" / "board" / "MatchDetail.tsx").read_text(encoding="utf-8")
+    assert "<ParimatchFeedNote />" in detail and "ParimatchPriceEntry" not in detail
+    workbench = (FRONTEND / "components" / "parlay" / "ManualParlayWorkbench.tsx").read_text(encoding="utf-8")
+    assert "Universal slip." in workbench and "≈ est." in workbench and "ParimatchPriceEntry" not in workbench  # Group 130: estimates, marked
     board = (FRONTEND / "components" / "vault" / "SportSwitchboard.tsx").read_text(encoding="utf-8")
     assert "switchSport(s.key, polling)" in board and "credits/day" in board and "always on" in board
     assert "<SportSwitchboard />" in (FRONTEND / "components" / "vault" / "VaultFleet.tsx").read_text(encoding="utf-8")

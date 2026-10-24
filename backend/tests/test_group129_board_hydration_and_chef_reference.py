@@ -100,7 +100,7 @@ def test_the_builder_screens() -> None:
     assert not (FRONTEND / "components" / "parlay" / "ParimatchPriceEntry.tsx").exists()
     workbench = (FRONTEND / "components" / "parlay" / "ManualParlayWorkbench.tsx").read_text(encoding="utf-8")
     assert "card.projection.score" in workbench and 'm.selections.length === 2 ? "grid-cols-2" : "grid-cols-3"' in workbench
-    assert 's.ev >= 0 ? "#22C55E" : "#FB7185"' in workbench and "DESK_BOOKS.filter((b) => b.book !== theme.book)" in workbench
+    assert 's.ev >= 0 ? "#22C55E" : "#FB7185"' in workbench and "<UniversalSlipPanel legs={slip} />" in workbench  # Group 130: both books' returns
     assert "LIVE{card.minutes_since_kickoff !== null" in workbench and 'min={15} max={40}' in workbench
     chef = (FRONTEND / "components" / "builder" / "ChefsTable.tsx").read_text(encoding="utf-8")
     assert "plate.below_bar" in chef and "Below the Chef's bar: shown for reference, not served." in chef and "plate.bar_reasons" in chef
