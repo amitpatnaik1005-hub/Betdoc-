@@ -106,6 +106,9 @@ export interface MarketCard {
   margins: Margins;
 }
 
+/** A market some of whose selections Parimatch has no price for (the odds feed does not carry Parimatch: Group 127). */
+export const missingParimatch = (market: MarketCard): boolean => market.selections.some((s) => s.prices.parimatch === undefined);
+
 export interface FixtureCard {
   fixture_id: string;
   home: string;

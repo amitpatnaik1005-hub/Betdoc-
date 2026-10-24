@@ -181,3 +181,28 @@ export const useVaultStatus = () => useResource<VaultStatus>("vault:status", () 
 /** ``parimatch_***``: what a secret looks like on screen when the vault never sent a hint for it. */
 export const maskedIdentity = (account: VaultAccount): string =>
   account.username_hint ?? (account.has_api_key || account.has_token ? `${account.bookmaker_id}_key_***` : account.target_host ? `${account.bookmaker_id}_url_only` : `${account.bookmaker_id}_***`);
+
+// ---------------------------------------------------------------- the sports the board can show (Group 127)
+export interface CatalogSport {
+  key: string;
+  title: string;
+  group: string;
+  category: string | null; // the board's sport family
+  in_season: boolean | null; // null: The Odds API's index could not be read
+  source: "environment" | "vault" | null;
+  polling: boolean;
+  suggested: boolean;
+  credits_per_call: number;
+  credits_per_day: { far: number; near: number }; // days from kickoff, near kickoff
+}
+
+export interface SportCatalog {
+  sports: CatalogSport[];
+  index_read: boolean;
+  reason: string | null;
+  at: string;
+}
+
+export const useSportCatalog = () => useResource<SportCatalog>("vault:sports", () => apiClient.get<SportCatalog>("/vault/sports/catalog"), { intervalMs: 300_000 });
+export const switchSport = (key: string, polling: boolean) =>
+  apiClient.put<{ sport: string; polling: boolean; changed: boolean }>(`/vault/sports/${encodeURIComponent(key)}`, { polling });

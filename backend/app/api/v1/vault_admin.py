@@ -34,6 +34,7 @@ from decimal import Decimal
 from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Request, UploadFile, status
+from pydantic import BaseModel, ConfigDict
 from redis.asyncio import Redis
 from redis.exceptions import RedisError
 from sqlalchemy import select
@@ -57,6 +58,7 @@ from app.schemas.vault_admin import (
     ProviderLinkRequest,
     ProviderToggle,
 )
+from app.services import live_sports_ingestion_service as live_ingest
 from app.services.vault import catalog, fleet_config, registry
 from app.services.vault.account_rotator import NoAccount, get_optimal_account
 from app.services.vault.markdown_importer import (
@@ -338,6 +340,60 @@ async def put_fleet_config(payload: FleetConfigUpdate, request: Request, db: DbS
     await _publish(request, db, settings)
     logger.info("Vault fleet configuration v%s by %s (%s)", row.version, admin.username, ", ".join(sorted(payload.model_fields_set)))
     return _config_view(row)
+
+
+# ------------------------------------------------------------------------------------------ sports (Group 127)
+class SportSwitch(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    polling: bool
+
+
+def _fleet_deps(request: Request) -> Any:
+    deps = getattr(request.app.state, "fleet_deps", None)
+    if deps is None:
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="the ingestion fleet is not running in this process")
+    return deps
+
+
+@router.get("/sports/catalog")
+async def sport_catalog(request: Request, db: DbSession, admin: CurrentAdmin, refresh: bool = False) -> dict[str, Any]:  # noqa: ARG001
+    """Every in-season sport the board can show (The Odds API's free index), whether it is polled and what it costs a day."""
+    config = await fleet_config.get_config(db)
+    await db.commit()
+    return await live_ingest.sport_catalog(_fleet_deps(request), vault_sports=list(config.sports or []), refresh=refresh)
+
+
+@router.put("/sports/{sport_key}")
+async def switch_sport(sport_key: str, body: SportSwitch, request: Request, db: DbSession, admin: CurrentAdmin, settings: AppSettings) -> dict[str, Any]:
+    """Poll a sport (or stop): the Vault's list on top of ODDS_SPORT_KEYS, published to every worker. Switching on needs the
+    sport in season on The Odds API's index; the environment's sports are not switched here."""
+    key = sport_key.strip()
+    env = [s.strip() for s in settings.ODDS_SPORT_KEYS.split(",") if s.strip()]
+    if key in env:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=f"{key} is polled from the environment (ODDS_SPORT_KEYS): change it there")
+    if body.polling:  # checked before the configuration is read: no transaction is held across the provider call
+        if live_ingest.sport_category(key, settings) is None:
+            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=f"{key} is not a sport the match board shows")
+        index, reason = await live_ingest.in_season_index(_fleet_deps(request))
+        if index is None:
+            raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=f"The Odds API's sport list cannot be read ({reason}): try again")
+        if key not in {s["key"] for s in index}:
+            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=f"{key} is not in season on The Odds API now")
+    row = await fleet_config.get_config(db)
+    sports = list(row.sports or [])
+    if body.polling and key not in sports:
+        sports.append(key)
+    elif not body.polling and key in sports:
+        sports.remove(key)
+    else:
+        return {"sport": key, "polling": body.polling, "changed": False, "config": _config_view(row)}
+    row.sports = sports
+    await fleet_config.bump(db, admin.id)
+    await db.commit()
+    await db.refresh(row)
+    await _publish(request, db, settings)
+    logger.info("Vault: %s %s by %s (v%s)", key, "polled" if body.polling else "no longer polled", admin.username, row.version)
+    return {"sport": key, "polling": body.polling, "changed": True, "config": _config_view(row)}
 
 
 # ------------------------------------------------------------------------------------------ status

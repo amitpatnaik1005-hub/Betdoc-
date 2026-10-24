@@ -13,9 +13,10 @@
  */
 import { type CSSProperties, type DragEvent, useState } from "react";
 import { ApiError } from "../../api/client";
+import { ParimatchPriceEntry } from "./ParimatchPriceEntry";
 import { formatDateTime, formatINR } from "../../lib/format";
 import {
-  autoFixSlip, BOOKMAKER_THEMES, emergencyCashout, inspectParlay, STRUCTURES, submitParlay, TIER_STYLE, useAccounts, useBoard, useShields, useShieldStream,
+  autoFixSlip, BOOKMAKER_THEMES, emergencyCashout, inspectParlay, missingParimatch, STRUCTURES, submitParlay, TIER_STYLE, useAccounts, useBoard, useShields, useShieldStream,
   type FixtureCard, type Inspection, type PillarRow, type Shield, type Skin,
 } from "../../lib/backtest_and_parlay";
 import { invalidate } from "../../lib/resource";
@@ -121,6 +122,7 @@ const MatchCard = ({ card, book, onPick, onScores }: { card: FixtureCard; book: 
                 );
               })}
             </div>
+            {book === "parimatch" && missingParimatch(m) && <ParimatchPriceEntry card={card} market={m} />}
           </div>
         );
       })}

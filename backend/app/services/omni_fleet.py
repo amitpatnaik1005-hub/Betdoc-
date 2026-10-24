@@ -51,7 +51,7 @@ from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.adapters.ingestion import INGESTORS, BaseDataIngestor
-from app.adapters.ingestion.base import IngestionBatch, IngestionError, MissingApiKeyError, SchemaDriftError, ThrottledError
+from app.adapters.ingestion.base import IngestionBatch, IngestionError, MissingApiKeyError, ProviderAuthError, SchemaDriftError, ThrottledError
 from app.adapters.ingestion.factory import SpecMapper, UniversalDataIngestor
 from app.core.config import Settings
 from app.core.events import publish_event
@@ -259,6 +259,28 @@ def resolve_api_key(row: OmniFleetSource | None, descriptor: SourceDescriptor, s
     env_name = _env_secret_name(descriptor)
     secret = provider_secret(env_name) if env_name else None
     return secret.get_secret_value() if secret is not None else None
+
+
+def candidate_api_keys(row: OmniFleetSource | None, descriptor: SourceDescriptor, settings: Settings, vault: VaultCrypto | None) -> list[tuple[str, str]]:
+    """Every key the source could run on, as (origin, key) in precedence order: Fleet Command's vault key, then each
+    environment key (Group 127). A run that a provider rejects (401/403) moves to the next one instead of pausing the
+    source, so a revoked key in Fleet Command does not silence a working key in the environment. Never logged."""
+    out: list[tuple[str, str]] = []
+    if row is not None and row.encrypted_api_key and vault is not None:
+        out.append(("fleet_command_vault", vault.decrypt_key(row.encrypted_api_key)))
+    for field_name in ENV_KEY_FALLBACK.get(descriptor.source_id, ()):
+        value = getattr(settings, field_name, None)
+        if value is not None and value.get_secret_value():
+            out.append((field_name, str(value.get_secret_value())))
+    env_name = _env_secret_name(descriptor)
+    secret = provider_secret(env_name) if env_name else None
+    if secret is not None and secret.get_secret_value():
+        out.append((env_name or "environment", secret.get_secret_value()))
+    unique: list[tuple[str, str]] = []
+    for origin, key in out:
+        if key and all(key != k for _, k in unique):  # one key configured twice is tried once
+            unique.append((origin, key))
+    return unique
 
 
 def schedule_state(row: OmniFleetSource | None, descriptor: SourceDescriptor, settings: Settings) -> ScheduleState:
@@ -733,7 +755,8 @@ async def _run_locked(
             if not force and not probe and row.last_attempt_at and (now - _aware(row.last_attempt_at)).total_seconds() < descriptor.interval_seconds - 1.0:
                 summary.reason = "not_due"
                 return summary
-            api_key = resolve_api_key(row, descriptor, settings, deps.vault)
+            keys = candidate_api_keys(row, descriptor, settings, deps.vault) if descriptor.requires_api_key else []
+            api_key = keys[0][1] if keys else resolve_api_key(row, descriptor, settings, deps.vault)
             if not _entities_synced:
                 await sync_canonical_entities(session, normalizer.aliases)
                 _entities_synced = True
@@ -741,14 +764,28 @@ async def _run_locked(
             await session.commit()
         await _metrics(deps, source_id, {"last_attempt_at": now.timestamp(), "runner": summary.runner})
 
-        ingestor = build_ingestor(descriptor, deps, api_key)
-        if probe:
-            checked = await ingestor.probe()
-            if checked is not None:
-                await _metrics(deps, source_id, _quota_mapping(checked, now))
-                summary.status, summary.reason = "ok", "probe"
-                return summary
-        batch = await ingestor.fetch(list(scope) if scope is not None else list(descriptor.coverage.values()))
+        attempts = keys or [("none", api_key)]
+        rejected: list[str] = []
+        for i, (origin, key) in enumerate(attempts):
+            api_key = key
+            ingestor = build_ingestor(descriptor, deps, key)
+            try:
+                if probe:
+                    checked = await ingestor.probe()
+                    if checked is not None:
+                        await _metrics(deps, source_id, _quota_mapping(checked, now) | {"key_in_use": origin, "rejected_keys": ",".join(rejected)})
+                        summary.status, summary.reason = "ok", "probe"
+                        return summary
+                batch = await ingestor.fetch(list(scope) if scope is not None else list(descriptor.coverage.values()))
+            except ProviderAuthError as exc:
+                if i == len(attempts) - 1:
+                    raise
+                rejected.append(origin)  # a rejected key costs nothing: the next configured key is tried at once
+                logger.warning("Fleet %s: the %s key was rejected (%s); trying the next configured key", source_id, origin, _redact(str(exc), key))
+                continue
+            break
+        if keys:
+            await _metrics(deps, source_id, {"key_in_use": attempts[min(len(rejected), len(attempts) - 1)][0], "rejected_keys": ",".join(rejected)})
         mapper = SpecMapper(descriptor.spec, normalizer.aliases) if descriptor.spec is not None else None
         report = normalizer.normalize(batch, mapper=mapper, devig_method=descriptor.devig)
         if report.events_normalized == 0 and (report.malformed > 0 or report.events_seen > 0):

@@ -56,6 +56,8 @@ class SynthesizedLegOut(BaseModel):
     consensus_books: int
     prices: dict[str, float]
     recipe_rationale: str
+    tier: Literal["ANCHOR", "RELAXED"] = "ANCHOR"  # Group 127: RELAXED legs filled a board short of anchors
+    below_fair: bool = False  # the book pays less than the consensus says the leg is worth (EV < 0)
 
 
 class StreetSmartSynthesizeResponse(BaseModel):
@@ -77,6 +79,9 @@ class StreetSmartSynthesizeResponse(BaseModel):
     is_multi_sport: bool
     diversification_relaxed: bool
     anchors_available: int
+    anchor_tier: Literal["STRICT", "RELAXED"] = "STRICT"
+    relaxed_leg_ids: list[str] = []
+    relaxation_note: str | None = None
     rules: dict[str, Any]
     independence_note: str
     developer_name: str = DEVELOPER_CREDIT

@@ -108,6 +108,12 @@ const LegRow = ({ leg, i }: { leg: SynthesizedLeg; i: number }) => (
       <span className="min-w-0">
         <span className="block truncate font-bold">{i}. {leg.fixture}</span>
         <span className="block truncate" style={{ color: "var(--wb-muted)" }}>{leg.sport}{leg.league ? ` · ${leg.league}` : ""} · {leg.label} [{leg.code}]</span>
+        {leg.tier === "RELAXED" && (
+          <span className="mt-0.5 inline-block rounded px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider" style={{ background: "color-mix(in srgb, #FB7185 18%, transparent)", color: "#FB7185" }}
+                title="Admitted because the board held too few anchors: under the anchor floor, or priced below its fair value">
+            relaxed tier{leg.below_fair ? " · below fair" : ""}
+          </span>
+        )}
       </span>
       <span className="shrink-0 text-right font-mono">
         <span className="block text-sm font-black" style={{ color: "var(--wb-primary)" }}>{leg.odds}</span>
@@ -400,6 +406,7 @@ export const StreetSmartSynthesizer = ({ onLoad }: { onLoad: (title: string, leg
             </span>
           </div>
           {slip.shortfall && <p className="rounded-xl p-2.5 text-xs font-semibold" style={{ background: "color-mix(in srgb, #FBBF24 18%, transparent)" }}>{slip.shortfall}</p>}
+          {slip.relaxation_note && <p role="note" className="rounded-xl p-2.5 text-xs font-semibold" style={{ background: "color-mix(in srgb, #FB7185 16%, transparent)" }}>{slip.relaxation_note}</p>}
           {slip.diversification_relaxed && <p className="text-[11px]" style={{ color: "#FBBF24" }}>The other sports ran out before the target: one sport fills more than its share of this slip.</p>}
           {slip.legs.length > 0 && (
             <>

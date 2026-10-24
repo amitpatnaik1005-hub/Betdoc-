@@ -17,7 +17,7 @@ import uuid
 from datetime import UTC, datetime
 from typing import Annotated, Any
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Request, status
 from pydantic import ValidationError
 from redis.asyncio import Redis
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
@@ -26,6 +26,7 @@ from app.api.deps import ADMIN_ROLE, CurrentUser, get_db
 from app.api.v1.cfo_execution import get_session_factory
 from app.core.config import Settings, get_settings
 from app.schemas.backtest_and_parlay import EmergencyCashoutRequest, InspectRequest, SubmitRequest
+from app.services import live_sports_ingestion_service as live_ingest
 from app.services import manual_parlay as workbench
 from app.services.twin import vetting
 
@@ -56,10 +57,13 @@ def _refused(exc: Exception) -> HTTPException:
 
 
 @router.get("/board")
-async def board(request: Request, user: CurrentUser, settings: AppSettings, sport: str | None = Query(None, max_length=40)) -> dict[str, Any]:  # noqa: ARG001
+async def board(request: Request, background: BackgroundTasks, user: CurrentUser, settings: AppSettings,  # noqa: ARG001
+                sport: str | None = Query(None, max_length=40)) -> dict[str, Any]:
     if sport is not None and sport not in settings.MANUAL_PARLAY_SPORTS:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, {"reason": "UNKNOWN_SPORT", "message": f"sport is one of {', '.join(settings.MANUAL_PARLAY_SPORTS)}"})
-    return await workbench.board(_need_redis(request), settings, datetime.now(UTC), sport=sport)
+    result = await workbench.board(_need_redis(request), settings, datetime.now(UTC), sport=sport)
+    background.add_task(live_ingest.nudge, getattr(request.app.state, "fleet_deps", None), fixtures_on_board=sum(result["sports"].values()))  # Group 127
+    return result
 
 
 @router.get("/accounts")

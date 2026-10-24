@@ -33,6 +33,9 @@ export interface SynthesizedLeg {
   consensus_books: number;
   prices: Record<string, number>;
   recipe_rationale: string;
+  /** Group 127: RELAXED legs filled a board short of anchors; below_fair: the book pays under the consensus value */
+  tier: "ANCHOR" | "RELAXED";
+  below_fair: boolean;
 }
 
 export interface Synthesis {
@@ -53,6 +56,9 @@ export interface Synthesis {
   sports_represented: string[];
   is_multi_sport: boolean;
   diversification_relaxed: boolean;
+  anchor_tier: "STRICT" | "RELAXED";
+  relaxed_leg_ids: string[];
+  relaxation_note: string | null;
   anchors_available: number;
   rules: Record<string, number>;
   independence_note: string;

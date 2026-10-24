@@ -54,6 +54,13 @@ class Settings(BaseSettings):
     # Before buying a board, read The Odds API's /sports list (not metered) and leave out sports that are not in season;
     # the list is kept ODDS_API_ACTIVE_SPORTS_TTL_SECONDS per process. An unreadable list leaves every sport in.
     ODDS_API_SKIP_INACTIVE_SPORTS: bool = True
+    # Group 127: sports the Vault offers to switch on (each is polled only once switched on there: every in-season sport
+    # costs credits). A key ending in "_" is a prefix: tennis is listed per tournament (tennis_atp_paris_masters ...).
+    ODDS_SUGGESTED_SPORT_KEYS: str = (
+        "soccer_france_ligue_one,basketball_nba,basketball_euroleague,basketball_ncaab,americanfootball_nfl,americanfootball_ncaaf,"
+        "icehockey_nhl,baseball_mlb,mma_mixed_martial_arts,tennis_atp_,tennis_wta_"
+    )
+    ODDS_SPORT_CATALOG_TTL_SECONDS: int = Field(default=3600, ge=60)  # the in-season index (GET /sports, not metered) is read this often
     ODDS_API_ACTIVE_SPORTS_TTL_SECONDS: float = Field(default=6 * 3600.0, gt=0)
     ODDS_API_REGIONS: str = "uk,eu"
     # Markets per /odds call. Each costs regions x markets credits: "h2h" protects the quota; add
@@ -72,6 +79,11 @@ class Settings(BaseSettings):
     # ---- /ws/live-odds: Redis pub/sub fan-out across API workers -------------
     LIVE_ODDS_CHANNEL: str = "betdoc:live_odds"
     LIVE_ODDS_SNAPSHOT_TTL_SECONDS: int = Field(default=900, gt=0)  # board cells idle longer are dropped
+    # Group 127: a board page that finds the live board thin runs what the cadence says is due (never forced: the source's
+    # switch, breaker, reserve, floor and shield apply), at most once per cooldown
+    LIVE_ODDS_NUDGE_ENABLED: bool = True
+    LIVE_ODDS_NUDGE_MIN_FIXTURES: int = Field(default=5, ge=0)
+    LIVE_ODDS_NUDGE_COOLDOWN_SECONDS: int = Field(default=600, ge=60)
 
     # ---- Omni ingestion fleet (Celery) --------------------------------------
     # Run due ingestors inside the API process while no Celery worker is heartbeating (dev without a
@@ -827,6 +839,11 @@ class Settings(BaseSettings):
     SYNTH_MIN_LEG_PROBABILITY: float = Field(default=0.60, gt=0, lt=1)  # an anchor: the consensus gives it at least this
     SYNTH_MIN_LEG_EV: float = Field(default=0.0, ge=-0.5, le=1)  # and the book pays at least fair for it (0: no negative-EV leg)
     SYNTH_MIN_LEGS: int = Field(default=4, ge=2, le=20)  # the fewest legs a synthesized slip stops at
+    # Group 127: when fewer fixtures than SYNTH_MIN_LEGS hold an anchor, legs down to these floors are admitted, each marked
+    # as priced below fair and the slip's expected loss said; off: the synthesizer reports the shortfall instead
+    SYNTH_RELAX_WHEN_SHORT: bool = True
+    SYNTH_RELAXED_MIN_PROBABILITY: float = Field(default=0.45, gt=0, lt=1)
+    SYNTH_RELAXED_MIN_EV: float = Field(default=-0.05, ge=-0.5, le=0)
     SYNTH_MAX_LEGS: int = Field(default=20, ge=2, le=20)  # the Oracle ledger settles at most 20 legs
     SYNTH_MAX_SPORT_SHARE: float = Field(default=0.5, gt=0, le=1)  # no sport fills more of the slip while another sport is priced
     SYNTH_SPLIT_SHARES: tuple[Decimal, Decimal, Decimal] = (Decimal("0.40"), Decimal("0.40"), Decimal("0.20"))  # Fortress, Growth, Moonshot

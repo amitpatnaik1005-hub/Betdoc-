@@ -52,6 +52,7 @@ from app.services import pre_match_odds_service as store
 from app.services.aryabhata_pipeline import publish_market_quotes
 from app.services.omni_fleet import (
     FleetDeps,
+    candidate_api_keys,
     env_key_field,
     fleet_keys,
     publish_fleet_ticks,
@@ -217,6 +218,132 @@ async def ingest(deps: FleetDeps, *, sports: Sequence[str] = ("cricket", "footba
     result["store"] = await store_summary(deps, now=now)
     result.update(at=now.isoformat(), developer_credit=DEVELOPER_CREDIT)
     return result
+
+
+# ================================================================ the sport catalogue and the board-load nudge (Group 127)
+def _catalog_key(settings: Settings) -> str:
+    return f"{settings.omni_redis_prefix}:vault:odds_in_season"
+
+
+def sport_category(sport_key: str, settings: Settings) -> str | None:
+    """The board's sport family (MANUAL_PARLAY_SPORTS) a key belongs to, or None when the board does not show it."""
+    return next((label for label, prefixes in settings.MANUAL_PARLAY_SPORTS.items() if any(sport_key.startswith(p) for p in prefixes)), None)
+
+
+def suggested(sport_key: str, settings: Settings) -> bool:
+    for item in (s.strip() for s in settings.ODDS_SUGGESTED_SPORT_KEYS.split(",") if s.strip()):
+        if sport_key == item or (item.endswith("_") and sport_key.startswith(item)):
+            return True
+    return False
+
+
+def credits_per_day_range(sport_key: str, settings: Settings, now: datetime) -> tuple[float, float]:
+    """(far from kickoff, near kickoff): what a sport costs a day at its slowest and fastest cadence tier."""
+    per_call = credits_per_call(settings, sport_key, now)
+    far = max(max_age_seconds(tier_for(30 * 86400.0, settings), settings, 1.0), float(settings.ODDS_POLLING_INTERVAL_SEC))
+    near = max(max_age_seconds(tier_for(60.0, settings), settings, 1.0), float(settings.ODDS_POLLING_INTERVAL_SEC))
+    return round(86400.0 / far * per_call, 1), round(86400.0 / near * per_call, 1)
+
+
+async def in_season_index(deps: FleetDeps, *, refresh: bool = False) -> tuple[list[dict[str, Any]] | None, str | None]:
+    """The Odds API's in-season sports ``[{key, title, group}]`` (``GET /sports``, not metered), cached in Redis for
+    ODDS_SPORT_CATALOG_TTL_SECONDS; read with the first configured key the provider accepts. (None, why) when unreadable."""
+    settings = deps.settings
+    if not refresh:
+        try:
+            cached = await deps.redis.get(_catalog_key(settings))
+        except (RedisError, OSError):
+            cached = None
+        if cached:
+            try:
+                return json.loads(cached), None
+            except ValueError:
+                pass
+    descriptor, row = await _odds_source(deps)
+    if descriptor is None:
+        return None, "the Odds API source is not registered"
+    try:
+        keys = candidate_api_keys(row, descriptor, settings, deps.vault)
+    except Exception:  # noqa: BLE001 - an undecryptable vault key leaves the environment's keys
+        keys = [(name, k) for name in ("THE_ODDS_API_KEY", "ODDS_API_KEY") if (k := _secret(getattr(settings, name, None)))]
+    if not keys:
+        return None, "no Odds API key is configured"
+    reason = "every configured key was refused"
+    for _, key in keys:
+        try:
+            response = await deps.http.get(f"{settings.ODDS_API_BASE_URL.rstrip('/')}/sports", params={"apiKey": key}, timeout=settings.LIVE_CONTEXT_HTTP_TIMEOUT_SECONDS)
+        except httpx.HTTPError as exc:
+            reason = f"The Odds API is unreachable ({type(exc).__name__})"
+            continue
+        if response.status_code != 200:
+            reason = f"The Odds API answered HTTP {response.status_code}"
+            continue
+        try:
+            listing = response.json()
+        except ValueError:
+            return None, "The Odds API's sport list was unreadable"
+        index = sorted(({"key": str(s["key"]), "title": str(s.get("title") or s["key"]), "group": str(s.get("group") or "")}
+                        for s in listing if isinstance(s, Mapping) and s.get("key") and s.get("active") is True and not s.get("has_outrights")),
+                       key=lambda s: s["key"])
+        try:
+            await deps.redis.set(_catalog_key(settings), json.dumps(index), ex=settings.ODDS_SPORT_CATALOG_TTL_SECONDS)
+        except (RedisError, OSError):
+            pass
+        return index, None
+    return None, reason
+
+
+async def sport_catalog(deps: FleetDeps, *, vault_sports: Sequence[str], refresh: bool = False, now: datetime | None = None) -> dict[str, Any]:
+    """Every in-season sport the board can show, whether it is polled and from where, and what it would cost: what the
+    Vault offers to switch on. The environment's sports are always polled; the Vault's are the user's choice."""
+    now = aware(now or datetime.now(UTC))
+    settings = deps.settings
+    index, reason = await in_season_index(deps, refresh=refresh)
+    env = [s.strip() for s in settings.ODDS_SPORT_KEYS.split(",") if s.strip()]
+    rows: dict[str, dict[str, Any]] = {}
+    for entry in index or []:
+        category = sport_category(entry["key"], settings)
+        if category is not None:
+            rows[entry["key"]] = {**entry, "category": category, "in_season": True}
+    for key in [*env, *vault_sports]:  # a polled sport is listed even out of season
+        rows.setdefault(key, {"key": key, "title": key, "group": "", "category": sport_category(key, settings), "in_season": None if index is None else False})
+    sports = []
+    for key, row in sorted(rows.items(), key=lambda kv: (kv[1]["category"] or "~", kv[0])):
+        low, high = credits_per_day_range(key, settings, now)
+        sports.append({**row, "source": "environment" if key in env else "vault" if key in vault_sports else None,
+                       "polling": key in env or key in vault_sports, "suggested": suggested(key, settings),
+                       "credits_per_call": credits_per_call(settings, key, now), "credits_per_day": {"far": low, "near": high}})
+    return {"sports": sports, "index_read": index is not None, "reason": reason, "at": now.isoformat(), "developer_credit": DEVELOPER_CREDIT}
+
+
+def _nudge_key(settings: Settings) -> str:
+    return f"{settings.omni_redis_prefix}:odds_api:nudge"
+
+
+async def nudge(deps: FleetDeps | None, *, fixtures_on_board: int, now: datetime | None = None) -> str:
+    """A board page found the live board thin (under LIVE_ODDS_NUDGE_MIN_FIXTURES fixtures): run ``ingest`` for every
+    covered sport, at most once per LIVE_ODDS_NUDGE_COOLDOWN_SECONDS across the cluster. Never forced: only sports whose
+    stored board is past its tier's age are bought, a switched-off or paused source stays off, the breaker, reserve, floor
+    and shield apply, and otherwise the stored boards are replayed for free. Returns what happened, in a word."""
+    if deps is None or not deps.settings.LIVE_ODDS_NUDGE_ENABLED:
+        return "disabled"
+    settings = deps.settings
+    if fixtures_on_board >= settings.LIVE_ODDS_NUDGE_MIN_FIXTURES:
+        return "board_full"
+    try:
+        claimed = await deps.redis.set(_nudge_key(settings), "1", nx=True, ex=settings.LIVE_ODDS_NUDGE_COOLDOWN_SECONDS)
+    except (RedisError, OSError):
+        return "no_redis"
+    if not claimed:
+        return "cooling_down"
+    try:
+        result = await ingest(deps, sports=list(OddsApiIngestor.coverage(settings)), force=False, with_context=False, now=now)
+    except Exception:  # noqa: BLE001 - a page's background refresh never breaks the page
+        logger.warning("Board-load odds refresh failed", exc_info=True)
+        return "failed"
+    outcome = str(result["odds_api"].get("outcome") or result["status"])
+    logger.info("Board-load odds refresh (%d fixture(s) on the board): %s", fixtures_on_board, outcome)
+    return outcome
 
 
 # ================================================================ hydration (no provider call)
@@ -445,7 +572,8 @@ async def status(deps: FleetDeps, *, probe: bool = False, now: datetime | None =
     env_field = None if descriptor is None else env_key_field(descriptor, settings)
     source: dict[str, Any] = {
         "state": None if descriptor is None else schedule_state(row, descriptor, settings),
-        "key_in_use": "fleet_command_vault" if row is not None and row.encrypted_api_key else (env_field or None),
+        "key_in_use": metrics.get("key_in_use") or ("fleet_command_vault" if row is not None and row.encrypted_api_key else (env_field or None)),
+        "rejected_keys": [k for k in (metrics.get("rejected_keys") or "").split(",") if k],
         "last_status": metrics.get("last_status") or None, "last_error": metrics.get("last_error") or None,
         "quota_remaining": _float(metrics.get("quota_remaining")), "quota_used": _float(metrics.get("quota_used")),
         "quota_floor": settings.ODDS_QUOTA_FLOOR, "quota_reserve": settings.OMNI_FLEET_QUOTA_RESERVE,

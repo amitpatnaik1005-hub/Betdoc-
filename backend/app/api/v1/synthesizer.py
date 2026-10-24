@@ -19,7 +19,7 @@ from datetime import UTC, datetime
 from decimal import Decimal
 from typing import Annotated, Any
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Request, Response, status
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.api.deps import CurrentAdmin, CurrentUser, get_db
@@ -35,6 +35,7 @@ from app.schemas.synthesizer import (
     SystemSplitRequest,
     SystemSplitResponse,
 )
+from app.services import live_sports_ingestion_service as live_ingest
 from app.services import market_health_service as health
 from app.services import street_smart_synthesizer as synth
 
@@ -83,13 +84,18 @@ async def dispatch_market_health(request: Request, sessions: Sessions, settings:
 
 
 @router.post("/synthesize-street-smart", response_model=StreetSmartSynthesizeResponse, summary="Synthesize a Street-Smart Multi-Sport Slip")
-async def synthesize(payload: StreetSmartSynthesizeRequest, request: Request, settings: AppSettings, current_user: CurrentUser) -> dict[str, Any]:  # noqa: ARG001
+async def synthesize(payload: StreetSmartSynthesizeRequest, request: Request, background: BackgroundTasks, settings: AppSettings,
+                     current_user: CurrentUser) -> dict[str, Any]:  # noqa: ARG001
     try:
-        return await synth.synthesize_for(_redis(request), settings, datetime.now(UTC), stake=Decimal(str(payload.target_stake_inr)),
+        result = await synth.synthesize_for(_redis(request), settings, datetime.now(UTC), stake=Decimal(str(payload.target_stake_inr)),
                                           target_return=Decimal(str(payload.target_return_inr)), book=payload.bookmaker, max_legs=payload.max_legs,
                                           preferred_sports=payload.preferred_sports)
     except synth.SynthesisError as exc:
+        if exc.reason in ("INVALID_TARGET", "BOARD_UNAVAILABLE"):  # Group 127: an empty board starts the fleet's guarded refresh
+            background.add_task(live_ingest.nudge, getattr(request.app.state, "fleet_deps", None), fixtures_on_board=0)
         raise _fail(exc) from exc
+    background.add_task(live_ingest.nudge, getattr(request.app.state, "fleet_deps", None), fixtures_on_board=result["anchors_available"])
+    return result
 
 
 @router.post("/split-system-bets", response_model=SystemSplitResponse, summary="Split a Slip into Fortress, Growth and Moonshot")

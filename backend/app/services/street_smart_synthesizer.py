@@ -92,6 +92,25 @@ def anchors(candidates: Iterable[LegCandidate], book: str, settings: Settings, n
     return out
 
 
+def relaxed_anchors(candidates: Iterable[LegCandidate], strict: Sequence[ss.PricedLeg], book: str, settings: Settings, now: datetime, *,
+                    until: datetime | None = None) -> list[ss.PricedLeg]:
+    """Group 127: when fewer fixtures than SYNTH_MIN_LEGS hold an anchor, legs down to SYNTH_RELAXED_MIN_PROBABILITY and
+    SYNTH_RELAXED_MIN_EV, each priced at the book's own quote (never a derived price), on fixtures no anchor holds (an
+    anchor is never displaced by a below-fair leg). Empty when the anchors suffice or the relaxation is switched off."""
+    if not settings.SYNTH_RELAX_WHEN_SHORT or len({leg.fixture_id for leg in strict}) >= settings.SYNTH_MIN_LEGS:
+        return []
+    end = until or now + timedelta(hours=settings.SYNTH_HORIZON_HOURS)
+    held = {leg.fixture_id for leg in strict}
+    out: list[ss.PricedLeg] = []
+    for leg in candidates:
+        if leg.kickoff is None or not now < leg.kickoff <= end or leg.fixture_id in held:
+            continue
+        row = priced(leg, book, settings, now)
+        if row is not None and row.probability >= settings.SYNTH_RELAXED_MIN_PROBABILITY and row.ev >= settings.SYNTH_RELAXED_MIN_EV:
+            out.append(row)
+    return out
+
+
 async def board(redis: Redis | None, settings: Settings, now: datetime) -> list[LegCandidate]:
     if redis is None:
         raise SynthesisError("BOARD_UNAVAILABLE", "The live board (Redis) is not reachable: nothing can be priced.", 503)
@@ -127,21 +146,41 @@ def recipe(leg: ss.PricedLeg, rank: int, sports_in_slip: dict[str, int], multi: 
     return "; ".join(parts) + "."
 
 
-def synthesis_payload(result: ss.Synthesis, book: str, settings: Settings) -> dict[str, Any]:
+def relaxation(result: ss.Synthesis, relaxed_ids: set[str], book: str, settings: Settings) -> dict[str, Any]:
+    """Which of the slip's legs came from the relaxed tier, and what that costs, in plain words."""
+    used = [leg for leg in result.legs if leg.leg_id in relaxed_ids]
+    if not used:
+        return {"anchor_tier": "STRICT", "relaxed_leg_ids": [], "relaxation_note": None}
+    expected = result.expected_return - result.stake
+    below = sum(1 for leg in used if leg.ev < 0)
+    note = (f"Fewer than the minimum number of fixtures hold an anchor (a {settings.SYNTH_MIN_LEG_PROBABILITY:.0%}+ leg at a fair-or-better "
+            f"{ASHOKA_BOOKMAKERS.get(book, book)} price), so {len(used)} leg{'s' if len(used) != 1 else ''} from the relaxed tier "
+            f"{'were' if len(used) != 1 else 'was'} admitted{f', {below} of them priced below fair' if below else ''}. "
+            f"This slip's joint EV is {result.joint_ev:+.1%}: on average it {'returns' if expected >= 0 else 'loses'} "
+            f"\u20b9{abs(expected):,.2f} on the \u20b9{result.stake:,.2f} staked. A win is possible, never promised.")
+    return {"anchor_tier": "RELAXED", "relaxed_leg_ids": [leg.leg_id for leg in used], "relaxation_note": note}
+
+
+def synthesis_payload(result: ss.Synthesis, book: str, settings: Settings, relaxed_ids: set[str] | None = None) -> dict[str, Any]:
+    relaxed_ids = relaxed_ids or set()
     counts: dict[str, int] = {}
     for leg in result.legs:
         counts[leg.sport] = counts.get(leg.sport, 0) + 1
     multi = len(counts) > 1
     return {
         "book": book, "book_label": ASHOKA_BOOKMAKERS.get(book, book),
-        "legs": [{**leg.as_dict(), "prices": {book: float(leg.odds)}, "recipe_rationale": recipe(leg, i, counts, multi, settings)}
+        "legs": [{**leg.as_dict(), "prices": {book: float(leg.odds)}, "recipe_rationale": recipe(leg, i, counts, multi, settings),
+                  "tier": "RELAXED" if leg.leg_id in relaxed_ids else "ANCHOR", "below_fair": leg.ev < 0}
                  for i, leg in enumerate(result.legs, 1)],
         "leg_count": len(result.legs), "total_odds": str(result.total_odds), "target_stake_inr": str(result.stake),
         "target_return_inr": str(result.target_return), "target_odds": str(result.target_odds), "projected_return_inr": str(result.projected_return),
         "joint_probability": round(result.joint_probability, 6), "joint_ev": round(result.joint_ev, 4), "expected_return_inr": str(result.expected_return),
         "reached_target": result.reached_target, "shortfall": result.shortfall, "sports_represented": result.sports, "is_multi_sport": multi,
         "diversification_relaxed": result.diversification_relaxed, "anchors_available": result.anchors_available,
+        **relaxation(result, relaxed_ids, book, settings),
         "rules": {"min_leg_probability": settings.SYNTH_MIN_LEG_PROBABILITY, "min_leg_ev": settings.SYNTH_MIN_LEG_EV, "min_legs": settings.SYNTH_MIN_LEGS,
+                  "relaxed_min_probability": settings.SYNTH_RELAXED_MIN_PROBABILITY if settings.SYNTH_RELAX_WHEN_SHORT else None,
+                  "relaxed_min_ev": settings.SYNTH_RELAXED_MIN_EV if settings.SYNTH_RELAX_WHEN_SHORT else None,
                   "max_sport_share": settings.SYNTH_MAX_SPORT_SHARE, "horizon_hours": settings.SYNTH_HORIZON_HOURS,
                   "max_quote_age_seconds": settings.ASHOKA_MAX_QUOTE_AGE_SECONDS},
         "independence_note": "The joint probability multiplies the legs' probabilities: they are of different fixtures, assumed independent.",
@@ -152,16 +191,18 @@ def synthesis_payload(result: ss.Synthesis, book: str, settings: Settings) -> di
 async def synthesize_for(redis: Redis | None, settings: Settings, now: datetime, *, stake: Decimal, target_return: Decimal, book: str,
                          max_legs: int | None = None, preferred_sports: Sequence[str] | None = None) -> dict[str, Any]:
     book = _book(book)
-    legs = anchors(await board(redis, settings, now), book, settings, now)
+    candidates = await board(redis, settings, now)
+    legs = anchors(candidates, book, settings, now)
+    extra = relaxed_anchors(candidates, legs, book, settings, now)
     limit = min(max_legs or settings.SYNTH_MAX_LEGS, settings.SYNTH_MAX_LEGS)
     if limit < settings.SYNTH_MIN_LEGS:
         raise SynthesisError("TOO_FEW_LEGS", f"A synthesized slip has at least {settings.SYNTH_MIN_LEGS} legs.", 422)
     try:
-        result = ss.synthesize(legs, stake=stake, target_return=target_return, min_legs=settings.SYNTH_MIN_LEGS, max_legs=limit,
+        result = ss.synthesize([*legs, *extra], stake=stake, target_return=target_return, min_legs=settings.SYNTH_MIN_LEGS, max_legs=limit,
                                max_sport_share=settings.SYNTH_MAX_SPORT_SHARE, preferred_sports=preferred_sports)
     except ValueError as exc:
         raise SynthesisError("INVALID_TARGET", str(exc), 422) from exc
-    return synthesis_payload(result, book, settings)
+    return synthesis_payload(result, book, settings, {leg.leg_id for leg in extra})
 
 
 def price_legs(candidates: Iterable[LegCandidate], leg_ids: Sequence[str], book: str, settings: Settings, now: datetime) -> list[ss.PricedLeg]:

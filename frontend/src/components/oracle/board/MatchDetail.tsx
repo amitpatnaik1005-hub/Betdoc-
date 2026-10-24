@@ -6,11 +6,12 @@
  */
 import { useState } from "react";
 import { Link } from "react-router-dom";
-import type { MarketCard, SelectionCard } from "../../../lib/backtest_and_parlay";
+import { type MarketCard, missingParimatch, type SelectionCard } from "../../../lib/backtest_and_parlay";
 import { formatDateTime } from "../../../lib/format";
 import { type BoardFixture, CATEGORIES, type Category, driftFor, type MatchBoard, marketsIn, priceFor } from "../../../lib/match_board";
 import type { Slip } from "../../../lib/oracle";
 import { boardTargets } from "../../../lib/prediction";
+import { ParimatchPriceEntry } from "../../parlay/ParimatchPriceEntry";
 import { ScoreBackedLegs } from "../../prediction/ScoreBackedLegs";
 import { FixtureContextChips, StoredPricesBadge } from "./FixtureContextChips";
 import { OddsBox } from "./OddsBox";
@@ -158,6 +159,9 @@ export const MatchDetail = ({ card, book, inSlip, drift, onPick, onBack, parlays
                                stored={card.priced_from === "stored"} drift={driftFor(drift, s, book)} onPick={() => onPick(m, s)} />
                     ))}
                   </div>
+                )}
+                {open && book === "parimatch" && card.priced_from !== "stored" && missingParimatch(m) && (
+                  <div className="mt-2 flex flex-col"><ParimatchPriceEntry card={card} market={m} /></div>
                 )}
               </li>
             );

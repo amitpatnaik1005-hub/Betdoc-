@@ -29,7 +29,7 @@ from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from typing import Annotated, Any, Literal
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Request, Response, status
 from redis.asyncio import Redis
 from redis.exceptions import RedisError
 from sqlalchemy import delete, select
@@ -48,6 +48,7 @@ from app.models.user_bets_ledger import PlacedStatus, UserPlacedBet, UserPlacedL
 from app.schemas.ashoka import CashoutRecord, CashoutRequest, OddsCheckRequest, PlaceBetRequest, ScoreIn, SlipLegsRequest
 from app.schemas.popular_picks import PopularParlayRead
 from app.services import ashoka_market, chef_table, match_board_service
+from app.services import live_sports_ingestion_service as live_ingest
 from app.services import user_pnl_tracker as tracker
 from app.services.oracle_scores import poll_scores
 
@@ -107,7 +108,7 @@ async def slips(
 
 @router.get("/board")
 async def match_board(
-    request: Request, user: CurrentUser, db: DbSession, settings: AppSettings,  # noqa: ARG001 - signed-in users only
+    request: Request, background: BackgroundTasks, user: CurrentUser, db: DbSession, settings: AppSettings,  # noqa: ARG001 - signed-in users only
     sport: Annotated[str | None, Query(max_length=40)] = None, window: match_board_service.Window = "all",
 ) -> dict[str, Any]:
     """The match board (Group 103): the workbench's priced fixtures by sport (Cricket and Football first), country and
@@ -115,9 +116,12 @@ async def match_board(
     if sport is not None and sport not in settings.MANUAL_PARLAY_SPORTS:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, {"reason": "UNKNOWN_SPORT", "message": f"sport is one of {', '.join(settings.MANUAL_PARLAY_SPORTS)}"})
     try:
-        return await match_board_service.match_board(_need_redis(request), db, settings, datetime.now(UTC), sport=sport, window=window)
+        board = await match_board_service.match_board(_need_redis(request), db, settings, datetime.now(UTC), sport=sport, window=window)
     except (RedisError, OSError, TimeoutError) as exc:
         raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, {"reason": "NO_MARKET", "message": "The live market (Redis) is unavailable"}) from exc
+    # Group 127: a thin board starts the fleet's guarded refresh after the answer (never forced; at most once per cooldown)
+    background.add_task(live_ingest.nudge, getattr(request.app.state, "fleet_deps", None), fixtures_on_board=sum(int(row.get("count") or 0) for row in board.get("sports") or []))
+    return board
 
 
 @router.get("/chef-table")

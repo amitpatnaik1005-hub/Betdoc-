@@ -453,14 +453,15 @@ def test_a_stored_board_without_two_priced_sides_is_not_listed() -> None:
 
 # ================================================================ no second buyer of the quota
 async def test_the_multi_sport_boards_read_the_store_with_its_purchase_time(sessions, redis: Redis) -> None:  # noqa: F811 - fixture
-    bought = NOW - timedelta(minutes=20)
-    await _store(sessions, [_event("ev-1", "Arsenal", "Chelsea", NOW + timedelta(hours=20), BOOKS, bought)], bought)
+    now = datetime.now(UTC).replace(microsecond=0)  # the service reads the store against the real clock: a fixed date would expire
+    bought = now - timedelta(minutes=20)
+    await _store(sessions, [_event("ev-1", "Arsenal", "Chelsea", now + timedelta(hours=20), BOOKS, bought)], bought)
     service = multi_sport_odds_sync.MultiSportOddsSyncService(settings=_settings(SPORTS_PREFIX="g112:test:sports", SPORTS_VALUE_LINE_MAX_AGE_SECONDS=900.0))
     report = await service._poll_from_store(sessions, redis, ["soccer_epl", "basketball_nba"])
     assert report["fetched"] == ["soccer_epl"] and report["missing"] == ["basketball_nba"] and "ODDS_SPORT_KEYS" in report["reason"]
     board = json.loads(await redis.get("g112:test:sports:board:soccer_epl"))
     assert datetime.fromisoformat(board["fetched_at"]) == bought and board["source"] == "store" and len(board["events"]) == 1
-    screened = await service.screen_value_lines(redis, NOW)
+    screened = await service.screen_value_lines(redis, now)
     assert screened["stale_boards"] == 1 and screened["edges"] == 0  # twenty minutes old: no value line from it
     assert (await service.screen_value_lines(redis, bought + timedelta(minutes=1)))["stale_boards"] == 0
 
