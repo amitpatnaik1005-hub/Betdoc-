@@ -201,10 +201,10 @@ async def test_a_stored_board_replays_as_the_event_it_was_bought_as(sessions) ->
     assert store.snapshot_event(row, polled_at=bought - timedelta(hours=1))["bookmakers"] == []  # another fetch's markets are not this one's
 
 
-async def test_hydration_keeps_the_purchase_time_and_skips_what_redis_would_not_hold(sessions, monkeypatch) -> None:
+async def test_hydration_keeps_the_purchase_time_and_skips_what_its_tier_calls_stale(sessions, monkeypatch) -> None:
     fresh, old = NOW - timedelta(minutes=5), NOW - timedelta(hours=2)
     await _store(sessions, [_event("ev-fresh", "Arsenal", "Chelsea", NOW + timedelta(hours=8), BOOKS, fresh)], fresh)
-    await _store(sessions, [_event("ev-old", "Everton", "Fulham", NOW + timedelta(hours=30), BOOKS, old)], old)
+    await _store(sessions, [_event("ev-old", "Everton", "Fulham", NOW + timedelta(hours=3), BOOKS, old)], old)  # tier 3: 30 minutes
     published: dict[str, list[Any]] = {}
 
     async def ticks(_deps: Any, items: list[Any]) -> list[Any]:
@@ -481,7 +481,7 @@ def test_the_runner_parses_and_reports_without_keys() -> None:
         live_ingest_runner.parse_args(["--hydrate-only", "--status"])
     text = live_ingest_runner.render("hydrate", {"fixtures_stored": 9, "fixtures_hydrated": 2, "skipped_stale": 7, "max_age_seconds": 900.0,
                                                  "ticks": 6, "quotes": 2, "elapsed_ms": 4.2})
-    assert "replayed into Redis" in text and "7 (over 900s" in text and "Amit Ashok Kumar Patnaik" in text
+    assert "replayed into Redis" in text and "7 (older than their cadence tier allows" in text and "Amit Ashok Kumar Patnaik" in text
 
 
 async def test_the_admin_trigger_is_token_protected(monkeypatch) -> None:

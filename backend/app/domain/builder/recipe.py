@@ -96,6 +96,31 @@ def serve(rated: Sequence[Rated]) -> list[tuple[str, str, Rated]]:
     return plates
 
 
+_PLATE_ORDER: dict[str, Callable[[Rated], Any]] = {
+    "PARLAY_OF_THE_DAY": lambda r: (r.score, r.joint_ev),
+    "SAFE_FORTRESS": lambda r: (r.joint_probability, r.score),
+    "HIGH_YIELD": lambda r: (r.odds, r.score),
+}
+
+
+def serve_with_reference(rated: Sequence[Rated]) -> list[tuple[str, str, Rated, bool]]:
+    """``serve``'s plates, then (Group 129) each plate it left empty filled for reference from the slips that miss the
+    bar: still positive joint EV (a loser is never plated), the unvetoed first. The last field says the plate is below the
+    bar: the kitchen labels it so, with the pillars it fails, and never presents it as served."""
+    out = [(code, title, r, False) for code, title, r in serve(rated)]
+    used = {r.key for _, _, r, _ in out}
+    reserve = [r for r in rated if r.joint_ev > 0 and r.key not in used]
+    for code, title in PLATES:
+        if any(c == code for c, _, _, _ in out) or not reserve:
+            continue
+        pool = [r for r in reserve if r.legs >= 2] if code == "PARLAY_OF_THE_DAY" else reserve
+        best = max(pool or reserve, key=lambda r, order=_PLATE_ORDER[code]: (not r.vetoed, order(r)))
+        out.append((code, title, best, True))
+        reserve.remove(best)
+    rank = [code for code, _ in PLATES]
+    return sorted(out, key=lambda plate: rank.index(plate[0]))
+
+
 # ================================================================ a leg's scoreline evidence
 SCENARIOS: tuple[tuple[str, str, Callable[[np.ndarray, np.ndarray], np.ndarray]], ...] = (
     ("LOW_SCORING", "A tight, low-scoring game (0 or 1 goals)", lambda total, margin: total <= 1),

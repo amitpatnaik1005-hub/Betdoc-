@@ -167,6 +167,9 @@ celery_app.conf.update(
         # Group 112: Football-Data.org / Sportmonks context of the stored fixtures (kickoff, status, score, table)
         "live-context-refresh": {"task": "live.context_refresh", "schedule": _settings.LIVE_CONTEXT_REFRESH_SECONDS,
                                  "options": {"expires": _settings.LIVE_CONTEXT_REFRESH_SECONDS}},
+        # Group 129: the stored boards within their tier's age, replayed into the live board between purchases (free)
+        "live-rehydrate": {"task": "live.rehydrate", "schedule": _settings.LIVE_ODDS_REHYDRATE_SECONDS,
+                           "options": {"expires": _settings.LIVE_ODDS_REHYDRATE_SECONDS}},
         # Group 113: results from the feeds into fixture_scores, then every ledger settles from them
         "settlement-sweep": {"task": "settlement.sweep", "schedule": _settings.SETTLEMENT_SWEEP_SECONDS,
                              "options": {"expires": _settings.SETTLEMENT_SWEEP_SECONDS}},

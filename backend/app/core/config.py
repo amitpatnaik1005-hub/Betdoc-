@@ -79,6 +79,11 @@ class Settings(BaseSettings):
     # ---- /ws/live-odds: Redis pub/sub fan-out across API workers -------------
     LIVE_ODDS_CHANNEL: str = "betdoc:live_odds"
     LIVE_ODDS_SNAPSHOT_TTL_SECONDS: int = Field(default=900, gt=0)  # board cells idle longer are dropped
+    # Group 129: a stored board is replayed while its prices are within their cadence tier's age (the same freshness the
+    # tiered polling buys to), not only for the snapshot TTL: the cadence buys a far fixture every few hours, so a 15-minute
+    # replay window emptied the board between purchases. The re-replay runs every LIVE_ODDS_REHYDRATE_SECONDS (free).
+    LIVE_ODDS_REPLAY_WITHIN_TIER: bool = True
+    LIVE_ODDS_REHYDRATE_SECONDS: float = Field(default=300.0, ge=30)  # under the snapshot TTL, so replayed cells never lapse
     # Group 127: a board page that finds the live board thin runs what the cadence says is due (never forced: the source's
     # switch, breaker, reserve, floor and shield apply), at most once per cooldown
     LIVE_ODDS_NUDGE_ENABLED: bool = True
@@ -432,6 +437,9 @@ class Settings(BaseSettings):
     # The Chef's Table (Group 104, 5(c)): Ashoka's best vetted slips re-rated through the fortress, served three ways
     CHEF_TABLE_CANDIDATES: int = Field(default=6, ge=3, le=20)
     CHEF_TABLE_CACHE_SECONDS: int = Field(default=180, ge=0, le=3600)
+    # Group 129: a plate no slip clears the bar for is filled for reference from the positive-EV slips that miss it, labelled
+    # "below the Chef's bar" with the pillars they fail (off: the plate stays empty)
+    CHEF_TABLE_FILL_BELOW_BAR: bool = True
     # The BetDoc Consultant (Group 105, ASHVATTHAMA, point b.6): the Doctor, the Lawyer and the Consultant on one slip.
     # A book's rules are the user's to read: BetDoc has no copy of any bookmaker's terms. Each book's maximum payout per
     # slip (INR) and the clause references below are what the user read on the book's own rules page; nothing is assumed.

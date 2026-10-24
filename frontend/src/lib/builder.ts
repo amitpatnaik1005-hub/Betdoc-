@@ -79,6 +79,9 @@ export interface ChefPlate {
   legs: VettedLeg[];
   recipe: RecipeCard[];
   outscored: { slip_id: string; score: number; joint_ev: number }[];
+  /** Group 129: no slip clears the bar for this plate; shown for reference with the pillars it fails */
+  below_bar?: boolean;
+  bar_reasons?: string[];
 }
 
 export interface ChefTable {

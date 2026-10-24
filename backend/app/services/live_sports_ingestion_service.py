@@ -361,7 +361,9 @@ async def hydrate(deps: FleetDeps, *, sports: Sequence[str] | None = None, now: 
     now = aware(now or datetime.now(UTC))
     settings = deps.settings
     keys = list(sports) if sports else list(OddsApiIngestor.coverage(settings))
-    max_age = float(settings.LIVE_ODDS_SNAPSHOT_TTL_SECONDS)
+    ttl = float(settings.LIVE_ODDS_SNAPSHOT_TTL_SECONDS)
+    # Group 129: each board within its cadence tier's age (as fresh as the tiered polling keeps it), never under the TTL
+    by_tier = {tier: max(ttl, max_age_seconds(tier, settings)) if settings.LIVE_ODDS_REPLAY_WITHIN_TIER else ttl for tier in (1, 2, 3)}
     async with deps.session_factory() as db:
         boards = await store.stored_boards(db, keys, now, settings)
     groups: dict[tuple[str, datetime], list[dict[str, Any]]] = defaultdict(list)
@@ -369,12 +371,14 @@ async def hydrate(deps: FleetDeps, *, sports: Sequence[str] | None = None, now: 
     for sport, rows in boards.items():
         for row in rows:
             bought = store.price_time(row)
-            if (now - bought).total_seconds() > max_age:
+            kickoff = aware(row.commence_time) if row.commence_time is not None else now
+            if (now - bought).total_seconds() > by_tier[tier_for((kickoff - now).total_seconds(), settings)]:
                 stale += 1
                 continue
             groups[(sport, bought)].append(store.snapshot_event(row, polled_at=bought))
     report: dict[str, Any] = {"fixtures_stored": sum(len(r) for r in boards.values()), "fixtures_hydrated": sum(len(e) for e in groups.values()),
-                              "skipped_stale": stale, "max_age_seconds": max_age, "ticks": 0, "quotes": 0}
+                              "skipped_stale": stale, "max_age_seconds": max(by_tier.values()),
+                              "max_age_by_tier": {str(t): a for t, a in by_tier.items()}, "ticks": 0, "quotes": 0}
     if groups:
         descriptor, _ = await _odds_source(deps)
         normalizer = OmniNormalizer(deps.aliases)

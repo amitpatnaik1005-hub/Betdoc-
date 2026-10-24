@@ -11,7 +11,7 @@ import { formatDateTime } from "../../../lib/format";
 import { type BoardFixture, CATEGORIES, type Category, driftFor, type MatchBoard, marketsIn, priceFor } from "../../../lib/match_board";
 import type { Slip } from "../../../lib/oracle";
 import { boardTargets } from "../../../lib/prediction";
-import { ParimatchPriceEntry } from "../../parlay/ParimatchPriceEntry";
+import { ParimatchFeedNote } from "../../parlay/ParimatchFeedNote";
 import { ScoreBackedLegs } from "../../prediction/ScoreBackedLegs";
 import { FixtureContextChips, StoredPricesBadge } from "./FixtureContextChips";
 import { OddsBox } from "./OddsBox";
@@ -128,6 +128,7 @@ export const MatchDetail = ({ card, book, inSlip, drift, onPick, onBack, parlays
         })}
       </div>
       {note && <p className="text-[11px]" style={{ color: "var(--wb-muted)" }}>{note}</p>}
+      {book === "parimatch" && card.markets.some(missingParimatch) && <ParimatchFeedNote />}
 
       {category === "parlays" ? (
         parlays.length
@@ -159,9 +160,6 @@ export const MatchDetail = ({ card, book, inSlip, drift, onPick, onBack, parlays
                                stored={card.priced_from === "stored"} drift={driftFor(drift, s, book)} onPick={() => onPick(m, s)} />
                     ))}
                   </div>
-                )}
-                {open && book === "parimatch" && card.priced_from !== "stored" && missingParimatch(m) && (
-                  <div className="mt-2 flex flex-col"><ParimatchPriceEntry card={card} market={m} /></div>
                 )}
               </li>
             );

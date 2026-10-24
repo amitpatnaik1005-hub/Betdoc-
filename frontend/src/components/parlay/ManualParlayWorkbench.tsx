@@ -13,7 +13,7 @@
  */
 import { type CSSProperties, type DragEvent, useState } from "react";
 import { ApiError } from "../../api/client";
-import { ParimatchPriceEntry } from "./ParimatchPriceEntry";
+import { ParimatchFeedNote } from "./ParimatchFeedNote";
 import { formatDateTime, formatINR } from "../../lib/format";
 import {
   autoFixSlip, BOOKMAKER_THEMES, emergencyCashout, inspectParlay, missingParimatch, STRUCTURES, submitParlay, TIER_STYLE, useAccounts, useBoard, useShields, useShieldStream,
@@ -29,6 +29,7 @@ import { ScoreBackedLegs } from "../prediction/ScoreBackedLegs";
 
 const refusal = (err: unknown): string => (err instanceof ApiError ? err.message : "No answer from the server");
 const pct = (v: number | null | undefined, digits = 1): string => (v === null || v === undefined ? "—" : `${(v * 100).toFixed(digits)}%`);
+const DESK_BOOKS: { book: string; label: string }[] = [{ book: "1xbet", label: "1xBet" }, { book: "parimatch", label: "Parimatch" }]; // the real-money desk's two books
 const DRAG_TYPE = "application/x-betdoc-leg";
 
 const Radar = ({ rows, color }: { rows: PillarRow[]; color: string }) => {
@@ -75,6 +76,11 @@ const MatchCard = ({ card, book, onPick, onScores }: { card: FixtureCard; book: 
           <p className="text-[11px]" style={{ color: "var(--wb-muted)" }}>
             {card.league ?? card.sport ?? card.sport_key} · {card.in_play ? `in play · ${card.minutes_since_kickoff}′ since kickoff` : card.kickoff ? formatDateTime(card.kickoff) : "—"}
           </p>
+          {card.projection && (
+            <p className="text-[11px]" style={{ color: "var(--wb-muted)" }} title="The single likeliest scoreline of the Dixon-Coles matrix fitted to the de-vigged market">
+              likeliest score <strong className="font-mono" style={{ color: "var(--wb-primary)" }}>{card.projection.score}</strong> ({pct(card.projection.probability, 0)})
+            </p>
+          )}
         </div>
         <div className="flex shrink-0 items-center gap-1.5">
           {onScores && (
@@ -84,7 +90,7 @@ const MatchCard = ({ card, book, onPick, onScores }: { card: FixtureCard; book: 
               <span className="material-symbols-outlined text-[13px]" aria-hidden="true">scoreboard</span>Scores
             </button>
           )}
-          {card.in_play && <span className="rounded-full px-2 py-0.5 text-[10px] font-bold" style={{ background: "var(--wb-primary)", color: "var(--wb-on-primary)" }}>LIVE</span>}
+          {card.in_play && <span className="rounded-full px-2 py-0.5 text-[10px] font-bold" style={{ background: "var(--wb-primary)", color: "var(--wb-on-primary)" }}>LIVE{card.minutes_since_kickoff !== null ? ` · ${card.minutes_since_kickoff}′` : ""}</span>}
         </div>
       </div>
       {shown.map((m) => {
@@ -95,7 +101,7 @@ const MatchCard = ({ card, book, onPick, onScores }: { card: FixtureCard; book: 
               <span>{m.market}</span>
               <span>margin {margin === undefined || margin === null ? "—" : pct(margin, 1)}</span>
             </div>
-            <div className="grid grid-cols-3 gap-1">
+            <div className={`grid gap-1 ${m.selections.length === 2 ? "grid-cols-2" : "grid-cols-3"}`}>
               {m.selections.map((s) => {
                 const price = book ? s.prices[book] : s.best?.odds;
                 const leg = toSlipLeg(card, m.market, s);
@@ -116,13 +122,15 @@ const MatchCard = ({ card, book, onPick, onScores }: { card: FixtureCard; book: 
                   >
                     <span className="truncate font-medium">{s.selection}</span>
                     <span className="font-mono text-sm font-bold" style={{ color: "var(--wb-primary)" }}>{price ?? "—"}</span>
-                    <span style={{ color: "var(--wb-muted)" }}>{pct(s.fair_probability, 0)}{s.ev !== null ? ` · EV ${s.ev >= 0 ? "+" : ""}${(s.ev * 100).toFixed(1)}%` : ""}</span>
+                    <span style={{ color: "var(--wb-muted)" }}>
+                      {pct(s.fair_probability, 0)}
+                      {s.ev !== null && <> · <span style={{ color: s.ev >= 0 ? "#22C55E" : "#FB7185" }}>EV {s.ev >= 0 ? "+" : ""}{(s.ev * 100).toFixed(1)}%</span></>}
+                    </span>
                     {s.steam && <span className="text-[9px] font-bold text-amber-400">STEAM</span>}
                   </button>
                 );
               })}
             </div>
-            {book === "parimatch" && missingParimatch(m) && <ParimatchPriceEntry card={card} market={m} />}
           </div>
         );
       })}
@@ -332,11 +340,14 @@ export const ManualParlayWorkbench = ({ embedded = false }: { embedded?: boolean
               {b.fixtures.length === 0 ? (
                 <EmptyState icon="sports" title={sport ? `No ${sport} fixture priced right now` : "No fixture priced right now"} detail="Cards appear as the feeds price fixtures (pre-match, and in play for three hours after kickoff)." />
               ) : (
+                <>
+                {theme.book === "parimatch" && b.fixtures.some((f) => f.markets.some(missingParimatch)) && <ParimatchFeedNote />}
                 <ul className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
                   {b.fixtures.slice(0, 30).map((card) => (
                     <MatchCard key={card.fixture_id} card={card} book={theme.book} onPick={add} onScores={boardTargets(card) ? () => setScoresId(card.fixture_id) : null} />
                   ))}
                 </ul>
+                </>
               )}
               {!b.steam_readable && <p className="text-[11px]" style={{ color: theme.muted }}>Sharp steam is unreadable right now: no card shows it.</p>}
             </div>
@@ -389,6 +400,15 @@ export const ManualParlayWorkbench = ({ embedded = false }: { embedded?: boolean
             </Field>
             <div className="flex flex-col justify-end text-xs">
               <span>Combined {theme.book ? `at ${theme.label}` : "at the best prices"}: <strong className="font-mono">{combined ? combined.toFixed(2) : "—"}</strong></span>
+              {slip.length > 0 && (
+                <span style={{ color: theme.muted }}>
+                  {DESK_BOOKS.filter((b) => b.book !== theme.book).map((b) => {
+                    const each = slip.map((l) => priceAt(l, b.book));
+                    const total = each.every((x) => x !== null) ? each.reduce<number>((a, x) => a * (x as number), 1) : null;
+                    return <span key={b.book} className="mr-2">{b.label} {total ? <strong className="font-mono">{total.toFixed(2)}</strong> : "— (a leg unpriced there)"}</span>;
+                  })}
+                </span>
+              )}
               <span style={{ color: theme.muted }}>model win chance {slip.length ? pct(slip.reduce((a, l) => a * l.fair_probability, 1)) : "—"} (independent legs)</span>
             </div>
           </div>

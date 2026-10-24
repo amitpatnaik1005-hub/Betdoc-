@@ -37,7 +37,7 @@ from redis.exceptions import RedisError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.core.config import Settings
-from app.domain.builder.recipe import Rated, scoreline_link, serve, stress_test
+from app.domain.builder.recipe import Rated, scoreline_link, serve, serve_with_reference, stress_test
 from app.domain.oracle.slip_formatter import inr
 from app.domain.oracle.parlay_engine import LegCandidate
 from app.models.sentinel import Severity
@@ -90,7 +90,7 @@ async def page_diamonds(redis: Redis, settings: Settings, plates: list[dict[str,
     for plate in plates:
         rating = plate["rating"]
         kickoffs = [_kickoff(leg.get("kickoff")) for leg in plate["legs"]]
-        if rating.get("tier") != "DIAMOND" or not kickoffs or any(k is None or k <= now for k in kickoffs):
+        if plate.get("below_bar") or rating.get("tier") != "DIAMOND" or not kickoffs or any(k is None or k <= now for k in kickoffs):  # never page a reference plate
             continue
         try:
             first = await redis.set(f"{settings.ARYABHATA_PREFIX}:chef:diamond:{plate['slip_id']}", now.isoformat(), nx=True, ex=86_400)
@@ -140,14 +140,14 @@ async def chef_table(sessions: async_sessionmaker[AsyncSession], redis: Redis, s
                            payload={"slip": slip, "rating": run.rating.as_dict(), "book": audit.bookmaker, "odds": str(audit.total_odds),
                                     "stake_inr": str(audit.stake_inr), "joint_ev": audit.joint_ev, "joint_probability": audit.joint_probability,
                                     "pillars_passed": audit.pillars_passed, "is_vetted": audit.is_vetted}))
-    plates = serve(rated)
-    fixtures = {leg["fixture_id"] for _, _, r in plates for leg in r.payload["slip"]["legs"]}
+    plates = serve_with_reference(rated) if settings.CHEF_TABLE_FILL_BELOW_BAR else [(c, t, r, False) for c, t, r in serve(rated)]
+    fixtures = {leg["fixture_id"] for _, _, r, _ in plates for leg in r.payload["slip"]["legs"]}
     candidates: dict[str, LegCandidate] = {}
     if fixtures:
         loaded, _ = await ashoka_market.load_candidates(redis, settings, now - vetting.LIVE_LOOKBACK, fixtures=fixtures)
         candidates = {leg.leg_id: leg for leg in loaded}
     served = []
-    for code, title, r in plates:
+    for code, title, r, below in plates:
         slip, book = r.payload["slip"], r.payload["book"]
         served.append({
             "code": code, "title": title, "slip_id": r.key, "kind": slip["kind"], "slip_title": slip["title"], "book": book, "odds": r.payload["odds"],
@@ -155,6 +155,9 @@ async def chef_table(sessions: async_sessionmaker[AsyncSession], redis: Redis, s
             "rating": r.payload["rating"], "pillars_passed": r.payload["pillars_passed"], "is_vetted": r.payload["is_vetted"],
             "legs": slip["legs"], "recipe": [recipe_card(leg, book, candidates.get(leg["leg_id"])) for leg in slip["legs"]],
             "outscored": [{"slip_id": o.key, "score": o.score, "joint_ev": o.joint_ev} for o in rated if o.key != r.key and o.score < r.score],
+            # Group 129: a reference plate (no slip clears the bar for it): labelled, with the pillars it fails
+            "below_bar": below, "bar_reasons": [f"Pillar {row['number']}, {row['title']}: {row['reason']}" for row in r.payload["rating"]["breakdown"]
+                                                if row["status"] == "FAIL"] if below else [],
         })
     table = {
         "generated_at": now.isoformat(), "plates": served, "rated": len(rated), "considered": len(pool),

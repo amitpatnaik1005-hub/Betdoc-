@@ -47,6 +47,9 @@ os.environ.setdefault("ENCRYPTION_KEY", base64.urlsafe_b64encode(secrets.token_b
 # Group 128: OddsPapi too, under both the name Settings reads and the name backend/.env uses
 for _name in ("THE_ODDS_API_KEY", "FOOTBALL_DATA_ORG_API_KEY", "SPORTSMONKS_API_KEY", "ODDSPAPI_API_KEY", "ODDSPAPI_IO_API_KEY"):
     os.environ[_name] = ""
+# Group 129: the operator's local risk policy (backend/.env) never reaches a test: the suite checks the shipped fortress, where
+# every pillar can veto; a test that needs advisory pillars sets them itself
+os.environ["TWIN_ADVISORY_PILLARS"] = ""
 # Tests build their own engines (SQLite, or TEST_POSTGRES_URL); the app's default engine points at a database that does not
 # exist, so a test that forgets to override it fails instead of reaching the developer's database
 os.environ.setdefault("DATABASE_URL", "postgresql+asyncpg://betdoc_test@127.0.0.1:5432/betdoc_test_isolated")

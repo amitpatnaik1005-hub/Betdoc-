@@ -28,3 +28,17 @@ async def _refresh() -> dict[str, Any]:
 @celery_app.task(name="live.context_refresh", ignore_result=True)
 def context_refresh() -> dict[str, Any]:
     return asyncio.run(_refresh())
+
+
+async def _rehydrate() -> dict[str, Any]:
+    from app.services import live_sports_ingestion_service as live  # noqa: PLC0415 - pulls in the fleet
+
+    async with live.standalone_fleet_deps(get_settings()) as deps:
+        return await live.hydrate(deps)
+
+
+@celery_app.task(name="live.rehydrate", ignore_result=True)
+def rehydrate() -> dict[str, Any]:
+    """Group 129: replay the stored boards still within their tier's age into the live board (no provider call), so the
+    board holds every fixture the tiered polling keeps fresh between its purchases."""
+    return asyncio.run(_rehydrate())

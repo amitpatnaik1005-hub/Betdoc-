@@ -130,13 +130,14 @@ async def test_parimatch_prices_typed_from_its_site_reach_the_board(sessions, re
     assert market["margins"]["by_book"]["parimatch"] == pytest.approx(1 / 2.38 + 1 / 3.2 + 1 / 3.3 - 1, abs=1e-3)  # its margin, measured like any book's
 
 
-def test_the_frontend_asks_for_parimatchs_prices_and_switches_sports() -> None:
-    entry = (FRONTEND / "components" / "parlay" / "ParimatchPriceEntry.tsx").read_text(encoding="utf-8")
-    assert 'apiClient.post<InjectResult>("/parimatch/odds"' in entry and "observed_at" in entry and "never copies or guesses" in entry
-    assert not re.search(r"1\.055|derive_|prices\.1xbet|\"1xbet\"", entry)  # no other book's price stands in for Parimatch's
+def test_the_frontend_says_parimatch_is_not_fed_and_switches_sports() -> None:
+    # Group 129: the operator asked for the typed-entry box to go; the board says once that the feeds do not carry Parimatch
+    assert not (FRONTEND / "components" / "parlay" / "ParimatchPriceEntry.tsx").exists()
+    note = (FRONTEND / "components" / "parlay" / "ParimatchFeedNote.tsx").read_text(encoding="utf-8")
+    assert "not in the connected odds feeds" in note and not re.search(r"1\.055|derive_|prices\.1xbet", note)  # no other book's price stands in
     for page in ("components/oracle/board/MatchDetail.tsx", "components/parlay/ManualParlayWorkbench.tsx"):
         text = (FRONTEND / page).read_text(encoding="utf-8")
-        assert 'book === "parimatch"' in text and "missingParimatch(m)" in text and "<ParimatchPriceEntry card={card} market={m} />" in text
+        assert "<ParimatchFeedNote />" in text and "ParimatchPriceEntry" not in text
     board = (FRONTEND / "components" / "vault" / "SportSwitchboard.tsx").read_text(encoding="utf-8")
     assert "switchSport(s.key, polling)" in board and "credits/day" in board and "always on" in board
     assert "<SportSwitchboard />" in (FRONTEND / "components" / "vault" / "VaultFleet.tsx").read_text(encoding="utf-8")

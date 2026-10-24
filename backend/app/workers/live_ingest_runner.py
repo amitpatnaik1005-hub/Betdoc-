@@ -66,7 +66,7 @@ def render(kind: str, report: dict[str, Any]) -> str:
         out += [f"  ! {b}" for b in report["blockers"]] or ["  nothing blocks the fleet from buying"]
     elif kind == "hydrate":
         out += [_line("fixtures stored", report["fixtures_stored"]), _line("replayed into Redis", report["fixtures_hydrated"]),
-                _line("too old to replay", f"{report['skipped_stale']} (over {report['max_age_seconds']:g}s; shown as stored prices)"),
+                _line("too old to replay", f"{report['skipped_stale']} (older than their cadence tier allows; shown as stored prices)"),
                 _line("ticks / quotes", f"{report['ticks']} / {report['quotes']}"), _line("elapsed", f"{report['elapsed_ms']} ms")]
     elif kind == "context":
         for provider, entry in (report.get("providers") or {}).items():

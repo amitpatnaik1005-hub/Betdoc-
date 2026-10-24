@@ -50,11 +50,18 @@ const Recipe = ({ card }: { card: RecipeCard }) => {
 };
 
 const Plate = ({ plate, onLoad }: { plate: ChefPlate; onLoad: (plate: ChefPlate) => void }) => (
-  <li className="flex flex-col gap-3 rounded-2xl p-3" style={{ background: "var(--wb-card)" }}>
+  <li className="flex flex-col gap-3 rounded-2xl p-3" style={{ background: "var(--wb-card)", ...(plate.below_bar ? { outline: "1px dashed #FBBF24" } : {}) }}>
     <div className="flex flex-wrap items-baseline justify-between gap-2">
-      <h3 className="text-base font-black" style={{ color: "var(--wb-primary)" }}>{plate.title}</h3>
+      <h3 className="text-base font-black" style={{ color: plate.below_bar ? "var(--wb-muted)" : "var(--wb-primary)" }}>{plate.title}</h3>
       <span className="text-[11px]" style={{ color: "var(--wb-muted)" }}>{plate.slip_title} · {plate.kind.toLowerCase().replace("_", " ")}</span>
     </div>
+    {plate.below_bar && (
+      <div role="note" className="rounded-xl p-2.5 text-[11px] leading-relaxed" style={{ background: "color-mix(in srgb, #FBBF24 14%, transparent)" }}>
+        <strong className="text-amber-400">Below the Chef's bar: shown for reference, not served.</strong> No slip clears every pillar for this plate right now;
+        this is the best positive-EV slip that does not. It fails:
+        <ul className="mt-1 list-disc pl-4">{(plate.bar_reasons ?? []).map((r) => <li key={r}>{r}</li>)}</ul>
+      </div>
+    )}
     <div className="grid grid-cols-1 gap-3 lg:grid-cols-[18rem_minmax(0,1fr)]">
       <SlipScoreMeter rating={plate.rating} />
       <div className="flex flex-col gap-2">
