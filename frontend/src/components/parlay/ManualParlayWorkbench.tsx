@@ -10,9 +10,12 @@
  * - The slip: the structures its legs allow (straight multiples, Trixie to Goliath), the stop-loss the shield will
  *   hold (15% to 40% of the stake), and "Inspect parlay": the 15-pillar fortress at the skin's book, rated 0-100.
  * - Place it at the book, then record it here: Ashoka's ledger takes it, the stop-loss shield watches it live.
+ * - Group 131: a card's header (or "Go inside the match") opens every market of the fixture as KPI cards, the BetDoc
+ *   model's lines included; one pick per market; the advisor reads the slip's own figures, nothing canned.
  */
 import { type CSSProperties, type DragEvent, useEffect, useState } from "react";
 import { ApiError } from "../../api/client";
+import { MatchMarketModal } from "./MatchMarketModal";
 import { UniversalSlipPanel } from "./UniversalSlipPanel";
 import { bookPrice, SOURCE_NOTE } from "../../lib/universal_slip";
 import { formatDateTime, formatINR } from "../../lib/format";
@@ -21,7 +24,7 @@ import {
   type FixtureCard, type Inspection, type PillarRow, type Shield, type Skin,
 } from "../../lib/backtest_and_parlay";
 import { invalidate } from "../../lib/resource";
-import { payingBook, priceAt, type SlipLeg, slipSignature, toSlipLeg, useParlaySlipStore } from "../../store/useParlaySlipStore";
+import { announcePick, payingBook, priceAt, type SlipLeg, slipSignature, toSlipLeg, useParlaySlipStore } from "../../store/useParlaySlipStore";
 import { toast } from "../../store/useToastStore";
 import { Async, Button, EmptyState, Field, Meter, NumberInput, Panel, Pill, Select, TextInput } from "../../ui/kit";
 import { boardTargets } from "../../lib/prediction";
@@ -55,7 +58,7 @@ const Radar = ({ rows, color }: { rows: PillarRow[]; color: string }) => {
   );
 };
 
-const MatchCard = ({ card, book, onPick, onScores }: { card: FixtureCard; book: string | null; onPick: (leg: SlipLeg) => void; onScores: (() => void) | null }) => {
+const MatchCard = ({ card, book, onPick, onScores, onOpen }: { card: FixtureCard; book: string | null; onPick: (leg: SlipLeg) => void; onScores: (() => void) | null; onOpen: () => void }) => {
   const [open, setOpen] = useState(false);
   const shown = open ? card.markets : card.markets.slice(0, 1);
   const best = card.markets.flatMap((m) => m.selections.map((s) => ({ m, s }))).filter((x) => x.s.ev !== null).sort((a, b) => (b.s.ev ?? 0) - (a.s.ev ?? 0))[0];
@@ -71,17 +74,20 @@ const MatchCard = ({ card, book, onPick, onScores }: { card: FixtureCard; book: 
       style={{ background: "var(--wb-card)" }}
     >
       <div className="flex items-start justify-between gap-2">
-        <div className="min-w-0">
-          <p className="truncate text-sm font-semibold">{card.home} v {card.away}</p>
+        <button type="button" onClick={onOpen} className="group min-w-0 rounded-lg text-left" title="Go inside the match: every market as KPI cards">
+          <p className="flex items-center gap-0.5 truncate text-base font-bold transition group-hover:text-[var(--wb-primary)]">
+            <span className="truncate">{card.home} v {card.away}</span>
+            <span className="material-symbols-outlined text-[18px] opacity-60 transition group-hover:translate-x-0.5 group-hover:opacity-100" aria-hidden="true">chevron_right</span>
+          </p>
           <p className="text-[11px]" style={{ color: "var(--wb-muted)" }}>
             {card.league ?? card.sport ?? card.sport_key} · {card.in_play ? `in play · ${card.minutes_since_kickoff}′ since kickoff` : card.kickoff ? formatDateTime(card.kickoff) : "—"}
           </p>
           {card.projection && (
-            <p className="text-[11px]" style={{ color: "var(--wb-muted)" }} title="The single likeliest scoreline of the Dixon-Coles matrix fitted to the de-vigged market">
+            <p className="text-[11px]" style={{ color: "var(--wb-muted)" }} title="The single likeliest scoreline of BetDoc's scoreline model, fitted to the de-vigged market">
               likeliest score <strong className="font-mono" style={{ color: "var(--wb-primary)" }}>{card.projection.score}</strong> ({pct(card.projection.probability, 0)})
             </p>
           )}
-        </div>
+        </button>
         <div className="flex shrink-0 items-center gap-1.5">
           {onScores && (
             <button type="button" onClick={onScores} title="Score prediction: the scorelines this board implies, and the legs each one backs"
@@ -119,7 +125,7 @@ const MatchCard = ({ card, book, onPick, onScores }: { card: FixtureCard; book: 
                     }}
                     onClick={() => onPick(leg)}
                     disabled={price === undefined}
-                    title={`${s.label}: models ${Object.entries(s.models).map(([k, v]) => `${k} ${pct(v, 0)}`).join(", ")}${estimate ? ` · price ${estimate}` : ""}`}
+                    title={`${s.label}: BetDoc model ${pct(s.fair_probability, 0)}${estimate ? ` · price ${estimate}` : ""}`}
                     className="flex flex-col items-center rounded-xl px-1.5 py-1 text-[11px] transition disabled:opacity-40"
                     style={{ border: "1px solid color-mix(in srgb, var(--wb-primary) 35%, transparent)" }}
                   >
@@ -137,6 +143,12 @@ const MatchCard = ({ card, book, onPick, onScores }: { card: FixtureCard; book: 
           </div>
         );
       })}
+      <button type="button" onClick={onOpen}
+              className="flex w-full items-center justify-center gap-1.5 rounded-xl py-2 text-xs font-bold transition hover:opacity-90"
+              style={{ background: "color-mix(in srgb, var(--wb-primary) 14%, transparent)", color: "var(--wb-primary)", border: "1px solid color-mix(in srgb, var(--wb-primary) 35%, transparent)" }}>
+        <span className="material-symbols-outlined text-[16px]" aria-hidden="true">grid_view</span>
+        Go inside the match · all markets
+      </button>
       <div className="flex items-center justify-between text-[11px]" style={{ color: "var(--wb-muted)" }}>
         <span>{card.max_stake_inr && book && card.max_stake_inr[book] ? `max stake ${formatINR(Number(card.max_stake_inr[book]))}` : "liquidity: not reported"}</span>
         {card.markets.length > 1 && (
@@ -147,6 +159,32 @@ const MatchCard = ({ card, book, onPick, onScores }: { card: FixtureCard; book: 
       </div>
     </li>
   );
+};
+
+/** Group 131: the advisor reads the slip's own figures (shared fixtures, EV at the book's quoted price, estimates); it never claims a check it did not run. */
+const advise = (slip: SlipLeg[], book: string | null, label: string, modelLegs: number): string[] => {
+  if (!slip.length) return ["Pick a price on a card, or open a match for all its markets. One leg is a single; two or more make a parlay."];
+  const out: string[] = [];
+  const perFixture = new Map<string, number>();
+  for (const l of slip) {
+    const fixture = l.leg_id.split("|")[0];
+    perFixture.set(fixture, (perFixture.get(fixture) ?? 0) + 1);
+  }
+  const shared = [...perFixture.values()].filter((n) => n > 1).length;
+  const atBook = slip.map((l) => (book === "1xbet" || book === "parimatch" ? bookPrice(l, book) : null));
+  const negative = slip.filter((l, i) => {
+    const p = atBook[i];
+    const price = p ? (p.source === "quoted" ? p.price : null) : priceAt(l, book);
+    return price !== null && l.fair_probability * price - 1 < 0;
+  }).length;
+  const estimated = atBook.filter((p) => p !== null && p.source !== "quoted").length;
+  out.push(`${slip.length} leg${slip.length === 1 ? "" : "s"} on ${perFixture.size} fixture${perFixture.size === 1 ? "" : "s"}: BetDoc's win chance ${(slip.reduce((a, l) => a * l.fair_probability, 1) * 100).toFixed(1)}% if the results are independent.`);
+  if (shared) out.push(`${shared} fixture${shared === 1 ? " carries" : "s carry"} more than one leg: those results move together, and the inspection's independence pillar will weigh it.`);
+  if (negative) out.push(`${negative} leg${negative === 1 ? " is" : "s are"} negative-EV at ${label}'s quoted price: the book's margin outweighs the edge there.`);
+  if (estimated) out.push(`${estimated} price${estimated === 1 ? " is an estimate" : "s are estimates"} at ${label}: check ${estimated === 1 ? "it" : "each"} at the book before you stake.`);
+  if (modelLegs) out.push(`${modelLegs} model leg${modelLegs === 1 ? "" : "s"}: no feed quotes ${modelLegs === 1 ? "it" : "them"}, so the inspection cannot rate ${modelLegs === 1 ? "it" : "them"}.`);
+  if (!shared && !negative && !modelLegs) out.push("Inspect the parlay for the 15-pillar audit at the book you bet from.");
+  return out;
 };
 
 const ShieldRow = ({ shield, live }: { shield: Shield; live: Shield["frame"] | undefined }) => {
@@ -213,6 +251,7 @@ export const ManualParlayWorkbench = ({ embedded = false }: { embedded?: boolean
   const setSkin = useParlaySlipStore((s) => s.setSkin);
   const slip = useParlaySlipStore((s) => s.legs);
   const addLeg = useParlaySlipStore((s) => s.add);
+  const toggleLeg = useParlaySlipStore((s) => s.toggle);
   const syncWithBoard = useParlaySlipStore((s) => s.syncWithBoard);
   const removeLeg = useParlaySlipStore((s) => s.remove);
   const replaceLeg = useParlaySlipStore((s) => s.replace);
@@ -226,6 +265,7 @@ export const ManualParlayWorkbench = ({ embedded = false }: { embedded?: boolean
   const [placed, setPlaced] = useState({ stake: "", odds: "", code: "" });
   const [over, setOver] = useState(false);
   const [scoresId, setScoresId] = useState<string | null>(null);
+  const [insideId, setInsideId] = useState<string | null>(null);
   const theme = BOOKMAKER_THEMES[skin];
   const board = useBoard(sport);
   useEffect(() => {
@@ -233,6 +273,7 @@ export const ManualParlayWorkbench = ({ embedded = false }: { embedded?: boolean
   }, [board.data, syncWithBoard]);
   // the live card (the board refreshes): its latest prices back the score view
   const scoresFor = board.data?.fixtures.find((f) => f.fixture_id === scoresId) ?? null;
+  const insideFor = board.data?.fixtures.find((f) => f.fixture_id === insideId) ?? null; // Group 131: the live card, refreshed
   const accounts = useAccounts();
   const shields = useShields();
   const stream = useShieldStream();
@@ -246,8 +287,12 @@ export const ManualParlayWorkbench = ({ embedded = false }: { embedded?: boolean
   const balance = theme.book ? accounts.data?.accounts?.[theme.book] : undefined;
   const signature = slipSignature(slip, skin, chosen);
   const inspection = inspected?.sig === signature ? inspected.result : null;
+  // Group 131: a BetDoc model leg (no feed quotes it) can be filled at a book from the universal slip, not inspected
+  const modelLegs = slip.filter((l) => Object.keys(l.prices).length === 0);
+  const advice = advise(slip, theme.book, theme.label, modelLegs.length);
 
-  const add = (leg: SlipLeg) => addLeg(leg);
+  const add = (leg: SlipLeg) => announcePick(addLeg(leg), leg);
+  const pickLeg = (leg: SlipLeg) => announcePick(toggleLeg(leg), leg);
   const drop = (e: DragEvent) => {
     e.preventDefault();
     setOver(false);
@@ -307,7 +352,8 @@ export const ManualParlayWorkbench = ({ embedded = false }: { embedded?: boolean
     }
   };
 
-  const style = { "--wb-primary": theme.primary, "--wb-on-primary": theme.onPrimary, "--wb-card": theme.card, "--wb-muted": theme.muted, background: theme.surface, color: theme.text, fontFamily: theme.font } as CSSProperties;
+  const style = { "--wb-primary": theme.primary, "--wb-on-primary": theme.onPrimary, "--wb-card": theme.card, "--wb-muted": theme.muted, "--wb-surface": theme.surface,
+                  background: theme.surface, color: theme.text, fontFamily: theme.font } as CSSProperties;
   const tier = inspection ? TIER_STYLE[inspection.rating.tier] : null;
   const body = (
       <div id="parlay-workbench" className="flex scroll-mt-24 flex-col gap-4 rounded-3xl p-4 transition-colors duration-300" style={style}>
@@ -359,7 +405,8 @@ export const ManualParlayWorkbench = ({ embedded = false }: { embedded?: boolean
                 )}
                 <ul className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
                   {b.fixtures.slice(0, 30).map((card) => (
-                    <MatchCard key={card.fixture_id} card={card} book={theme.book} onPick={add} onScores={boardTargets(card) ? () => setScoresId(card.fixture_id) : null} />
+                    <MatchCard key={card.fixture_id} card={card} book={theme.book} onPick={pickLeg} onScores={boardTargets(card) ? () => setScoresId(card.fixture_id) : null}
+                               onOpen={() => setInsideId(card.fixture_id)} />
                   ))}
                 </ul>
                 </>
@@ -372,9 +419,24 @@ export const ManualParlayWorkbench = ({ embedded = false }: { embedded?: boolean
         {scoresFor && (
           <section aria-label="Score prediction" className="rounded-2xl p-3" style={{ border: "1px solid color-mix(in srgb, var(--wb-primary) 35%, transparent)" }}>
             <ScoreBackedLegs card={scoresFor} book={theme.book} onClose={() => setScoresId(null)}
-                             onAdd={(market, s) => { add(toSlipLeg(scoresFor, market, s)); toast.success("Added to the slip", s.label); }} />
+                             onAdd={(market, s) => {
+                               const leg = toSlipLeg(scoresFor, market, s);
+                               const r = addLeg(leg);
+                               if (r.action === "added") toast.success("Added to the slip", s.label); else announcePick(r, leg);
+                             }} />
           </section>
         )}
+
+        {insideFor && <MatchMarketModal card={insideFor} book={theme.book} legIds={slip.map((l) => l.leg_id)} onPick={pickLeg} onClose={() => setInsideId(null)} />}
+
+        <section aria-label="BetDoc advisor" className="flex items-start gap-2.5 rounded-2xl p-3 text-xs leading-relaxed"
+                 style={{ background: "color-mix(in srgb, var(--wb-primary) 9%, transparent)", border: "1px solid color-mix(in srgb, var(--wb-primary) 25%, transparent)" }}>
+          <span className="material-symbols-outlined text-[20px]" aria-hidden="true" style={{ color: theme.primary }}>support_agent</span>
+          <div className="flex min-w-0 flex-col gap-0.5">
+            <span className="font-bold" style={{ color: theme.primary }}>BetDoc advisor</span>
+            {advice.map((a) => <span key={a}>{a}</span>)}
+          </div>
+        </section>
 
         <section
           onDragOver={(e) => { e.preventDefault(); setOver(true); }}
@@ -394,7 +456,10 @@ export const ManualParlayWorkbench = ({ embedded = false }: { embedded?: boolean
             <ul className="flex flex-col gap-1">
               {slip.map((l, i) => (
                 <li key={l.leg_id} className="flex items-center justify-between gap-2 text-xs">
-                  <span className="min-w-0 truncate">{l.fixture} · {l.label}</span>
+                  <span className="min-w-0 truncate">
+                    {l.fixture} · {l.label}
+                    {Object.keys(l.prices).length === 0 && <span className="ml-1.5 rounded px-1 text-[9px] font-bold uppercase" style={{ background: "rgba(250,204,21,0.15)", color: "#FACC15" }} title="No feed quotes this market: BetDoc's model price">model</span>}
+                  </span>
                   <span className="flex items-center gap-2">
                     {!theme.book && payingBook(l, null) && <span className="text-[10px]" style={{ color: theme.muted }}>@ {payingBook(l, null)}</span>}
                     <span className="font-mono font-bold" style={{ color: theme.primary }}>{prices[i] ?? "—"}</span>
@@ -419,14 +484,20 @@ export const ManualParlayWorkbench = ({ embedded = false }: { embedded?: boolean
             </div>
           </div>
           <UniversalSlipPanel legs={slip} />
-          <Button variant="primary" icon="psychology" busy={busy === "inspect"} disabled={!slip.length || !chosen} onClick={() => void inspect()}>Inspect parlay</Button>
+          {modelLegs.length > 0 && (
+            <p role="note" className="text-[11px] leading-relaxed" style={{ color: theme.muted }}>
+              {modelLegs.length} leg{modelLegs.length === 1 ? " is a" : "s are"} BetDoc model price{modelLegs.length === 1 ? "" : "s"} no feed quotes: fill the slip at the book from the
+              universal slip above. The 15-pillar inspection rates quoted prices only; take {modelLegs.length === 1 ? "it" : "them"} off to inspect the rest.
+            </p>
+          )}
+          <Button variant="primary" icon="psychology" busy={busy === "inspect"} disabled={!slip.length || !chosen || modelLegs.length > 0} onClick={() => void inspect()}>Inspect parlay</Button>
         </section>
 
         {inspection && tier && (
           <section className="flex flex-col gap-3 rounded-2xl p-3" style={{ background: theme.card }} aria-label="Cognitive rating">
             {inspection.price_note && <p role="note" className="rounded-xl p-2 text-[11px]" style={{ background: "color-mix(in srgb, #FACC15 14%, transparent)" }}>{inspection.price_note}</p>}
             <div className="flex flex-wrap items-start gap-4">
-              <div className="w-full sm:w-80"><SlipScoreMeter rating={inspection.rating} onAutoFix={() => void autoFix()} fixing={busy === "fix"} /></div>
+              <div className="w-full sm:w-80"><SlipScoreMeter rating={inspection.rating} figures={inspection.audit} onAutoFix={() => void autoFix()} fixing={busy === "fix"} /></div>
               <Radar rows={inspection.rating.breakdown} color={tier.color} />
               <div className="flex min-w-[14rem] flex-1 flex-col gap-1 text-xs">
                 <p>

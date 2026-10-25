@@ -1,6 +1,6 @@
 """One chain of the neural event bus (Group 108, point b.9): a Wire item handed from module to module.
 
-    VIDUR / THE WIRE -> SCORE PREDICTOR -> ORACLE & BET BUILDER -> BETDOC CONSULTANT -> THE VAULT & SMALLCASES
+    VIDUR / THE WIRE -> SCORE PREDICTOR -> ORACLE & BET BUILDER -> BETDOC CONSULTANT -> THE VAULT & CAPITAL LEDGER
 
 Each step is a real engine call on the item's fixture (``app.services.neural_chain``) and ends COMPLETED (it ran
 and says what it found), SKIPPED (it had nothing to run on, and says why) or FAILED (the engine refused or raised,
@@ -39,7 +39,7 @@ MODULES: tuple[tuple[Module, str, str], ...] = (
     (Module.SCORE_PREDICTOR, "SCORE PREDICTOR", "re-fits the fixture's scorelines to the market now and to the recorded absences"),
     (Module.ORACLE, "ORACLE & BET BUILDER", "re-reads the live market fresh: the fixture's legs priced above fair at a retail book"),
     (Module.CONSULTANT, "BETDOC CONSULTANT", "re-scores your slip (the Slip Score) when it holds a leg on the fixture"),
-    (Module.VAULT, "THE VAULT & SMALLCASES", "the smallcases holding the fixture now, KUMBHA's stakes and stop-loss floors"),
+    (Module.VAULT, "THE VAULT & CAPITAL LEDGER", "the portfolios holding the fixture now, KUMBHA's stakes and stop-loss floors"),
 )
 MODULE_NAME: dict[Module, str] = {m: name for m, name, _ in MODULES}
 

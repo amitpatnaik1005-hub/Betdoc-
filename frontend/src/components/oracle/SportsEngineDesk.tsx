@@ -150,16 +150,16 @@ export const SportsEngineDesk = () => {
   return (
     <>
       <Panel title="Sport fleet" icon="sports" className="lg:col-span-12"
-        subtitle={`${supported.data?.length ?? 9} sport adapters · ${adapter?.bet_types.length ?? 0} of the 27 universal bet types on ${info.name} · ${sportEdges.length} edge${sportEdges.length === 1 ? '' : 's'} · ${adapter ? adapter.model_family : info.modelType}`}
+        subtitle={`${supported.data?.length ?? 9} sport adapters · ${adapter?.bet_types.length ?? 0} of the 27 universal bet types on ${info.name} · ${sportEdges.length} edge${sportEdges.length === 1 ? '' : 's'} · BetDoc quantitative fleet`}
         actions={<Button icon="refresh" busy={edges.loading && edges.data !== undefined} onClick={() => { void edges.refresh(); void configs.refresh(); }}>Refresh</Button>}>
         <UniversalSportSelector inactive={inactive} />
         <p className="mt-3 text-[11px] text-stone-500 dark:text-stone-400">
-          Each sport prices from at least three independent sub-models blended into one consensus, settles all 27 universal bet types, and feeds the
+          Each sport prices from independent sub-models blended into one consensus, settles all 27 universal bet types, and feeds the
           Digital Twin's pillars before anything reaches the CFO. Architect: {credit}.
         </p>
       </Panel>
 
-      <Panel title="Model inputs" icon="tune" className="lg:col-span-5" subtitle={`${info.name} · ${info.modelType}`}
+      <Panel title="Simulation parameters" icon="tune" className="lg:col-span-5" subtitle={`${info.name} · quantitative parameters`}
         actions={<Button variant="primary" icon="calculate" busy={pricing} disabled={!valid || inactive.has(activeSport)} onClick={() => void price()}>Price match</Button>}>
         <div className="grid grid-cols-2 gap-x-4 gap-y-3">
           <span className="text-xs font-semibold uppercase tracking-wide text-stone-400">{preset.homeLabel}</span>

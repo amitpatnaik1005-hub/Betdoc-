@@ -279,7 +279,7 @@ const StageHeader = (): ReactElement => {
         <div className="min-w-0">
           <div className="flex min-w-0 items-center gap-2">
             <h1 className="truncate font-display text-[17px] font-bold leading-tight tracking-[-0.02em] text-stone-900 dark:text-stone-100">
-              Quantitative Desk
+              BetDoc Intelligence Desk
             </h1>
             {/* Group 107: one click back out of the Infinity view, wherever it was entered */}
             {isInfinityView && (

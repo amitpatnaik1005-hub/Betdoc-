@@ -68,7 +68,7 @@ def thresholds(settings: Settings) -> GateThresholds:
 def engine(settings: Settings, *, seed: int | None = None) -> ParlayEngine:
     return ParlayEngine(
         thresholds(settings), paths=settings.ASHOKA_MC_PATHS, kelly_fraction=settings.ASHOKA_KELLY_FRACTION, max_stake_pct=settings.ASHOKA_MAX_STAKE_PCT,
-        value_max_stake_pct=settings.ASHOKA_VALUE_MAX_STAKE_PCT, max_legs=settings.ASHOKA_MAX_CANDIDATE_LEGS, max_slips=settings.ASHOKA_MAX_SLIPS,
+        value_max_stake_pct=settings.ASHOKA_VALUE_MAX_STAKE_PCT, max_legs=settings.ASHOKA_MAX_CANDIDATE_LEGS, max_slips=settings.ASHOKA_MAX_SLIPS, max_multiple=settings.ASHOKA_MAX_AUTO_MULTIPLE_LEGS, long_pool=settings.ASHOKA_LONG_MULTIPLE_POOL,
         priority=priority(settings), seed=seed,
     )
 

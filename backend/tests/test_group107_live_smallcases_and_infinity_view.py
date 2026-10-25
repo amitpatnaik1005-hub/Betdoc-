@@ -250,9 +250,11 @@ def test_the_routes_are_signed_in_only() -> None:
 @pytest.mark.skipif(not FRONTEND.exists(), reason="frontend sources not present")
 def test_the_smallcases_and_the_infinity_view_are_wired() -> None:
     oracle = (FRONTEND / "pages" / "TheOracle.tsx").read_text(encoding="utf-8")
-    assert "<LiveSmallcaseTickerBar" in oracle and "<InfinityFlexiViewToggle" in oracle
-    assert "<SmallcaseSlipRebalancer" in (FRONTEND / "components" / "builder" / "BetBuilder.tsx").read_text(encoding="utf-8")
-    assert "<LiveSmallcaseTickerBar" in (FRONTEND / "pages" / "TheVault.tsx").read_text(encoding="utf-8")
+    assert "<InfinityFlexiViewToggle" in oracle
+    # Group 131: the smallcase ticker, components panel and slip rebalancer are off the Oracle, the builder and the Vault
+    vault = (FRONTEND / "pages" / "TheVault.tsx").read_text(encoding="utf-8")
+    assert "<LiveSmallcaseTickerBar" not in oracle + vault and "<SmallcaseComponentsPanel" not in vault
+    assert "<SmallcaseSlipRebalancer" not in (FRONTEND / "components" / "builder" / "BetBuilder.tsx").read_text(encoding="utf-8")
     store = (FRONTEND / "store" / "useUIStore.ts").read_text(encoding="utf-8")
     assert "isInfinityView" in store and "toggleInfinityView" in store
     app = (FRONTEND / "App.tsx").read_text(encoding="utf-8")

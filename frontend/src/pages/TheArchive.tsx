@@ -111,7 +111,7 @@ const BacktestLedger = () => {
   return (
     <Panel title="Backtest strategy ledger" icon="history" className="lg:col-span-7" updatedAt={backtests.updatedAt} subtitle="synthetic Monte Carlo markets">
       <form id="backtest-form" onSubmit={run} className="mb-4 flex flex-wrap items-end gap-2.5">
-        <Field label="Smallcase" className="min-w-[180px] flex-1">
+        <Field label="Strategy model" className="min-w-[180px] flex-1">
           <Select value={smallcaseId} onChange={(e) => setForm({ ...form, smallcase: e.target.value })}>
             {(smallcases.data ?? []).map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
           </Select>
@@ -121,7 +121,7 @@ const BacktestLedger = () => {
         <Button type="submit" variant="primary" icon="play_circle" busy={busy} disabled={!isAdmin || !smallcaseId}>Run backtest</Button>
       </form>
       {!isAdmin && <p className="mb-3 text-xs text-stone-400">Running a backtest is admin only.</p>}
-      {!smallcases.data?.length && smallcases.data && <p className="mb-3 text-xs text-amber-600">No smallcases yet: bootstrap the engine from Core first.</p>}
+      {!smallcases.data?.length && smallcases.data && <p className="mb-3 text-xs text-amber-600">No strategies yet: bootstrap the engine from Core first.</p>}
       <p className="mb-3 text-[11px] text-stone-400">The engine replays each pipeline against synthetic markets drawn per day in the range (no historical results are stored to replay).</p>
       <Async resource={backtests} isEmpty={(r) => r.length === 0} empty={<EmptyState icon="history" title="No backtests yet" />}>
         {(rows) => (
@@ -174,7 +174,7 @@ export const TheArchive = () => {
         purpose="TODAR MAL's read-only warehouse: every table's size and integrity, synthetic Monte Carlo markets, the backtest ledger, the vault's posture and the retention notes. Credential tables are never browsable, sensitive columns are redacted, and every read is logged."
         steps={[
           "Check the warehouse: its tables, records and probe latency",
-          "Browse a table (read-only, redacted) or backtest a smallcase over a date range",
+          "Browse a table (read-only, redacted) or backtest a strategy over a date range",
           "Read the vault's posture and the retention notes",
         ]}
         kpiCodes={["CLV"]}

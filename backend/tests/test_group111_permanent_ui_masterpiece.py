@@ -128,7 +128,7 @@ def test_the_oracle_opens_on_the_work() -> None:
     assert [(v, label) for v, label, _ in tabs[:4]] == [("board", "Match board"), ("builder", "Bet builder"), ("score", "Score engine"), ("desk", "Quant desk")]
     assert "v === 'engine' ? 'score'" in oracle  # Group 103's ?tab=engine links (and /sports) still land
     assert "<CommanderHero" not in oracle and "<Page dense>" in oracle and "ASHOKA · The Oracle" in oracle
-    assert "<LiveSmallcaseTickerBar compact />" in oracle and "<InfinityFlexiViewToggle" in oracle  # one row of basket chips
+    assert "<LiveSmallcaseTickerBar" not in oracle and "<InfinityFlexiViewToggle" in oracle  # Group 131: the basket chips are retired
     board = oracle[oracle.index("{tab === 'board' &&"):oracle.index("{tab === 'builder' &&")]
     assert board.index("<ChefTopPlate") < board.index("<MatchBoard")  # the parlay of the day above the first match cards
     match_board = read("components/oracle/board/MatchBoard.tsx")

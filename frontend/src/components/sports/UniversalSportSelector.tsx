@@ -24,7 +24,7 @@ export const UniversalSportSelector = ({ inactive }: Props) => {
         <div className="flex flex-wrap items-center gap-2">
           <span className="font-semibold uppercase tracking-[0.12em] text-stone-400">Sport fleet</span>
           <span className="rounded-full bg-[color-mix(in_srgb,var(--accent)_12%,transparent)] px-2.5 py-0.5 font-medium text-[var(--accent-text)]">
-            Model: {current.modelType}
+            Intelligence: real-time engine
           </span>
           <span className="rounded-full bg-stone-100 px-2.5 py-0.5 font-mono text-stone-600 dark:bg-white/[0.05] dark:text-stone-300" title="FA-4 sport-calibrated fractional Kelly">
             {current.kellyMultiplier.toFixed(2)} Kelly
@@ -45,7 +45,7 @@ export const UniversalSportSelector = ({ inactive }: Props) => {
               type="button"
               role="tab"
               aria-selected={isActive}
-              title={`${s.name}: ${s.modelType} · ${s.primaryLeague}${off ? ' (deactivated)' : ''}`}
+              title={`${s.name} · ${s.primaryLeague}${off ? ' (deactivated)' : ''}`}
               onClick={() => setActiveSport(s.key)}
               className={`flex shrink-0 items-center gap-2 whitespace-nowrap rounded-2xl px-3.5 py-2 text-xs font-semibold transition-[background-color,transform,box-shadow] duration-300 active:scale-95 ${
                 isActive

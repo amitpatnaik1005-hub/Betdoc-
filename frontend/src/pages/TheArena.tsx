@@ -48,14 +48,6 @@ interface SteamAlert {
   detected_at: string;
 }
 
-interface Surebet {
-  match_id: string;
-  market_type: string;
-  line: number | null;
-  legs: { selection_id: string; bookmaker_id: string; odds: number; recommended_stake_pct: number }[];
-  profit_pct: number;
-}
-
 interface StrategyNode {
   strategy_name: string;
   total_bets: number;
@@ -155,9 +147,9 @@ const LiveOddsMatrix = ({ odds, steam }: { odds: ReturnType<typeof useLiveOdds>;
 };
 
 // ---------------------------------------------------------------------------
-// TACTICAL FEED (event bus + steam + surebets)
+// TACTICAL FEED (event bus + steam)
 // ---------------------------------------------------------------------------
-const TacticalFeed = ({ steam, surebets }: { steam: SteamAlert[]; surebets: Surebet[] }) => {
+const TacticalFeed = ({ steam }: { steam: SteamAlert[] }) => {
   const events = useSystemStore((s) => s.events);
   const lines = useMemo(() => {
     const out: { key: string; at: string; tag: string; tone: 'accent' | 'warning' | 'info' | 'good'; text: string }[] = [];
@@ -166,14 +158,13 @@ const TacticalFeed = ({ steam, surebets }: { steam: SteamAlert[]; surebets: Sure
       out.push({ key: `bus-${e.at}-${e.path}`, at: e.at, tag: 'EXEC', tone: 'info', text: `${e.method} ${e.path?.replace('/api/v1/', '')}` });
     }
     for (const a of steam) out.push({ key: `steam-${a.match_id}-${a.selection_id}`, at: a.detected_at, tag: 'STEAM', tone: 'warning', text: `${a.match_id} · ${a.selection_id} ${formatOdds(a.opening_odds)} → ${formatOdds(a.current_odds)} (${a.triggering_bookmakers.join(', ')})` });
-    for (const s of surebets) out.push({ key: `arb-${s.match_id}-${s.market_type}`, at: new Date().toISOString(), tag: 'ARB', tone: 'good', text: `${s.match_id} · ${s.market_type} · ${formatPct(s.profit_pct, 2)} locked across ${s.legs.length} books` });
     return out.sort((a, b) => b.at.localeCompare(a.at)).slice(0, 30);
-  }, [events, steam, surebets]);
+  }, [events, steam]);
 
   return (
     <Panel title="Activity" icon="timeline" className="lg:col-span-4" bodyClassName="p-0">
       {lines.length === 0 ? (
-        <EmptyState icon="timeline" title="All quiet" detail="Executions, settlements, steam moves and arbitrage hits stream here live." />
+        <EmptyState icon="timeline" title="All quiet" detail="Executions, settlements and steam moves stream here live." />
       ) : (
         <ul className="flex max-h-[440px] flex-col gap-0.5 overflow-y-auto p-2.5">
           <AnimatePresence initial={false}>
@@ -288,7 +279,6 @@ const StrategyAnalytics = () => {
 export const TheArena = () => {
   const odds = useLiveOdds();
   const steam = useResource('signals:steam', () => apiClient.get<SteamAlert[]>('/signals/steam-moves', { window_minutes: 120 }), { intervalMs: 30_000 });
-  const surebets = useResource('signals:surebets', () => apiClient.get<Surebet[]>('/signals/surebets', { max_staleness_minutes: 30 }), { intervalMs: 60_000 });
   const active = useResource('arena:active', () => apiClient.get<ActiveBet[]>('/arena/active'), { intervalMs: 20_000 });
   const halted = useSystemStore((s) => s.halted);
   const [scanning, setScanning] = useState(false);
@@ -306,7 +296,7 @@ export const TheArena = () => {
         commander="BAJIRAO"
         headline={headline}
         motif={MOTIFS.radar}
-        detail={`${steam.data?.length ?? 0} steam moves in the last 2h · ${surebets.data?.length ?? 0} surebets on fresh prices.`}
+        detail={`${steam.data?.length ?? 0} steam moves in the last 2h.`}
         actions={
           <>
             <Button icon="sync" busy={odds.loading && odds.data !== undefined} onClick={() => void odds.refresh()}>Sync odds</Button>
@@ -316,12 +306,12 @@ export const TheArena = () => {
               busy={scanning}
               onClick={async () => {
                 setScanning(true);
-                await Promise.all([steam.refresh(), surebets.refresh()]);
+                await steam.refresh();
                 setScanning(false);
                 invalidate('signals');
               }}
             >
-              Scan arbitrage
+              Scan steam
             </Button>
             {halted ? (
               <Button variant="danger" icon="play_circle" onClick={() => void resumeTrading(500)}>Resume trading</Button>
@@ -336,9 +326,9 @@ export const TheArena = () => {
       <ComponentGuideBanner
         className="lg:col-span-12"
         moduleName="The Arena"
-        purpose="BAJIRAO's arena: steam moves over the last two hours, surebets on fresh prices, the opportunity queue, open positions and the strategies' analytics."
+        purpose="BAJIRAO's arena: steam moves over the last two hours, the opportunity queue, open positions and the strategies' analytics."
         steps={[
-          "Read the steam moves and the surebets on fresh prices",
+          "Read the steam moves of the last two hours",
           "Work the opportunity queue: a slip confirms through the CFO ledger's two-phase execution",
           "Track open positions and each strategy's analytics",
         ]}
@@ -346,7 +336,7 @@ export const TheArena = () => {
       />
       <OpportunityQueue />
       <LiveOddsMatrix odds={odds} steam={steam.data ?? []} />
-      <TacticalFeed steam={steam.data ?? []} surebets={surebets.data ?? []} />
+      <TacticalFeed steam={steam.data ?? []} />
       <OpenPositions fairByMatch={fairByMatch} />
       <StrategyAnalytics />
     </Page>

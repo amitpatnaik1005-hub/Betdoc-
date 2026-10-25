@@ -161,7 +161,7 @@ def test_a_steam_move_is_reported_as_measured() -> None:
 
 def test_a_chain_counts_its_steps_and_a_slip_is_the_same_in_any_order() -> None:
     assert [m for m, _, _ in MODULES] == [Module.WIRE, Module.SCORE_PREDICTOR, Module.ORACLE, Module.CONSULTANT, Module.VAULT]
-    assert [name for _, name, _ in MODULES] == ["VIDUR / THE WIRE", "SCORE PREDICTOR", "ORACLE & BET BUILDER", "BETDOC CONSULTANT", "THE VAULT & SMALLCASES"]
+    assert [name for _, name, _ in MODULES] == ["VIDUR / THE WIRE", "SCORE PREDICTOR", "ORACLE & BET BUILDER", "BETDOC CONSULTANT", "THE VAULT & CAPITAL LEDGER"]  # Group 131
     chain = Chain("c1", "u1", {"item_id": "news:x"}, "2026-10-22T10:00:00+00:00")
     chain.steps = [Step(1, Module.WIRE, Status.COMPLETED, "ok"), Step(2, Module.SCORE_PREDICTOR, Status.SKIPPED, "no fixture"),
                    Step(3, Module.ORACLE, Status.FAILED, "refused")]

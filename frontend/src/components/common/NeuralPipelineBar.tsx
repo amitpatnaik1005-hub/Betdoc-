@@ -1,6 +1,6 @@
 /**
  * The live inter-module pipeline bar (Group 108, point b.9), across the top of every page: the five modules in chain
- * order (VIDUR / THE WIRE → SCORE PREDICTOR → ORACLE & BET BUILDER → BETDOC CONSULTANT → THE VAULT & SMALLCASES), the
+ * order (VIDUR / THE WIRE → SCORE PREDICTOR → ORACLE & BET BUILDER → BETDOC CONSULTANT → THE VAULT & CAPITAL LEDGER), the
  * chain in flight with the step it is on pulsing, and a drawer with each step's own report and the recent trace.
  * A chain starts when the Wire's scan reads a breaking story or a catalyst, or from a card on VIDUR's board.
  * Developed for Amit Ashok Kumar Patnaik.

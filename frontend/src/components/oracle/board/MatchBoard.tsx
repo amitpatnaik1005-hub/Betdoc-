@@ -13,7 +13,7 @@ import { useSearchParams } from "react-router-dom";
 import { BOOKMAKER_THEMES, type MarketCard, type SelectionCard } from "../../../lib/backtest_and_parlay";
 import { type BoardFixture, type BoardWindow, type MarketColumn, useMatchBoard } from "../../../lib/match_board";
 import type { Slip } from "../../../lib/oracle";
-import { toSlipLeg, useParlaySlipStore } from "../../../store/useParlaySlipStore";
+import { announcePick, toSlipLeg, useParlaySlipStore } from "../../../store/useParlaySlipStore";
 import { Async, EmptyState, Panel } from "../../../ui/kit";
 import { MatchBoardToolbar } from "./MatchBoardToolbar";
 import { MatchDetail } from "./MatchDetail";
@@ -48,7 +48,7 @@ export const MatchBoard = ({ slips, onRecord }: { slips: Slip[]; onRecord: () =>
   const inSlip = (legId: string) => held.has(legId);
 
   const pick = (card: BoardFixture) => (market: MarketCard, s: SelectionCard) => {
-    if (card.priced_from !== "stored") toggle(toSlipLeg(card, market.market, s));  // Group 112: a stored price is never slipped
+    if (card.priced_from !== "stored") { const leg = toSlipLeg(card, market.market, s); announcePick(toggle(leg), leg); }  // Group 112: a stored price is never slipped
   };
   const addParlay = (slip: Slip) =>
     addMany(slip.legs.map((l) => ({ leg_id: l.leg_id, fixture: l.fixture, label: l.label, market: l.market, prices: l.prices, fair_probability: l.fair_probability })));

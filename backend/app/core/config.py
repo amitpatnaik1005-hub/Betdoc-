@@ -278,6 +278,10 @@ class Settings(BaseSettings):
     ASHOKA_VALUE_MAX_STAKE_PCT: float = Field(default=0.005, gt=0, le=0.25)  # strictly bounded: EV clears, probability does not
     ASHOKA_MAX_CANDIDATE_LEGS: int = Field(default=12, ge=3, le=40)  # the best legs the generator combines
     ASHOKA_MAX_SLIPS: int = Field(default=12, ge=1, le=100)
+    # Group 131: Auto Parlays also builds straight multiples of 4 up to this many legs, from the best ASHOKA_LONG_MULTIPLE_POOL
+    # fixtures (one leg each): every leg must still be positive-EV, and the joint EV and probability bars are unchanged
+    ASHOKA_MAX_AUTO_MULTIPLE_LEGS: int = Field(default=6, ge=3, le=8)
+    ASHOKA_LONG_MULTIPLE_POOL: int = Field(default=8, ge=4, le=12)
     ASHOKA_BOOKMAKER_PRIORITY: str = "parimatch,1xbet,stake,pinnacle,betfair"
     ASHOKA_CASHOUT_HOLD_RATIO: float = Field(default=0.85, gt=0, le=1)  # an offer under 85% of fair value is penalised: HOLD
     ORACLE_TIMEZONE: str = "Asia/Kolkata"  # today / this week / this month for the P&L scorecard

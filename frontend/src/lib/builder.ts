@@ -27,7 +27,7 @@ const GROUP_OF: Record<string, AutoGroup> = {
 };
 export const AUTO_GROUPS: { id: AutoGroup; label: string; note: string }[] = [
   { id: "SINGLES", label: "Singles", note: "One leg: the edge with nothing riding on another result." },
-  { id: "MULTIPLES", label: "Parlays", note: "Doubles, trebles and accumulators: legs on independent fixtures, priced together over the Monte Carlo paths." },
+  { id: "MULTIPLES", label: "Parlays", note: "Doubles, trebles and accumulators of up to six legs on independent fixtures, priced together over the Monte Carlo paths." },
   { id: "SYSTEMS", label: "System bets", note: "Trixie to Heinz: every combination of the legs, so one loser does not sink the slip." },
 ];
 

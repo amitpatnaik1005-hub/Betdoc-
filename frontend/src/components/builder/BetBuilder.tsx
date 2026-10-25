@@ -20,7 +20,6 @@ import { useParlaySlipStore } from "../../store/useParlaySlipStore";
 import { toast } from "../../store/useToastStore";
 import { Panel, Segmented } from "../../ui/kit";
 import { ManualParlayWorkbench } from "../parlay/ManualParlayWorkbench";
-import { SmallcaseSlipRebalancer } from "../smallcase/SmallcaseSlipRebalancer";
 import { AutoParlays } from "./AutoParlays";
 import { ChefsTable } from "./ChefsTable";
 import { StreetSmartSynthesizer } from "./StreetSmartSynthesizer";
@@ -65,8 +64,6 @@ export const BetBuilder = ({ slips }: { slips: SlipsPayload | undefined }) => {
       {mode === "manual" ? (
         <div className="flex flex-col gap-6">
           <ManualParlayWorkbench embedded />
-          {/* Group 107: the same slip as a smallcase of singles, sized by KUMBHA */}
-          <SmallcaseSlipRebalancer />
         </div>
       ) : (
         <div className="rounded-3xl p-4 transition-colors duration-300" style={style}>

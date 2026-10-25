@@ -97,7 +97,7 @@ def _engine(settings: Settings, retail: Sequence[str] | None = None) -> ParlayEn
     """Ashoka's engine, priced over the retail books only (Kelly unscaled: the fortress sizes)."""
     return ParlayEngine(
         ashoka_market.thresholds(settings), paths=settings.ASHOKA_MC_PATHS, kelly_fraction=1.0, max_stake_pct=1.0, value_max_stake_pct=1.0,
-        max_legs=settings.ASHOKA_MAX_CANDIDATE_LEGS, max_slips=settings.ASHOKA_MAX_SLIPS, priority=tuple(retail) if retail else retail_books(settings),
+        max_legs=settings.ASHOKA_MAX_CANDIDATE_LEGS, max_slips=settings.ASHOKA_MAX_SLIPS, max_multiple=settings.ASHOKA_MAX_AUTO_MULTIPLE_LEGS, long_pool=settings.ASHOKA_LONG_MULTIPLE_POOL, priority=tuple(retail) if retail else retail_books(settings),
     )
 
 

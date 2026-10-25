@@ -5,10 +5,15 @@
  *
  * Every leg is a selection the feeds quote (its `leg_id` is Ashoka's `fixture|market|selection`); nothing is placed
  * from here. Kept for the browser session, so moving between tabs and pages keeps the slip.
+ *
+ * Group 131: one pick per market of a fixture. A second selection of the same fixture's market (Home after Away, Over
+ * 2.5 after Under 2.5) replaces the first; clicking a picked selection again takes it off the slip.
  */
 import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
 import { type Board, BOOKMAKER_THEMES, type FixtureCard, type SelectionCard, type Skin } from "../lib/backtest_and_parlay";
+import { pick, type PickResult as Rules } from "../lib/slip_rules";
+import { toast } from "./useToastStore";
 
 export interface SlipLeg {
   leg_id: string;
@@ -35,6 +40,14 @@ export const payingBook = (leg: Pick<SlipLeg, "prices">, book: string | null): s
   return best ? best[0] : null;
 };
 
+export type PickResult = Rules<SlipLeg>;
+
+/** Says what a pick did when it was not a plain add (a replaced selection is easy to miss). */
+export const announcePick = (result: PickResult, leg: SlipLeg): void => {
+  if (result.action === "replaced" && result.replaced) toast.info("Pick replaced", `${result.replaced.label} is off the slip: one pick per market, now ${leg.label}`);
+  else if (result.action === "removed") toast.info("Taken off the slip", leg.label);
+};
+
 export const toSlipLeg = (card: Pick<FixtureCard, "home" | "away">, market: string, s: SelectionCard): SlipLeg => ({
   leg_id: s.leg_id, fixture: `${card.home} v ${card.away}`, label: s.label, market, prices: s.prices, fair_probability: s.fair_probability,
 });
@@ -42,9 +55,11 @@ export const toSlipLeg = (card: Pick<FixtureCard, "home" | "away">, market: stri
 interface ParlaySlipState {
   legs: SlipLeg[];
   skin: Skin;
-  add: (leg: SlipLeg) => void;
+  /** Add a leg (a selection already on the slip stays); another selection of its market is replaced. */
+  add: (leg: SlipLeg) => PickResult;
   addMany: (legs: SlipLeg[]) => void;
-  toggle: (leg: SlipLeg) => void;
+  /** As add, but a picked selection clicked again comes off the slip. */
+  toggle: (leg: SlipLeg) => PickResult;
   remove: (legId: string) => void;
   /** Swap one leg for another in place (the auto-fix keeps the slip's order). */
   replace: (legId: string, leg: SlipLeg) => void;
@@ -58,12 +73,20 @@ const isSkin = (v: unknown): v is Skin => typeof v === "string" && v in BOOKMAKE
 
 export const useParlaySlipStore = create<ParlaySlipState>()(
   persist(
-    (set) => ({
+    (set, get) => ({
       legs: [],
       skin: "betdoc",
-      add: (leg) => set((s) => (s.legs.some((l) => l.leg_id === leg.leg_id) ? s : { legs: [...s.legs, leg] })),
-      addMany: (legs) => set((s) => ({ legs: [...s.legs, ...legs.filter((l) => !s.legs.some((x) => x.leg_id === l.leg_id))] })),
-      toggle: (leg) => set((s) => ({ legs: s.legs.some((l) => l.leg_id === leg.leg_id) ? s.legs.filter((l) => l.leg_id !== leg.leg_id) : [...s.legs, leg] })),
+      add: (leg) => {
+        const next = pick(get().legs, leg, false);
+        if (next.result.action !== "kept") set({ legs: next.legs });
+        return next.result;
+      },
+      addMany: (legs) => set((s) => ({ legs: legs.reduce((acc, l) => pick(acc, l, false).legs, s.legs) })),
+      toggle: (leg) => {
+        const next = pick(get().legs, leg, true);
+        set({ legs: next.legs });
+        return next.result;
+      },
       remove: (legId) => set((s) => ({ legs: s.legs.filter((l) => l.leg_id !== legId) })),
       replace: (legId, leg) => set((s) => ({ legs: s.legs.map((l) => (l.leg_id === legId ? leg : l)).filter((l, i, all) => all.findIndex((x) => x.leg_id === l.leg_id) === i) })),
       clear: () => set({ legs: [] }),

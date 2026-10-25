@@ -55,7 +55,7 @@ export const ScoreBackedLegs = ({ card, book, onAdd, onClose }: { card: FixtureC
               <div>
                 <p className="text-sm font-semibold">{card.home} v {card.away} · score prediction</p>
                 <p className="text-[11px]" style={{ color: "var(--wb-muted)" }}>
-                  Dixon-Coles fitted to this board's de-vigged prices · expected goals {pr.expected_goals[0].toFixed(2)} – {pr.expected_goals[1].toFixed(2)}
+                  BetDoc scoreline model fitted to this board's de-vigged prices · expected goals {pr.expected_goals[0].toFixed(2)} – {pr.expected_goals[1].toFixed(2)}
                 </p>
               </div>
               <Button size="sm" variant="ghost" icon="close" onClick={onClose}>Close</Button>

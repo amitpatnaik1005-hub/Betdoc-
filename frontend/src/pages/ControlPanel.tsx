@@ -35,14 +35,14 @@ const SPORTS = ['cricket', 'basketball', 'tennis'] as const;
 type ControlTab = 'system' | 'vault' | 'routing' | 'risk' | 'portfolio' | 'hive' | 'lab' | 'nalanda' | 'sentinel' | 'terminal';
 const TABS = [
   { value: 'system', label: 'System', icon: 'tune' },
-  { value: 'vault', label: 'Vault & Fleet', icon: 'encrypted' },
+  { value: 'vault', label: 'Vault & Accounts', icon: 'encrypted' },
   { value: 'routing', label: 'Order routing', icon: 'call_split' },
-  { value: 'risk', label: 'Risk management', icon: 'shield_lock' },
-  { value: 'portfolio', label: 'Active portfolio', icon: 'monitoring' },
+  { value: 'risk', label: 'Capital protection', icon: 'shield_lock' },
+  { value: 'portfolio', label: 'Active parlays', icon: 'monitoring' },
   { value: 'hive', label: 'Hive bots', icon: 'hub' },
-  { value: 'lab', label: 'Quant Lab', icon: 'science' },
-  { value: 'nalanda', label: 'Nalanda archive', icon: 'account_balance' },
-  { value: 'sentinel', label: 'The Sentinel', icon: 'shield' },
+  { value: 'lab', label: 'Research lab', icon: 'science' },
+  { value: 'nalanda', label: 'Historical archives', icon: 'account_balance' },
+  { value: 'sentinel', label: 'Feed health', icon: 'shield' },
   { value: 'terminal', label: 'Execution terminal', icon: 'terminal' },
 ] as const;
 const EXCHANGES = ['Pinnacle', 'Betfair'] as const;
@@ -348,9 +348,9 @@ export const ControlPanel = () => {
     <Page>
       <CommanderHero
         commander="KAUTILYA"
-        headline={halted ? 'SYSTEM HALTED. Every order is refused until trading resumes.' : `SYSTEM CONTROL. Max bet ${formatINR(s?.max_bet_size)}, daily exposure ${formatINR(s?.max_daily_exposure)}, Kelly ×${s?.default_kelly_fraction ?? '—'}.`}
+        headline={halted ? 'SYSTEM HALTED. Every order is refused until trading resumes.' : `RISK ENGINE ACTIVE. Max bet ${formatINR(s?.max_bet_size)}, daily exposure ${formatINR(s?.max_daily_exposure)}, Kelly ×${s?.default_kelly_fraction ?? '—'}.`}
         motif={MOTIFS.sliders}
-        detail={s ? <>{s.app_version} · {s.build_info} · operator {s.developer_name}{s.last_emergency_stop_at ? ` · last emergency stop ${formatAgo(s.last_emergency_stop_at)}` : ''}</> : undefined}
+        detail={s ? <>{s.app_version} · {/OMEGA|LEVIATHAN/i.test(s.build_info) ? 'Production Risk & Intelligence Engine' : s.build_info} · operator {s.developer_name}{s.last_emergency_stop_at ? ` · last emergency stop ${formatAgo(s.last_emergency_stop_at)}` : ''}</> : undefined}
         actions={
           halted ? (
             <div className="flex flex-wrap items-end gap-2">

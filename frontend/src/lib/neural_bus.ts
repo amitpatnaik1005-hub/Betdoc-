@@ -135,7 +135,7 @@ export const MODULES: { module: ChainModule; name: string; short: string; icon: 
   { module: "SCORE_PREDICTOR", name: "SCORE PREDICTOR", short: "Predictor", icon: "scoreboard" },
   { module: "ORACLE", name: "ORACLE & BET BUILDER", short: "Oracle", icon: "auto_awesome" },
   { module: "CONSULTANT", name: "BETDOC CONSULTANT", short: "Consultant", icon: "stethoscope" },
-  { module: "VAULT", name: "THE VAULT & SMALLCASES", short: "Vault", icon: "account_balance" },
+  { module: "VAULT", name: "THE VAULT & CAPITAL LEDGER", short: "Vault", icon: "account_balance" },
 ];
 
 export const CATEGORY_LABEL: Record<IntelCategory, { label: string; icon: string }> = {

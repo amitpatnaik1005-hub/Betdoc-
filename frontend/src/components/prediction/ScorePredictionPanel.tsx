@@ -19,6 +19,64 @@ import { FootballScoreHeatmap } from "./FootballScoreHeatmap";
 type Sport = "football" | "cricket";
 type FootballMode = "stored" | "xg";
 
+/** Group 131: the answer first, in one card: the likeliest score, who wins how often, the expected goals, the goal lines. */
+const ProjectedScoreHero = ({ p, home, away }: { p: FootballPrediction; home: string; away: string }) => {
+  const top = p.top_scorelines[0];
+  const outcomes = [
+    { label: `${home} win`, value: p.home_win },
+    { label: "Draw", value: p.draw },
+    { label: `${away} win`, value: p.away_win },
+  ];
+  const favourite = Math.max(p.home_win, p.draw, p.away_win);
+  const lines = [
+    { label: "Over 2.5 goals", value: p.over["2.5"] },
+    { label: "Under 2.5 goals", value: p.under["2.5"] },
+    { label: "Both teams score", value: p.btts_yes },
+    { label: "Not both score", value: p.btts_no },
+  ];
+  return (
+    <section aria-label="Projected scoreline" className="flex flex-col gap-4 rounded-3xl bg-stone-900 p-5 text-stone-50 shadow-soft dark:bg-[#131B2E]">
+      <div className="flex flex-wrap items-end justify-between gap-4">
+        <div className="min-w-0">
+          <span className="rounded-full bg-amber-400/15 px-2.5 py-0.5 text-[11px] font-bold uppercase tracking-wider text-amber-300">Likeliest score</span>
+          <p className="mt-2 flex flex-wrap items-baseline gap-x-3 text-2xl font-black tracking-tight sm:text-3xl">
+            <span className="truncate">{home}</span>
+            <span className="font-mono text-amber-300">{top ? `${top.home} - ${top.away}` : "—"}</span>
+            <span className="truncate">{away}</span>
+          </p>
+          <p className="mt-1 text-xs text-stone-400">
+            {top ? `${formatRatioPct(top.probability)} for this exact score, the most likely of every scoreline` : "No scoreline"}
+            {p.top_scorelines.length > 1 && ` · next ${p.top_scorelines.slice(1).map((s) => `${s.home}-${s.away} (${formatRatioPct(s.probability)})`).join(", ")}`}
+          </p>
+        </div>
+        <div className="text-right">
+          <span className="block text-[11px] uppercase tracking-wider text-stone-400">Expected goals</span>
+          <span className="font-mono text-xl font-bold">{p.expected_goals[0].toFixed(2)} – {p.expected_goals[1].toFixed(2)}</span>
+        </div>
+      </div>
+      <div className="grid grid-cols-3 gap-2">
+        {outcomes.map((o) => (
+          <div key={o.label} className="rounded-xl bg-white/[0.06] p-2.5">
+            <span className="block truncate text-[11px] text-stone-400">{o.label}</span>
+            <span className={`mt-0.5 block font-mono text-lg font-bold ${o.value === favourite ? "text-amber-300" : ""}`}>{formatRatioPct(o.value)}</span>
+            <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-white/10">
+              <div className="h-full rounded-full bg-amber-300" style={{ width: `${Math.round(o.value * 100)}%` }} />
+            </div>
+          </div>
+        ))}
+      </div>
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+        {lines.map((l) => (
+          <div key={l.label} className="rounded-xl bg-white/[0.06] p-2.5 text-center">
+            <span className="block text-[11px] text-stone-400">{l.label}</span>
+            <span className={`mt-0.5 block font-mono text-base font-bold ${(l.value ?? 0) >= 0.5 ? "text-emerald-400" : ""}`}>{l.value === undefined ? "—" : formatRatioPct(l.value)}</span>
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+};
+
 const FootballSummary = ({ p, home, away }: { p: FootballPrediction; home: string; away: string }) => {
   const ah = (line: string) => p.markets.find((m) => m.market === `Asian Handicap ${line}` && m.selection === "HOME");
   return (
@@ -92,6 +150,7 @@ const FootballTab = () => {
           </div>
         )}
       </form>
+      {result && <ProjectedScoreHero p={result.p} home={result.home} away={result.away} />}
       {result && (
         <div className="grid grid-cols-1 gap-5 xl:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
           <FootballScoreHeatmap heatmap={result.p.heatmap} top={result.p.top_scorelines} mass={result.p.heatmap_mass} homeLabel={result.home} awayLabel={result.away} />
@@ -99,8 +158,8 @@ const FootballTab = () => {
             <FootballSummary p={result.p} home={result.home} away={result.away} />
             <p className="text-[11px] text-stone-500 dark:text-stone-400">
               {result.p.source === "market"
-                ? `Dixon-Coles rates fitted to ${result.p.fixture?.books ?? "the"} books' de-vigged prices (stored ${result.p.fixture ? formatDateTime(result.p.fixture.last_polled_at) : "—"}).`
-                : "Dixon-Coles on your expected goals."}{" "}
+                ? `BetDoc scoreline model fitted to ${result.p.fixture?.books ?? "the"} books' de-vigged prices (stored ${result.p.fixture ? formatDateTime(result.p.fixture.last_polled_at) : "—"}).`
+                : "BetDoc scoreline model on your expected goals."}{" "}
               Low-score dependence ρ {result.p.rho?.toFixed(2) ?? "—"}. To back a parlay leg with a score, open the fixture's Scores on The Oracle.
             </p>
           </div>

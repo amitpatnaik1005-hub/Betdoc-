@@ -149,7 +149,7 @@ export const SlipRail = ({ fixtures, onRecord }: { fixtures: BoardFixture[]; onR
           </div>
           {inspection && (
             <>
-              <SlipScoreMeter rating={inspection.rating} onAutoFix={() => void autoFix()} fixing={busy === "fix"} />
+              <SlipScoreMeter rating={inspection.rating} figures={inspection.audit} onAutoFix={() => void autoFix()} fixing={busy === "fix"} />
               <p className="text-[11px]" style={{ color: "var(--wb-muted)" }}>
                 {inspection.audit.pillars_passed}/15 pillars passed{inspection.audit.is_vetted ? " · vetted" : ""}
                 {inspection.audit.joint_ev !== null ? ` · joint EV ${inspection.audit.joint_ev >= 0 ? "+" : ""}${pct(inspection.audit.joint_ev)}` : ""}

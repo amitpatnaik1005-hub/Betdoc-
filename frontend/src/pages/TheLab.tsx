@@ -65,7 +65,7 @@ const ModelSandbox = () => {
 
   const p = result?.prediction;
   return (
-    <Panel title="Model sandbox · PANINI ensemble" icon="functions" className="lg:col-span-7" subtitle="Poisson 30% · Dixon-Coles 40% · Elo 30%">
+    <Panel title="Model sandbox · deep ensemble" icon="functions" className="lg:col-span-7" subtitle="Multi-factor calibration on latent team ratings">
       <form onSubmit={submit} className="flex flex-col gap-4">
         <div className="grid grid-cols-2 gap-3">
           <Field label="Home team"><TextInput value={form.home_team} onChange={set('home_team')} placeholder="Arsenal" /></Field>

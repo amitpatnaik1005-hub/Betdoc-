@@ -31,7 +31,7 @@ const Recipe = ({ card }: { card: RecipeCard }) => {
       {open && (
         <div className="flex flex-col gap-2 border-t p-2.5 text-[11px] leading-relaxed" style={{ borderColor: "color-mix(in srgb, var(--wb-muted) 25%, transparent)" }}>
           <p><strong>1 · Why it was picked.</strong> {card.why.text}
-            {Object.keys(card.why.models).length > 0 && ` The models: ${Object.entries(card.why.models).map(([m, p]) => `${m.replace("_", "-")} ${pct(p, 0)}`).join(", ")}.`}</p>
+            {Object.keys(card.why.models).length > 0 && ` BetDoc model confidence: ${pct(card.why.fair_probability, 0)}.`}</p>
           <p><strong>2 · Score prediction.</strong>{" "}
             {card.scoreline
               ? `Likeliest score ${card.scoreline.likeliest_score} (${pct(card.scoreline.likeliest_probability)}): this leg ${card.scoreline.result_at_likeliest.toLowerCase().replace("_", " ")} there; ${pct(card.scoreline.leg_probability)} to pay over every scoreline of the market-fitted Dixon-Coles matrix.`
@@ -63,7 +63,7 @@ const Plate = ({ plate, onLoad }: { plate: ChefPlate; onLoad: (plate: ChefPlate)
       </div>
     )}
     <div className="grid grid-cols-1 gap-3 lg:grid-cols-[18rem_minmax(0,1fr)]">
-      <SlipScoreMeter rating={plate.rating} />
+      <SlipScoreMeter rating={plate.rating} figures={{ joint_probability: plate.joint_probability, total_odds: plate.odds, joint_ev: plate.joint_ev, pillars_passed: plate.pillars_passed }} />
       <div className="flex flex-col gap-2">
         <p className="text-xs">
           Odds <strong className="font-mono">{plate.odds}</strong>{plate.book ? ` at ${plate.book}` : ""} · joint EV {plate.joint_ev !== null && plate.joint_ev >= 0 ? "+" : ""}{pct(plate.joint_ev)}

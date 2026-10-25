@@ -27,17 +27,14 @@ export interface BookmakerTheme {
   couponStyle: string; // how its betslip reads
 }
 
-// Group 104 (point b.5): Parimatch cyber-yellow on obsidian, 1xBet cerulean on deep navy, BetDoc best-price gold
-// with emerald (the book that pays most on each leg is named beside its price)
+// Group 104 (point b.5) skins, on Group 131's luxury obsidian: one dark surface (#0B0F17), raised cards (#131B2E),
+// near-white text and a readable muted grey on every skin; each book keeps its own accent
+const OBSIDIAN = { surface: "#0B0F17", card: "#131B2E", text: "#F8FAFC", muted: "#A7B3C6", onPrimary: "#0B0F17", font: "'Inter', system-ui, sans-serif" };
 export const BOOKMAKER_THEMES: Record<Skin, BookmakerTheme> = {
-  parimatch: { label: "Parimatch", book: "parimatch", primary: "#F8FF13", surface: "#0D0E12", onPrimary: "#0D0E12", text: "#FAFAFA", muted: "#A3A3A3", card: "#1A1B21",
-               font: "'Inter', system-ui, sans-serif", couponStyle: "high-contrast yellow coupon, bold totals" },
-  one_xbet: { label: "1xBet", book: "1xbet", primary: "#007ACC", surface: "#0A2540", onPrimary: "#FFFFFF", text: "#FFFFFF", muted: "#A9C1DA", card: "#123A63",
-              font: "'Roboto', system-ui, sans-serif", couponStyle: "navy betslip, accumulator badge" },
-  stake: { label: "Stake", book: "stake", primary: "#00E701", surface: "#1A2C38", onPrimary: "#0B1620", text: "#E8EEF2", muted: "#8DA2B3", card: "#213743",
-           font: "'Inter', system-ui, sans-serif", couponStyle: "minimal slate slip" },
-  betdoc: { label: "BetDoc best price", book: null, primary: "#C89B3C", surface: "#030712", onPrimary: "#030712", text: "#F9FAFB", muted: "#9CA3AF", card: "#111827",
-            font: "'JetBrains Mono', ui-monospace, monospace", couponStyle: "quant ledger: gold and emerald, monospace, the paying book on each leg" },
+  parimatch: { ...OBSIDIAN, label: "Parimatch", book: "parimatch", primary: "#EAB308", couponStyle: "obsidian coupon with gold accents" },
+  one_xbet: { ...OBSIDIAN, label: "1xBet", book: "1xbet", primary: "#38BDF8", couponStyle: "obsidian coupon with sky-blue accents" },
+  stake: { ...OBSIDIAN, label: "Stake", book: "stake", primary: "#10B981", couponStyle: "obsidian coupon with emerald accents" },
+  betdoc: { ...OBSIDIAN, label: "BetDoc best price", book: null, primary: "#F59E0B", couponStyle: "ledger in amber, the paying book on each leg" },
 };
 
 export const TIER_STYLE: Record<Tier, { color: string; glow: string; label: string; meaning: string }> = {

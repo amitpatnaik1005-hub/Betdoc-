@@ -17,7 +17,6 @@ import { ScorePredictionPanel } from '../components/prediction/ScorePredictionPa
 import { useMatchBoard } from '../lib/match_board';
 import { SportsEngineDesk } from '../components/oracle/SportsEngineDesk';
 import { InfinityFlexiViewToggle } from '../components/smallcase/InfinityFlexiViewToggle';
-import { LiveSmallcaseTickerBar } from '../components/smallcase/LiveSmallcaseTickerBar';
 import { ashokaHeadline, useSlips } from '../lib/oracle';
 import { Async, Button, ComponentGuideBanner, EmptyState, Field, Meter, NumberInput, Page, Panel, Pill, Segmented, Select, Stat, StatGrid, StatusBadge } from '../ui/kit';
 import { num } from '../ui/num';
@@ -176,7 +175,7 @@ const EnginePanel = ({ rows }: { rows: ConsensusRow[] }) => {
   };
 
   return (
-    <Panel title="PANINI ensemble · on demand" icon="psychology" className="lg:col-span-5" subtitle="Poisson + Dixon-Coles + Elo">
+    <Panel title="BetDoc deep simulation · on demand" icon="psychology" className="lg:col-span-5" subtitle="Attacking and defensive ratings, blended into one fair price">
       {rows.length === 0 ? (
         <EmptyState icon="psychology" title="No fixtures to model" detail="The ensemble needs a live fixture plus Elo ratings or expected goals." />
       ) : (
@@ -374,12 +373,6 @@ export const TheOracle = () => {
           <InfinityFlexiViewToggle />
         </div>
       </header>
-
-      {/* Group 107: the live smallcases, on every tab (a loaded basket lands on the slip the board and the builder share);
-          one row of chips since Group 111, so the board's first fixtures stay on the first screen */}
-      <div className="min-w-0 lg:col-span-12">
-        <LiveSmallcaseTickerBar compact />
-      </div>
 
       {tab === 'board' && (
         <>

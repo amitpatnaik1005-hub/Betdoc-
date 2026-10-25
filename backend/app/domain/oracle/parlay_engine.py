@@ -462,12 +462,17 @@ class ParlayEngine:
         max_slips: int = 12,
         priority: Sequence[str] = ("parimatch", "1xbet", "stake", "pinnacle", "betfair"),
         seed: int | None = None,
+        max_multiple: int = 3,
+        long_pool: int = 8,
     ) -> None:
         self.thresholds = thresholds
         self.engine = ScenarioEngine(paths, seed)
         self.gate = AntiCorrelationGate()
         self.kelly_fraction, self.max_stake_pct, self.value_max_stake_pct = kelly_fraction, max_stake_pct, value_max_stake_pct
         self.max_legs, self.max_slips, self.priority = max_legs, max_slips, tuple(priority)
+        # Group 131: straight multiples of 4 to max_multiple legs, drawn from the best long_pool fixtures only (every size
+        # from the full pool would be C(24, 6) = 134,596 combinations a run)
+        self.max_multiple, self.long_pool = max(3, max_multiple), max(4, long_pool)
 
     def evaluate(self, legs: Sequence[LegCandidate], kind: SlipKind | None, now: datetime) -> SlipCandidate | None:
         """One slip, gated and simulated, priced at the best book quoting all of it (None: no book does)."""
@@ -529,6 +534,9 @@ class ParlayEngine:
         for size in (2, 3):
             combos += [(kind_for(size), combo) for combo in itertools.combinations(pool, size) if len({leg.fixture_id for leg in combo}) == size]
         distinct = list({leg.fixture_id: leg for leg in reversed(pool)}.values())[::-1]  # the best leg of each fixture, best first
+        for source in (likely_pool[: self.long_pool], distinct[: self.long_pool]):  # one leg a fixture in each
+            for size in range(4, self.max_multiple + 1):
+                combos += [(kind_for(size), combo) for combo in itertools.combinations(source, size)]
         for source in (likely_pool, distinct):
             for kind in AUTO_SYSTEMS:
                 required = SYSTEMS[kind][0]
@@ -558,7 +566,18 @@ class ParlayEngine:
             seen.add(slip.slip_id)
             report.slips.append(slip)
         report.slips.sort(key=lambda s: (s.verdict.tier is not Tier.VETTED, -(s.sim.joint_ev * s.sim.joint_probability)))
-        report.slips = report.slips[: self.max_slips]
+        # Group 131: a long multiple compounds its legs' EV and would crowd every single, double and treble off the list:
+        # only the best multiple of each size from 4 legs up is kept
+        sizes: set[int] = set()
+        kept: list[SlipCandidate] = []
+        for slip in report.slips:
+            if slip.kind is SlipKind.ACCUMULATOR and len(slip.legs) >= 4:
+                if len(slip.legs) in sizes:
+                    report.rejected["a better multiple of its size"] += 1
+                    continue
+                sizes.add(len(slip.legs))
+            kept.append(slip)
+        report.slips = kept[: self.max_slips]
         return report
 
 

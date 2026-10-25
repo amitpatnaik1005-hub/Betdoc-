@@ -87,7 +87,7 @@ const TelemetryMatrix = () => {
           <div className="flex flex-col gap-5">
             <StatGrid cols={4}>
               <Stat label="Engine" icon="memory" value={<StatusBadge status={e.engine_state} />} hint={`queue ${formatInt(e.queue_depth)}`} />
-              <Stat label="Active smallcases" icon="hub" value={<AnimatedNumber value={e.active_smallcases} format={formatInt} />} hint={`${formatInt(e.total_smallcases)} registered`} />
+              <Stat label="Active portfolios" icon="hub" value={<AnimatedNumber value={e.active_smallcases} format={formatInt} />} hint={`${formatInt(e.total_smallcases)} registered`} />
               <Stat label="API process CPU" icon="speed" value={<AnimatedNumber value={e.cpu_usage_pct} format={(n) => formatPct(n)} />} hint={`${formatInt(e.memory_usage_mb)} MB resident`} tone={e.cpu_usage_pct > 75 ? 'caution' : 'neutral'} />
               <Stat
                 label="Win rate"
@@ -294,7 +294,7 @@ export const CommandCenter = () => {
   const headline = halted
     ? 'KAUTILYA holding the line. Emergency stop engaged; every order is refused.'
     : s && engine.data
-      ? `KAUTILYA ACTIVE. ${engine.data.active_smallcases} smallcases live, ${s.active_bets_count} open positions, ${formatPct(s.win_rate_pct)} win rate.`
+      ? `KAUTILYA ACTIVE. ${engine.data.active_smallcases} portfolios live, ${s.active_bets_count} open positions, ${formatPct(s.win_rate_pct)} win rate.`
       : 'KAUTILYA ACTIVE. Synchronising the desk…';
 
   return (

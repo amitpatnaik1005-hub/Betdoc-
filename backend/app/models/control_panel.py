@@ -31,7 +31,7 @@ class SystemSettingsModel(Base):
     # Profile
     developer_name: Mapped[str] = mapped_column(String(128), default="Amit Ashok Kumar Patnaik")
     app_version: Mapped[str] = mapped_column(String(32), default="1.0.0")
-    build_info: Mapped[str] = mapped_column(String(64), default="OMEGA-LEVIATHAN")
+    build_info: Mapped[str] = mapped_column(String(64), default="Production Risk & Intelligence Engine")  # Group 131: the old lore string retired
 
     # Appearance
     theme: Mapped[str] = mapped_column(String(16), default="auto")

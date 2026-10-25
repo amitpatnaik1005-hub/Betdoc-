@@ -12,6 +12,7 @@
 import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { ApiError, apiClient } from "../../api/client";
 import { formatDateTime, humanize } from "../../lib/format";
+import { publicRationale } from "../../lib/model_privacy";
 import {
   BOOK_LABEL,
   PLACED_BOOKMAKERS,
@@ -306,7 +307,7 @@ const SlipCard = ({ initial, generatedAt, bankroll }: { initial: Slip; generated
                 <p className="mt-0.5 text-[11px] text-stone-500 dark:text-stone-400">
                   fair {pct(leg.fair_probability)} · {leg.league ?? "—"} · {leg.kickoff ? formatDateTime(leg.kickoff) : "kickoff unknown"}
                 </p>
-                <p className="mt-0.5 text-[11px] text-stone-400 dark:text-stone-500">{leg.rationale}</p>
+                <p className="mt-0.5 text-[11px] text-stone-400 dark:text-stone-500">{publicRationale(leg.rationale)}</p>
               </div>
             </li>
           );
