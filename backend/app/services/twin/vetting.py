@@ -38,7 +38,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.adapters.execution.venue import VenueStakeRules
 from app.core.config import Settings
-from app.domain.bookmakers.adapters import canonical_bookmaker
+from app.domain.bookmakers.adapters import ASHOKA_BOOKMAKERS, canonical_bookmaker, fixture_name, market_selection_label
 from app.domain.oracle import fortress
 from app.domain.oracle import never_forget as nf
 from app.domain.oracle.parlay_engine import LegCandidate, ParlayEngine, SlipCandidate, SlipKind
@@ -185,6 +185,21 @@ async def _live_legs(redis: Redis, settings: Settings, leg_ids: Sequence[str], n
     return [by_id[leg_id] for leg_id in leg_ids], by_id
 
 
+def _no_retail_book(live: Sequence[LegCandidate], retail: Sequence[str]) -> NoRetailBook:
+    """The refusal, naming each leg the book(s) do not quote and where the feeds do quote it (Group 131): a price is never
+    made up for it, so the operator can swap the leg or build at a book that has it."""
+    names = ", ".join(ASHOKA_BOOKMAKERS.get(b, b) for b in retail)
+    unquoted = [leg for leg in live if not any(b in leg.quotes for b in retail)]
+    if not unquoted:
+        return NoRetailBook(f"No single book of {names} has a fresh price on every leg of this slip", books=list(retail), legs=[])
+    parts = []
+    for leg in unquoted:
+        elsewhere = ", ".join(ASHOKA_BOOKMAKERS.get(b, b) for b in sorted(leg.quotes)) or "no book"
+        parts.append(f"{fixture_name(leg.home, leg.away)} · {market_selection_label(leg.market.key, leg.selection, leg.home, leg.away)} (quoted at {elsewhere})")
+    return NoRetailBook(f"{names} {'does' if len(retail) == 1 else 'do'} not quote: " + "; ".join(parts) + ". Swap the leg, or build the slip at a book that quotes it.",
+                        books=list(retail), legs=[leg.leg_id for leg in unquoted])
+
+
 def _retail_only(leg: LegCandidate, retail: Sequence[str]) -> LegCandidate:
     return dataclasses.replace(leg, quotes={b: q for b, q in leg.quotes.items() if b in retail})
 
@@ -206,10 +221,26 @@ def _slip_payload(slip: SlipCandidate, verdict: fortress.FortressVerdict, now: d
     out = ashoka_market.personalise({**core, "stake_fraction": 1.0}, stake if stake > 0 else None)
     out["stake_fraction"] = 0.0 if verdict.sizing is None else round(verdict.sizing.fraction, 6)
     out["stake_inr"] = str(stake)
-    # Group 73: each model's whole outcome distribution per leg, so settlement can score it (ranked probability score)
+    # Group 73: each model's whole outcome distribution per leg, so settlement can score it (ranked probability score);
+    # Group 131: and each model's probability by name (the API's leg payload carries BetDoc's own only; audit_view masks both)
     for payload, leg in zip(out["legs"], slip.legs, strict=True):
+        payload["models"] = ashoka_market.model_probabilities(leg)
         payload["distributions"] = {name: {r.value: round(p, 6) for r, p in dist.items()} for name, dist in leg.distributions().items()}
     return out
+
+
+def public_slip(slip: dict[str, Any] | None) -> dict[str, Any] | None:
+    """An audit's stored slip as the API shows it (Group 131): each leg's probability under BetDoc's name only, without the
+    per-model distributions the settlement feedback keeps."""
+    if not slip:
+        return slip
+    legs = []
+    for leg in slip.get("legs", []):
+        shown = {k: v for k, v in leg.items() if k != "distributions"}
+        if "models" in shown:
+            shown["models"] = {ashoka_market.PUBLIC_MODEL: leg.get("fair_probability")}
+        legs.append(shown)
+    return {**slip, "legs": legs}
 
 
 async def vet(
@@ -242,7 +273,7 @@ async def assess(
     slip_kind = SlipKind(kind) if kind in SlipKind.__members__ else None
     slip = _engine(settings, retail).evaluate(legs, slip_kind, now)
     if slip is None:
-        raise NoRetailBook(f"No retail book ({', '.join(retail)}) quotes every leg of this slip", books=list(retail))
+        raise _no_retail_book(live, retail)
     try:
         intel = await read_intel(redis, settings, {leg.fixture_id for leg in legs})
     except (RedisError, OSError):
@@ -356,7 +387,7 @@ def audit_view(audit: TwinVettingAudit, credit: str | None = None) -> dict[str, 
         "bankroll_inr": None if audit.bankroll_inr is None else str(audit.bankroll_inr), "kelly_fraction": round(audit.kelly_fraction, 6),
         "joint_ev": audit.joint_ev, "joint_probability": audit.joint_probability, "consensus_ev": audit.consensus_ev, "sharp_edge": audit.sharp_edge,
         "pillars_passed": audit.pillars_passed, "conviction_score": audit.conviction_score, "is_vetted": audit.is_vetted, "pillars": list(audit.pillars),
-        "rejection_reasons": list(audit.rejection_reasons), "slip": audit.slip, "created_at": audit.created_at.isoformat(),
+        "rejection_reasons": list(audit.rejection_reasons), "slip": public_slip(audit.slip), "created_at": audit.created_at.isoformat(),
         **({"developer_credit": credit} if credit is not None else {}),
     }
 

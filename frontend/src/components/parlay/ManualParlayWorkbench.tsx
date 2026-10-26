@@ -21,7 +21,7 @@ import { bookPrice, SOURCE_NOTE } from "../../lib/universal_slip";
 import { formatDateTime, formatINR } from "../../lib/format";
 import {
   autoFixSlip, BOOKMAKER_THEMES, emergencyCashout, inspectParlay, missingParimatch, STRUCTURES, submitParlay, TIER_STYLE, useAccounts, useBoard, useShields, useShieldStream,
-  type FixtureCard, type Inspection, type PillarRow, type Shield, type Skin,
+  type FixtureCard, type Inspection, type Shield, type Skin,
 } from "../../lib/backtest_and_parlay";
 import { invalidate } from "../../lib/resource";
 import { announcePick, payingBook, priceAt, type SlipLeg, slipSignature, toSlipLeg, useParlaySlipStore } from "../../store/useParlaySlipStore";
@@ -34,29 +34,6 @@ import { ScoreBackedLegs } from "../prediction/ScoreBackedLegs";
 const refusal = (err: unknown): string => (err instanceof ApiError ? err.message : "No answer from the server");
 const pct = (v: number | null | undefined, digits = 1): string => (v === null || v === undefined ? "—" : `${(v * 100).toFixed(digits)}%`);
 const DRAG_TYPE = "application/x-betdoc-leg";
-
-const Radar = ({ rows, color }: { rows: PillarRow[]; color: string }) => {
-  const size = 180;
-  const c = size / 2;
-  const r = c - 18;
-  const point = (i: number, v: number) => {
-    const angle = (Math.PI * 2 * i) / rows.length - Math.PI / 2;
-    return [c + Math.cos(angle) * r * v, c + Math.sin(angle) * r * v];
-  };
-  const shape = rows.map((row, i) => point(i, row.credit).join(",")).join(" ");
-  return (
-    <svg viewBox={`0 0 ${size} ${size}`} className="h-44 w-44 shrink-0" role="img" aria-label="pillar credits">
-      {[0.25, 0.5, 0.75, 1].map((ring) => (
-        <polygon key={ring} points={rows.map((_, i) => point(i, ring).join(",")).join(" ")} fill="none" stroke="currentColor" strokeOpacity={0.15} />
-      ))}
-      {rows.map((row, i) => {
-        const [x, y] = point(i, 1.12);
-        return <text key={row.number} x={x} y={y} fontSize="8" textAnchor="middle" dominantBaseline="middle" fill="currentColor" opacity={0.6}>{row.number}</text>;
-      })}
-      <polygon points={shape} fill={color} fillOpacity={0.25} stroke={color} strokeWidth={1.5} />
-    </svg>
-  );
-};
 
 const MatchCard = ({ card, book, onPick, onScores, onOpen }: { card: FixtureCard; book: string | null; onPick: (leg: SlipLeg) => void; onScores: (() => void) | null; onOpen: () => void }) => {
   const [open, setOpen] = useState(false);
@@ -484,12 +461,6 @@ export const ManualParlayWorkbench = ({ embedded = false }: { embedded?: boolean
             </div>
           </div>
           <UniversalSlipPanel legs={slip} />
-          {modelLegs.length > 0 && (
-            <p role="note" className="text-[11px] leading-relaxed" style={{ color: theme.muted }}>
-              {modelLegs.length} leg{modelLegs.length === 1 ? " is a" : "s are"} BetDoc model price{modelLegs.length === 1 ? "" : "s"} no feed quotes: fill the slip at the book from the
-              universal slip above. The 15-pillar inspection rates quoted prices only; take {modelLegs.length === 1 ? "it" : "them"} off to inspect the rest.
-            </p>
-          )}
           <Button variant="primary" icon="psychology" busy={busy === "inspect"} disabled={!slip.length || !chosen || modelLegs.length > 0} onClick={() => void inspect()}>Inspect parlay</Button>
         </section>
 
@@ -498,7 +469,6 @@ export const ManualParlayWorkbench = ({ embedded = false }: { embedded?: boolean
             {inspection.price_note && <p role="note" className="rounded-xl p-2 text-[11px]" style={{ background: "color-mix(in srgb, #FACC15 14%, transparent)" }}>{inspection.price_note}</p>}
             <div className="flex flex-wrap items-start gap-4">
               <div className="w-full sm:w-80"><SlipScoreMeter rating={inspection.rating} figures={inspection.audit} onAutoFix={() => void autoFix()} fixing={busy === "fix"} /></div>
-              <Radar rows={inspection.rating.breakdown} color={tier.color} />
               <div className="flex min-w-[14rem] flex-1 flex-col gap-1 text-xs">
                 <p>
                   {inspection.audit.pillars_passed}/15 pillars passed at {inspection.book ?? "—"} · odds {inspection.audit.total_odds ?? "—"} · joint EV{" "}

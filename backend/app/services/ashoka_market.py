@@ -175,16 +175,24 @@ async def load_candidates(redis: Redis, settings: Settings, now: datetime, *, fi
 
 
 # ================================================================ serialising
+PUBLIC_MODEL = "BetDoc AI"  # Group 131: the one name a leg's probability goes out under
+
+
+def model_probabilities(leg: LegCandidate) -> dict[str, float]:
+    """Each engine's win probability for the leg, by its internal name: stored with an audit so the settlement feedback can
+    grade every model (``feedback_tracker.predictions``), never sent to a screen."""
+    return {name: round(sum(v for r, v in dist.items() if r.value in ("WON", "HALF_WON")), 4) for name, dist in leg.distributions().items()}
+
+
 def leg_payload(leg: LegCandidate, quote: Quote | None, now: datetime) -> dict[str, Any]:
+    """A leg as the API shows it. Group 131: the engines' names stay inside; the leg carries BetDoc's own probability."""
     probability = leg.probability
-    models = {name: round(sum(v for r, v in dist.items() if r.value in ("WON", "HALF_WON")), 4) for name, dist in leg.distributions().items()}
     ev = None if quote is None else leg.ev(quote.net_odds)
     parts = [f"fair {probability:.1%}"]
     if quote is not None:
         parts.append(f"{ASHOKA_BOOKMAKERS.get(quote.bookmaker, quote.bookmaker)} {quote.odds:g} implies {1 / quote.odds:.1%}")
         parts.append(f"EV {ev:+.1%}")
-    if models:
-        parts.append("models " + ", ".join(f"{name.replace('_', '-')} {p:.0%}" for name, p in models.items()))
+    parts.append(f"AI confidence {probability:.0%}")
     return {
         "leg_id": leg.leg_id,
         "fixture_id": leg.fixture_id,
@@ -198,11 +206,11 @@ def leg_payload(leg: LegCandidate, quote: Quote | None, now: datetime) -> dict[s
         "selection": leg.selection,
         "label": market_selection_label(leg.market.key, leg.selection, leg.home, leg.away),
         "fair_probability": round(probability, 4),
-        "models": models,
+        "models": {PUBLIC_MODEL: round(probability, 4)},
         "ev": None if ev is None else round(ev, 4),
         "prices": {book: q.odds for book, q in leg.quotes.items()},
         "price_age_seconds": {book: round(q.age(now), 1) for book, q in leg.quotes.items()},
-        "rationale": "; ".join(parts),
+        "rationale": " · ".join(parts),
     }
 
 

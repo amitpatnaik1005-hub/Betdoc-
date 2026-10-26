@@ -10,7 +10,7 @@ import {
   useLocation,
 } from 'react-router-dom';
 
-import { AnimatedGlyph, type GlyphMotion, BetdocLogo as BrandLogo } from './ui/brand';
+import { AnimatedGlyph, BetdocLogo as BrandLogo } from './ui/brand';
 import { BRAND } from './ui/tokens';
 import { useUIStore } from './store/useUIStore';
 import { ScoutOracleFlexiDock } from './components/oracle/ScoutOracleFlexiDock';
@@ -27,7 +27,7 @@ import { useSystemStore } from './store/useSystemStore';
 import { useCommanderStore } from './store/useCommanderStore';
 import { COMMANDER_REGISTRY, type CommanderId } from './config/commanders.config';
 import { formatProbeLatency, useCommanders, type LiveCommander } from './lib/commanders';
-import { emergencyStop, resumeTrading, useControls, useDashboardSummary } from './lib/api';
+import { emergencyStop, resumeTrading, useControls } from './lib/api';
 import { invalidate } from './lib/resource';
 import { startRealtime } from './services/realtime';
 import { toast } from './store/useToastStore';
@@ -175,52 +175,6 @@ const BrandMark = ({ size = 24, loop = false, className = '' }: BrandMarkProps):
   );
 };
 
-type Tone = 'neutral' | 'positive' | 'negative' | 'caution';
-const TONE_STYLE: Record<Tone, { readonly icon: string; readonly value: string }> = {
-  neutral: { icon: 'text-stone-400 dark:text-stone-500', value: 'text-stone-800 dark:text-stone-300' },
-  positive: { icon: 'text-emerald-500/80', value: 'text-emerald-700 dark:text-emerald-300/90' },
-  negative: { icon: 'text-rose-400', value: 'text-rose-600 dark:text-rose-300/90' },
-  caution: { icon: 'text-amber-500/80', value: 'text-amber-700 dark:text-amber-200/90' },
-};
-
-interface StatTileProps {
-  readonly label: string;
-  readonly value: string;
-  readonly icon: string;
-  readonly motionPreset: GlyphMotion;
-  readonly tone?: Tone;
-  readonly changeKey: number;
-}
-
-const StatTile = ({ label, value, icon, motionPreset, tone = 'neutral', changeKey }: StatTileProps): ReactElement => {
-  const reduceMotion = useReducedMotion();
-  const t = TONE_STYLE[tone];
-
-  return (
-    <div className="flex min-w-0 flex-1 items-center gap-2 px-3 py-1.5 sm:min-w-[7.5rem] sm:flex-none sm:gap-2.5 sm:px-3.5">
-      <AnimatedGlyph
-        icon={icon}
-        motionPreset={motionPreset}
-        className={`hidden shrink-0 text-[17px] transition-colors duration-300 2xl:inline-block ${t.icon}`}
-      />
-      <div className="min-w-0">
-        <p className="text-[10px] font-medium uppercase leading-none tracking-wide text-stone-400 dark:text-stone-500">
-          {label}
-        </p>
-        <motion.p
-          key={changeKey}
-          initial={reduceMotion ? false : { opacity: 0.4, y: -3 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={glide}
-          className={`mt-1 truncate font-mono text-[13px] font-medium leading-none tracking-tight tabular-nums transition-colors duration-500 sm:text-[14px] ${t.value}`}
-        >
-          {value}
-        </motion.p>
-      </div>
-    </div>
-  );
-};
-
 type SocketStatus = 'connecting' | 'live' | 'stalled' | 'offline';
 const SOCKET_STYLE = {
   live: { dot: 'bg-emerald-400 animate-breathe', halo: '', text: 'text-emerald-700 dark:text-emerald-300/90', label: 'Live' },
@@ -230,7 +184,6 @@ const SOCKET_STYLE = {
 } as const satisfies Record<SocketStatus, { readonly dot: string; readonly halo: string; readonly text: string; readonly label: string }>;
 
 const StageHeader = (): ReactElement => {
-  const summary = useDashboardSummary();
   const halted = useSystemStore((s) => s.halted);
   const busStatus = useSystemStore((s) => s.busStatus);
   const oddsLive = useMarketStore((s) => s.isConnected);
@@ -249,13 +202,7 @@ const StageHeader = (): ReactElement => {
       : busStatus === 'connecting' || busStatus === 'reconnecting' || busStatus === 'idle' ? 'connecting'
       : busStatus === 'error' ? 'stalled' : 'offline';
 
-  const bankroll = summary.data?.total_bankroll ?? 0;
-  const exposure = summary.data?.current_exposure ?? 0;
-  const dayPnl = summary.data?.daily_pnl ?? 0;
   const socket = SOCKET_STYLE[socketStatus];
-
-  const pnlTone: Tone = dayPnl > 0 ? 'positive' : dayPnl < 0 ? 'negative' : 'neutral';
-  const pnlIcon = dayPnl > 0 ? 'trending_up' : dayPnl < 0 ? 'trending_down' : 'trending_flat';
 
   return (
     // Group 111: one 48px row whenever the column is wide enough (Group 99's was 56px); otherwise the figures wrap under
@@ -337,11 +284,15 @@ const StageHeader = (): ReactElement => {
 
       <div className="flex w-full items-center gap-2 sm:ml-auto sm:w-auto sm:shrink-0">
         <CurrencySelector />
-        <div className="flex min-w-0 flex-1 divide-x divide-stone-100 rounded-2xl bg-white shadow-soft sm:flex-none dark:divide-white/[0.05] dark:bg-stone-900 dark:shadow-none">
-          <StatTile label="Bankroll" value={summary.data ? money.format(bankroll) : '—'} icon="account_balance_wallet" motionPreset="breathe" tone="positive" changeKey={bankroll} />
-          <StatTile label="Exposure" value={summary.data ? money.format(exposure) : '—'} icon="inventory_2" motionPreset="sway" tone="caution" changeKey={exposure} />
-          <StatTile label="Today" value={summary.data ? `${dayPnl > 0 ? '+' : ''}${money.format(dayPnl)}` : '—'} icon={pnlIcon} motionPreset="drift" tone={pnlTone} changeKey={dayPnl} />
-        </div>
+        {/* Group 131: balances, exposure and P&L live in The Vault's ledger, one click away, not as header figures */}
+        <NavLink
+          to="/vault"
+          className="inline-flex items-center gap-1.5 rounded-xl border border-stone-200 bg-white px-3 py-1.5 text-xs font-semibold text-stone-700 shadow-soft transition hover:bg-stone-50 dark:border-stone-800 dark:bg-stone-900 dark:text-stone-300 dark:hover:bg-stone-800/80"
+          title="Open The Vault & Capital Ledger for live balances and settlement P&L"
+        >
+          <span className="material-symbols-outlined text-[16px] text-amber-500" aria-hidden="true">account_balance</span>
+          The Vault
+        </NavLink>
       </div>
     </header>
   );

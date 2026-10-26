@@ -23,6 +23,7 @@ from app.core.config import Settings
 from app.domain.oracle.parlay_engine import ParlayEngine, SlipKind
 from app.models.control_panel import SystemSettingsModel
 from tests.test_ashoka_oracle import NOW, market_leg, thresholds
+from tests.test_backtest_and_parlay import redis, sessions, settings  # noqa: F401 - fixtures
 
 ROOT = Path(__file__).resolve().parents[2]
 FRONTEND = ROOT / "frontend" / "src"
@@ -145,3 +146,55 @@ def test_the_obsidian_skins_and_the_untouched_scanner() -> None:
                  FRONTEND / "lib" / "slip_scanner.ts"):
         text = path.read_text(encoding="utf-8")
         assert "Group 131" not in text and "MatchMarketModal" not in text and "slip_rules" not in text
+
+
+# ================================================================ corrections: privacy at the boundary, an honest refusal, the header
+@pytest.mark.asyncio
+async def test_the_api_shows_betdocs_probability_and_storage_keeps_every_model(sessions, redis, settings) -> None:  # noqa: F811
+    import httpx  # noqa: PLC0415
+    from sqlalchemy import select  # noqa: PLC0415
+
+    from app.models.digital_twin import TwinVettingAudit  # noqa: PLC0415
+    from tests.test_backtest_and_parlay import app_for, make_user  # noqa: PLC0415
+    from tests.test_ultra_vetting import PINNACLE_NO_ARB, SOFT, seed  # noqa: PLC0415
+
+    user = await make_user(sessions)
+    await seed(redis, settings, "fx-p131", "Liverpool", "Everton", sharp=PINNACLE_NO_ARB, soft={k: v for k, v in SOFT.items() if k != "parimatch"})
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app_for(sessions, redis, settings, user)), base_url="http://test") as client:
+        board = (await client.get("/api/v1/manual-parlay/board")).json()
+        shown = [s for f in board["fixtures"] for m in f["markets"] for s in m["selections"]]
+        assert shown and all(set(s["models"]) == {"BetDoc AI"} for s in shown)
+        res = await client.post("/api/v1/manual-parlay/inspect", json={"leg_ids": ["fx-p131|Match Odds|HOME"], "kind": "SINGLE", "skin": "one_xbet"})
+        assert res.status_code == 200, res.text
+        leg = res.json()["audit"]["slip"]["legs"][0]
+        assert set(leg["models"]) == {"BetDoc AI"} and "distributions" not in leg and "AI confidence" in leg["rationale"] and "models " not in leg["rationale"]
+    async with sessions() as session:
+        stored = (await session.scalars(select(TwinVettingAudit))).one().slip["legs"][0]
+    assert "BetDoc AI" not in stored["models"] and set(stored["models"]) == set(stored["distributions"])  # the settlement feedback grades each
+
+
+@pytest.mark.asyncio
+async def test_a_slip_a_book_cannot_price_is_refused_by_name_never_priced_by_invention(sessions, redis, settings) -> None:  # noqa: F811
+    import httpx  # noqa: PLC0415
+
+    from tests.test_backtest_and_parlay import app_for, make_user  # noqa: PLC0415
+    from tests.test_ultra_vetting import PINNACLE_NO_ARB, SOFT, seed  # noqa: PLC0415
+
+    user = await make_user(sessions)
+    await seed(redis, settings, "fx-r131", "Leeds", "Burnley", sharp=PINNACLE_NO_ARB, soft={"williamhill": SOFT["williamhill"]})  # no 1xBet, no Parimatch
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app_for(sessions, redis, settings, user)), base_url="http://test") as client:
+        res = await client.post("/api/v1/manual-parlay/inspect", json={"leg_ids": ["fx-r131|Match Odds|HOME"], "kind": "SINGLE", "skin": "one_xbet"})
+    assert res.status_code != 200
+    assert "1xBet does not quote: Leeds vs Burnley · 1X2: Leeds (quoted at Pinnacle)" in res.text and "Swap the leg" in res.text
+
+
+def test_the_header_and_the_builder_corrections() -> None:
+    app = _read("App.tsx")
+    assert "StatTile" not in app and "useDashboardSummary" not in app and 'to="/vault"' in app and "The Vault\n" in app.replace("\r\n", "\n")
+    assert "{ value: 'desk', label: 'Vetting desk', icon: 'verified_user' }" in _read("pages", "TheOracle.tsx")
+    builder = _read("components", "builder", "BetBuilder.tsx")
+    assert "StreetSmartSynthesizer" not in builder and '"synthesizer"' not in builder and '"synthesizer"' not in _read("lib", "builder.ts")
+    assert "sports.filter((s) => s.count > 0 || s.sport === sport)" in _read("components", "oracle", "board", "MatchBoardToolbar.tsx")
+    assert "Nothing passes the kitchen" not in _read("components", "oracle", "board", "ChefTopPlate.tsx")
+    workbench = _read("components", "parlay", "ManualParlayWorkbench.tsx")
+    assert "<Radar" not in workbench and "PillarRow" not in workbench

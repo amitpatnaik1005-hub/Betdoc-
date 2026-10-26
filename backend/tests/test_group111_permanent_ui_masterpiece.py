@@ -125,7 +125,7 @@ def test_the_page_guide_is_a_ribbon_with_a_modal() -> None:
 def test_the_oracle_opens_on_the_work() -> None:
     oracle = read("pages/TheOracle.tsx")
     tabs = re.findall(r"\{ value: '(\w+)', label: '([^']+)', icon: '(\w+)' \}", oracle[oracle.index("const ORACLE_TABS"):])
-    assert [(v, label) for v, label, _ in tabs[:4]] == [("board", "Match board"), ("builder", "Bet builder"), ("score", "Score engine"), ("desk", "Quant desk")]
+    assert [(v, label) for v, label, _ in tabs[:4]] == [("board", "Match board"), ("builder", "Bet builder"), ("score", "Score engine"), ("desk", "Vetting desk")]  # Group 131: renamed
     assert "v === 'engine' ? 'score'" in oracle  # Group 103's ?tab=engine links (and /sports) still land
     assert "<CommanderHero" not in oracle and "<Page dense>" in oracle and "ASHOKA · The Oracle" in oracle
     assert "<LiveSmallcaseTickerBar" not in oracle and "<InfinityFlexiViewToggle" in oracle  # Group 131: the basket chips are retired

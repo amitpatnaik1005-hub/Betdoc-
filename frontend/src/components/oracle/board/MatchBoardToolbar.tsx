@@ -48,7 +48,8 @@ const Choice = ({ active, onClick, children }: { active: boolean; onClick: () =>
 export const MatchBoardToolbar = ({ sports, total, sport, onSport, window, onWindow, column, onColumn, skin, onSkin }: Props) => (
   <div className="flex flex-col gap-3">
     <div className="flex gap-1.5 overflow-x-auto pb-1" role="tablist" aria-label="Sports">
-      {[{ sport: null as string | null, count: total, live: sports.reduce((a, s) => a + s.live, 0), priority: false }, ...sports].map((s) => {
+      {/* Group 131: a sport with no fixture priced has no tab (the one selected keeps its own) */}
+      {[{ sport: null as string | null, count: total, live: sports.reduce((a, s) => a + s.live, 0), priority: false }, ...sports.filter((s) => s.count > 0 || s.sport === sport)].map((s) => {
         const active = sport === s.sport;
         return (
           <button key={s.sport ?? "all"} type="button" role="tab" aria-selected={active} onClick={() => onSport(s.sport)}

@@ -305,7 +305,7 @@ const ORACLE_TABS: { value: OracleTab; label: string; icon: string }[] = [
   { value: 'board', label: 'Match board', icon: 'stadium' },
   { value: 'builder', label: 'Bet builder', icon: 'construction' },
   { value: 'score', label: 'Score engine', icon: 'scoreboard' },
-  { value: 'desk', label: 'Quant desk', icon: 'query_stats' },
+  { value: 'desk', label: 'Vetting desk', icon: 'verified_user' },
 ];
 // Group 111: the Sports engine joined Score Prediction on the Score engine tab; ?tab=engine (Group 103 links) still lands there
 const tabOf = (v: string | null): OracleTab => (v === 'engine' ? 'score' : v === 'builder' || v === 'score' || v === 'desk' ? v : 'board');

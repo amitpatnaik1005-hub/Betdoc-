@@ -54,8 +54,8 @@ export const ChefTopPlate = () => {
     return (
       <Shell>
         <p className="flex items-center gap-2 text-xs text-stone-600 dark:text-stone-300">
-          <span className="material-symbols-outlined text-[18px] text-[#C89B3C]" aria-hidden="true">restaurant</span>
-          Nothing passes the kitchen right now: no vetted slip has positive joint EV at the retail books with no pillar vetoing it. It serves nothing rather than a loser.
+          <span className="material-symbols-outlined text-[18px] text-[#C89B3C]" aria-hidden="true">verified_user</span>
+          No algorithmic parlay meets the 15-pillar risk criteria with positive expected value at retail prices right now. Only positive-edge slips are recommended.
         </p>
       </Shell>
     );

@@ -551,14 +551,14 @@ def test_the_migration_creates_the_day_table_and_the_ticket_legs() -> None:
         assert text in source, text
 
 
-def test_the_builder_carries_the_synthesizer() -> None:
+def test_the_synthesizer_component_and_api_remain() -> None:
     src = ROOT / "frontend" / "src"
     component = (src / "components" / "builder" / "StreetSmartSynthesizer.tsx").read_text(encoding="utf-8")
     for text in ("TODAR MAL · market health", "Synthesize the street-smart slip", "Split into Fortress, Growth &amp; Moonshot", "Record the 3 tickets (nothing is locked)",
                  "Lock stake &amp; confirm", "The four outcomes (the tickets are nested)", "<InPlayDesk"):
         assert text in component, text
     builder = (src / "components" / "builder" / "BetBuilder.tsx").read_text(encoding="utf-8")
-    assert '{ value: "synthesizer", label: "5(d) Street-smart & splitter"' in builder and "<StreetSmartSynthesizer onLoad={load} />" in builder
+    assert "StreetSmartSynthesizer" not in builder  # Group 131: 5(d) left the builder; the component and its API remain
     lib = (src / "lib" / "synthesizer.ts").read_text(encoding="utf-8")
     for text in ("/synthesizer/market-health", "/synthesizer/synthesize-street-smart", "/synthesizer/split-system-bets", "/synthesizer/record-system-tickets",
                  "/confirm-handcrafted", '"real_money:system_tickets"'):

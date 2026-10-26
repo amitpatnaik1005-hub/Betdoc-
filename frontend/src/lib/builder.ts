@@ -13,7 +13,7 @@ import type { Inspection, ScorelineLink } from "./backtest_and_parlay";
 import type { Slip, SlipLeg as VettedLeg } from "./oracle";
 import { useResource } from "./resource";
 
-export type BuilderMode = "auto" | "manual" | "chef" | "synthesizer"; // Group 115: 5(d) street-smart & system splitter
+export type BuilderMode = "auto" | "manual" | "chef"; // Group 131: 5(d) the street-smart splitter left the builder
 
 /** The auto-fix has something to do: a pillar vetoed the slip, or a badge costs it points. */
 export const canAutoFix = (rating: Inspection["rating"]): boolean =>
